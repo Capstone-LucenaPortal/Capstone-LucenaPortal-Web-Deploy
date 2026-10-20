@@ -1,0 +1,88 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useState, type FormEvent } from "react";
+import { Button } from "@/portals/super-staff/components/ui/button";
+import { Card } from "@/portals/super-staff/components/ui/card";
+import { Input } from "@/portals/super-staff/components/ui/input";
+import { createClient } from "@/shared/supabase/client";
+import { signInErrorMessage } from "@/shared/supabase/sign-in-error";
+import { IDLE_TIMEOUT_MS, restartIdleClock } from "@/portals/super-staff/lib/supabase/idle-timeout";
+
+export function LoginForm({ idleSignOut = false }: { idleSignOut?: boolean }) {
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    setBusy(true);
+
+    const supabase = createClient();
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password,
+    });
+
+    if (signInError) {
+      setError(signInErrorMessage(signInError));
+      setBusy(false);
+      return;
+    }
+
+    // A fresh idle clock: the stale one left by an earlier session in this
+    // browser would otherwise end the new session on its first request.
+    // It also drops the old clock offset, so the request guard measures it
+    // again.
+    restartIdleClock(Date.now());
+
+    // The session cookie is set; refresh() makes the server layout re-read
+    // my_staff_profile instead of serving a cached anonymous render.
+    // '/super-staff/accounts' is this portal's landing page — see
+    // src/app/(super-staff)/super-staff/page.tsx.
+    router.replace("/super-staff/accounts");
+    router.refresh();
+  }
+
+  return (
+    <Card className="w-full max-w-sm p-8">
+      <h1 className="text-2xl font-bold text-lucena-blue">Super Staff sign in</h1>
+      {idleSignOut && (
+        <p role="status" className="mt-2 text-sm text-gray-600">
+          You were signed out after {IDLE_TIMEOUT_MS / 60_000} minutes of inactivity.
+        </p>
+      )}
+      <form className="mt-4 flex flex-col gap-3" onSubmit={handleSubmit}>
+        <Input
+          type="email"
+          aria-label="Email"
+          placeholder="Email"
+          autoComplete="username"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <Input
+          type="password"
+          aria-label="Password"
+          placeholder="Password"
+          autoComplete="current-password"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        {error && (
+          <p role="alert" className="text-sm text-red-600">
+            {error}
+          </p>
+        )}
+        <Button type="submit" disabled={busy}>
+          {busy ? "Signing in…" : "Sign in"}
+        </Button>
+      </form>
+    </Card>
+  );
+}

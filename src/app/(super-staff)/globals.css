@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+/*
+ * Lucena brand tokens (shared vocabulary with the EndUser portal).
+ * Only brand-primary/active/focus/link/title use these. The `info` semantic
+ * and warning yellow/amber stay on the default Tailwind palette.
+ */
+@theme {
+  --color-lucena-blue: #003da5;
+  --color-lucena-blue-dark: #002566;
+  --color-lucena-yellow: #fdb913;
+}
+
+/*
+ * Tailwind v4's preflight gives buttons `cursor: default`. Every clickable
+ * control in the portal should read as clickable, so restore the pointer
+ * once here instead of sprinkling `cursor-pointer` across each call site.
+ * Disabled buttons keep the default arrow.
+ */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled),
+  summary {
+    cursor: pointer;
+  }
+}

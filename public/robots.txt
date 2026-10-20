@@ -1,0 +1,22 @@
+User-agent: *
+Allow: /
+
+# Authenticated routes. Nothing here is reachable without a session, but a
+# crawler following a pasted link should not try.
+Disallow: /dashboard
+Disallow: /profile
+Disallow: /complete-signup
+Disallow: /reset-password
+
+# Per-application routes carry a citizen's own record id. The /yellow-card
+# landing page itself stays crawlable on purpose — "how do I apply for a Yellow
+# Card in Lucena" is exactly the question a resident should be able to answer
+# from a search engine, and the page answers it without a session. Only the
+# record-scoped paths beneath it are excluded.
+Disallow: /yellow-card/*/revise
+
+# /verify renders a citizen's name, barangay and card status for any ?token=
+# in the URL. The page itself is a legitimate public utility, but a tokenised
+# URL that leaks into a crawler's index would publish that PII permanently, so
+# the whole route stays out of search results.
+Disallow: /verify

@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+/*
+ * Lucena brand tokens (shared vocabulary with the EndUser and Staff portals).
+ * Only brand-primary/active/focus/link/title use these. The `info` semantic
+ * and warning yellow/amber stay on the default Tailwind palette.
+ */
+@theme {
+  --color-lucena-blue: #003da5;
+  --color-lucena-blue-dark: #002566;
+  --color-lucena-yellow: #fdb913;
+  /* Page backdrop behind the app frame — the one neutral the stock Tailwind
+   * gray ramp doesn't cover. Everything else maps to a stock gray. */
+  --color-lucena-backdrop: #eef1f5;
+}
+
+/* A visible focus ring on every interactive element (SCRUM-159, WCAG 2.4.7).
+ * `:focus-visible` keeps a tap or click from drawing a ring it does not need.
+ * Unlayered, so no Tailwind utility (`outline-none` included) can override it.
+ * The rules below it tie or beat it on specificity and win by coming later —
+ * keep this one first. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid var(--color-lucena-blue);
+  outline-offset: 2px;
+}
+
+/* A visually hidden input (the release-reason chips, the photo tiles) would
+ * draw its ring around a 1px clip; ring the label the responder sees. */
+label:has(.sr-only:focus-visible) {
+  outline: 3px solid var(--color-lucena-blue);
+  outline-offset: 2px;
+}
+
+/* On the blue nav and the near-black toast a blue ring is invisible, so
+ * invert it there. */
+[data-on-dark] :focus-visible {
+  outline-color: var(--color-lucena-yellow);
+}
+
+/* A full-screen backdrop's outer ring would sit off the viewport; draw it
+ * inside the edge, yellow against the dimmed page. */
+[data-scrim]:focus-visible {
+  outline-color: var(--color-lucena-yellow);
+  outline-offset: -6px;
+}
+
+/* The drawer, sheets, and the "My ticket" pulse dot. */
+@keyframes nav-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes sheet-up {
+  from {
+    transform: translateY(110%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@utility animate-nav-in {
+  animation: nav-in 0.22s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+@utility animate-sheet-up {
+  animation: sheet-up 0.22s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+@utility animate-scrim-in {
+  animation: scrim-in 0.18s ease;
+}
+@utility animate-toast-in {
+  animation: toast-in 0.2s ease;
+}

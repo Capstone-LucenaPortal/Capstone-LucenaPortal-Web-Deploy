@@ -1,0 +1,174 @@
+@import "tailwindcss";
+
+@theme {
+  --color-lucena-blue: #003DA5;
+  --color-lucena-yellow: #FDB913;
+  --color-dark-gray: #666666;
+  --color-medium-gray: #EEEEEE;
+  --color-text-dark: #333333;
+  --color-lucena-error: #C62828;
+  --color-lucena-success: #2E7D32;
+  --font-sans: var(--font-inter), 'Inter', 'Arial', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--font-inter), 'Inter', 'Arial', sans-serif;
+  background: #F5F5F5;
+  color: #333333;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
+  overflow-wrap: break-word;
+}
+
+/* Media never overflows its container (safety net for fixed-width embeds/images) */
+img, video, iframe { max-width: 100%; }
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ===== Responsive helpers =====
+   Inline styles carry the desktop layout; these classes override the grid
+   on smaller screens via !important (an !important stylesheet rule beats a
+   non-important inline style). SSR-safe — no JS, no hydration flash. */
+
+/* Stack an asymmetric/multi-column grid into a single column on tablet & down */
+@media (max-width: 900px) {
+  .stack-mobile { grid-template-columns: 1fr !important; }
+  /* Neutralize any child that spans multiple columns — otherwise a
+     `grid-column: 1 / span 2` forces an implicit second column and the
+     stacked container overflows horizontally. */
+  .stack-mobile > * { grid-column: auto !important; }
+  .stack-mobile-sidebar { position: static !important; }
+}
+
+/* Media images inside stacked layouts shouldn't keep a huge fixed height */
+@media (max-width: 600px) {
+  .fluid-media { height: auto !important; aspect-ratio: 16 / 9; }
+}
+
+/* ---- Navigation ---- */
+.nav-hamburger { display: none; }
+@media (max-width: 1024px) {
+  .nav-desktop { display: none !important; }
+  .nav-hamburger { display: inline-flex !important; }
+}
+@media (min-width: 1025px) {
+  .nav-mobile-panel { display: none !important; }
+}
+
+/* Hide non-essential elements on very small screens */
+@media (max-width: 480px) {
+  .hide-xs { display: none !important; }
+}
+
+/* ===== Reduced motion (accessibility) ===== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Accessibility primitives (fix plan Phase 4)
+   --------------------------------------------------------------------------- */
+
+/* Visually hidden but still announced. Not `display: none` — that removes the
+   element from the accessibility tree, which is the opposite of the intent. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* The skip link: hidden until focused, then pinned over the nav. Keyboard and
+   screen-reader users otherwise tab through the entire nav on every page. */
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -60px;
+  z-index: 1000;
+  background: #003DA5;
+  color: #FFFFFF;
+  padding: 12px 20px;
+  border-radius: 0 0 6px 6px;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: top 0.15s ease;
+}
+
+.skip-link:focus {
+  top: 0;
+}
+
+/* A visible focus ring on every interactive element. The site styles buttons
+   as bare divs-with-background in many places, which removes the UA default
+   outline and leaves keyboard users with no idea where they are.
+   `:focus-visible` keeps mouse clicks from showing a ring they do not need. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid #003DA5;
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* On the deep-blue surfaces (announcement cards, footer) a blue ring is
+   invisible, so invert it there. */
+[data-on-dark] a:focus-visible,
+[data-on-dark] button:focus-visible {
+  outline-color: #FDB913;
+}
+
+/* Acknowledgement Receipt print styles (SCRUM-119).
+   The citizen's "download" is the browser's own Save as PDF, so the printed
+   page must carry the receipt and nothing else — no nav, no footer, no
+   buttons. Hiding by `visibility` rather than `display` on `body *` keeps the
+   receipt's own ancestors laid out while everything beside it goes blank,
+   which is what lets the sheet be repositioned to the top of the page. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .receipt-sheet,
+  .receipt-sheet * {
+    visibility: visible;
+  }
+
+  .receipt-sheet {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    border: none !important;
+    padding: 0 !important;
+  }
+
+  .receipt-noprint {
+    display: none !important;
+  }
+
+  /* Nested inside `@media print` deliberately: at the top level this rule is
+     stripped by the CSS build, so it has to live here to survive. */
+  @page {
+    margin: 18mm;
+  }
+}
