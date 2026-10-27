@@ -52,6 +52,13 @@ export function isIdleExpired(lastActivityRaw: string | null, now: number): bool
   return now - last > IDLE_TIMEOUT_MS;
 }
 
+/** A password-recovery flag as read back. 'active' names the account whose
+ * reset link was opened: the flag is not this browser's, it is that user's. */
+export type RecoveryFlag =
+  | { state: 'none' }
+  | { state: 'expired' }
+  | { state: 'active'; userId: string };
+
 /**
  * Pure: what to do with a password-recovery flag of a given age.
  *
@@ -68,16 +75,21 @@ export function isIdleExpired(lastActivityRaw: string | null, now: number): bool
  *
  * 'expired' therefore means "sign this session out", never "carry on".
  */
-export function recoveryFlagState(
-  raw: string | null,
-  now: number,
-  ttlMs: number,
-): 'none' | 'active' | 'expired' {
-  if (!raw) return 'none';
-  const setAt = Number(raw);
-  // An unparseable flag cannot be aged, and a recovery session must never be
-  // given the benefit of the doubt — treat it as expired and sign out.
-  if (!Number.isFinite(setAt) || setAt <= 0) return 'expired';
-  if (now - setAt > ttlMs) return 'expired';
-  return 'active';
+export function recoveryFlagState(raw: string | null, now: number, ttlMs: number): RecoveryFlag {
+  if (!raw) return { state: 'none' };
+  const sep = raw.indexOf(':');
+  const setAt = Number(sep === -1 ? raw : raw.slice(0, sep));
+  const userId = sep === -1 ? '' : raw.slice(sep + 1);
+  // An unparseable flag cannot be aged, and one that names no account cannot
+  // be matched to the session (issue #41). A recovery session must never be
+  // given the benefit of the doubt — treat either as expired and sign out.
+  if (!Number.isFinite(setAt) || setAt <= 0 || !userId) return { state: 'expired' };
+  if (now - setAt > ttlMs) return { state: 'expired' };
+  return { state: 'active', userId };
+}
+
+/** Pure: the flag's stored form — when the reset link was opened, and for
+ * which account. Read back with `recoveryFlagState`. */
+export function encodeRecoveryFlag(userId: string, setAt: number): string {
+  return `${setAt}:${userId}`;
 }

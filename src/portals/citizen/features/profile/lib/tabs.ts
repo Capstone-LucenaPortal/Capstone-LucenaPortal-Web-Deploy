@@ -12,6 +12,9 @@ export const PROFILE_TABS = ['account', 'security', 'yellowcard', 'privacy'] as 
 
 export type ProfileTab = (typeof PROFILE_TABS)[number];
 
+/** The tab that changes the password, behind the current one. */
+export const PROFILE_TAB_SECURITY: ProfileTab = 'security';
+
 /** The tab holding the digital card and its QR code. */
 export const PROFILE_TAB_YELLOW_CARD: ProfileTab = 'yellowcard';
 

@@ -8,6 +8,7 @@ import {
   IDLE_CHECK_INTERVAL_MS,
   IDLE_SIGNOUT_NOTICE_KEY,
   LAST_ACTIVITY_KEY,
+  encodeRecoveryFlag,
   isIdleExpired,
   recoveryFlagState,
 } from '@/portals/citizen/features/auth/lib/session-policy';
@@ -27,10 +28,12 @@ const RECOVERY_FLAG_TTL_MS = 30 * 60 * 1000;
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
-  /** True from the moment a password-recovery link's session is detected
-   * until the reset completes (or the user signs out). While true, the
-   * session proves only that this browser opened the reset email — it must
-   * not be treated as a normal signed-in session anywhere in the app. */
+  /** True while the signed-in account is the one whose password-recovery
+   * link was opened here, from the moment its session is detected until the
+   * reset completes, the session is signed out (here or by the server), or
+   * someone signs in or up. While true, the session proves only that this
+   * browser opened the reset email — it must not be treated as a normal
+   * signed-in session anywhere in the app. */
   isPasswordRecovery: boolean;
   /** Set once when a session was ended by the idle timeout, so the UI can say
    * why the citizen is suddenly signed out. Cleared by `dismissIdleNotice`. */
@@ -52,12 +55,25 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUserState] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
+  // Whose reset link was opened here. The flag belongs to that account, not
+  // to the browser (issue #41): a recovery can end with no event to clear it
+  // (closing the browser ends the session cookie), and the next account to
+  // sign in, by an email link for one, must not inherit it.
+  const [recoveryUserId, setRecoveryUserId] = useState<string | null>(null);
+  const isPasswordRecovery = recoveryUserId !== null && user?.id === recoveryUserId;
   const [idleSignOutNotice, setIdleSignOutNotice] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'signup' | 'forgot'>('login');
   const router = useRouter();
   const pathname = usePathname();
+
+  /** End a password recovery: forget whose it was, here and in every other
+   * tab (the storage listener below picks up the removed key). Every path that
+   * ends one goes through here. */
+  const endPasswordRecovery = useCallback(() => {
+    if (typeof window !== 'undefined') localStorage.removeItem(RECOVERY_FLAG_KEY);
+    setRecoveryUserId(null);
+  }, []);
 
   /** Best-effort sign-out for the security paths (idle cap, expired recovery
    * flag, wrong portal). Unlike the user-initiated `logout`, this must never
@@ -71,16 +87,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // cleared by authService.logout's own finally block, and the server-side
       // token expiry covers the rest. Never re-admit the session on failure.
     } finally {
+      endPasswordRecovery();
       if (typeof window !== 'undefined') {
-        localStorage.removeItem(RECOVERY_FLAG_KEY);
         localStorage.removeItem(LAST_ACTIVITY_KEY);
         if (reason === 'idle') localStorage.setItem(IDLE_SIGNOUT_NOTICE_KEY, '1');
       }
       setUserState(null);
-      setIsPasswordRecovery(false);
       if (reason === 'idle') setIdleSignOutNotice(true);
     }
-  }, []);
+  }, [endPasswordRecovery]);
 
   // Read through a ref so `reconcileProfile` stays stable for the provider's
   // lifetime: the bootstrap effect below subscribes to auth changes exactly
@@ -130,19 +145,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // session — the underlying Supabase tokens are still perfectly valid and
     // no password was ever set, so it has to be signed out. See
     // `recoveryFlagState` for the full description of the bypass this closes.
-    const flagState = recoveryFlagState(
+    const flag = recoveryFlagState(
       typeof window === 'undefined' ? null : localStorage.getItem(RECOVERY_FLAG_KEY),
       Date.now(),
       RECOVERY_FLAG_TTL_MS,
     );
-    if (flagState === 'expired') {
+    if (flag.state === 'expired') {
       void hardSignOut('recovery-expired');
       setLoading(false);
       return () => {
         cancelled = true;
       };
     }
-    if (flagState === 'active') setIsPasswordRecovery(true);
+    if (flag.state === 'active') setRecoveryUserId(flag.userId);
 
     if (typeof window !== 'undefined' && localStorage.getItem(IDLE_SIGNOUT_NOTICE_KEY)) {
       localStorage.removeItem(IDLE_SIGNOUT_NOTICE_KEY);
@@ -166,12 +181,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsub = authService.onAuthChange((u, event) => {
       setUserState(u);
       setLoading(false);
-      if (event === 'PASSWORD_RECOVERY') {
+      if (event === 'PASSWORD_RECOVERY' && u) {
         if (typeof window !== 'undefined') {
-          localStorage.setItem(RECOVERY_FLAG_KEY, String(Date.now()));
+          localStorage.setItem(RECOVERY_FLAG_KEY, encodeRecoveryFlag(u.id, Date.now()));
         }
-        setIsPasswordRecovery(true);
+        setRecoveryUserId(u.id);
       }
+      // A recovery session that ends without `logout` (the server revoking it,
+      // a failed token refresh) takes the flag with it rather than leaving it
+      // for its TTL. Not on SIGNED_IN or a null INITIAL_SESSION: auth-js also
+      // emits SIGNED_IN when it restores a stored session, and a null
+      // INITIAL_SESSION after a passing error, so ending the recovery on
+      // either would let a reload turn it into a normal session.
+      if (event === 'SIGNED_OUT') endPasswordRecovery();
       if (u) void reconcileProfile();
     });
 
@@ -179,7 +201,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       unsub();
     };
-  }, [hardSignOut, reconcileProfile]);
+  }, [hardSignOut, reconcileProfile, endPasswordRecovery]);
 
   // ---- Cross-tab recovery-flag consistency ----
   // The PASSWORD_RECOVERY event fires in exactly one tab, but the session it
@@ -192,13 +214,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (typeof window === 'undefined') return;
     const onStorage = (e: StorageEvent) => {
       if (e.key !== null && e.key !== RECOVERY_FLAG_KEY) return;
-      const state = recoveryFlagState(
+      const flag = recoveryFlagState(
         localStorage.getItem(RECOVERY_FLAG_KEY),
         Date.now(),
         RECOVERY_FLAG_TTL_MS,
       );
-      if (state === 'expired') void hardSignOut('recovery-expired');
-      else setIsPasswordRecovery(state === 'active');
+      if (flag.state === 'expired') void hardSignOut('recovery-expired');
+      else setRecoveryUserId(flag.state === 'active' ? flag.userId : null);
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
@@ -238,6 +260,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string) => {
     const u = await authService.login(email, password);
     setUserState(u);
+    // A password was just proven, so any reset pending on this browser is over.
+    endPasswordRecovery();
     setIdleSignOutNotice(false);
     if (typeof window !== 'undefined') {
       localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
@@ -249,6 +273,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signup = async (data: SignupData) => {
     const u = await authService.signup(data);
     setUserState(u);
+    endPasswordRecovery();
     if (typeof window !== 'undefined') {
       localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
     }
@@ -264,10 +289,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // the rest — never leave the UI showing a signed-in state.
     } finally {
       setUserState(null);
-      setIsPasswordRecovery(false);
+      endPasswordRecovery();
       setIdleSignOutNotice(false);
       if (typeof window !== 'undefined') {
-        localStorage.removeItem(RECOVERY_FLAG_KEY);
         localStorage.removeItem(LAST_ACTIVITY_KEY);
         localStorage.removeItem(IDLE_SIGNOUT_NOTICE_KEY);
       }
