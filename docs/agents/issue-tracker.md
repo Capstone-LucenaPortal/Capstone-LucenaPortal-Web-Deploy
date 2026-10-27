@@ -19,6 +19,16 @@ Project `SCRUM` ("Capstone II"), cloudId `6b943e6b-1a7f-4f37-a730-8df69728b970`.
 the `mcp__jira__*` tools — `getAccessibleAtlassianResources` once per session for the cloudId,
 then `searchJiraIssuesUsingJql` and `getJiraIssue`.
 
+The board spans every repo in the org. Work for this repo carries the label
+`capstone-lucenaportal-web`, or one of the five archived Portal labels on tickets filed before
+the merge:
+
+```
+project = SCRUM AND labels in ("capstone-lucenaportal-web", "capstone-lucenaportal-admin",
+  "capstone-lucenaportal-enduser", "capstone-lucenaportal-lguresponder",
+  "capstone-lucenaportal-staff", "capstone-lucenaportal-superstaff") ORDER BY created DESC
+```
+
 Four things the tools will not tell you:
 
 - **A memo ref lives in the summary, not the key.** `[S5-01]` is `SCRUM-143`. Find one with
@@ -107,6 +117,11 @@ Jira description nor a GitHub issue body is a good home for one.
 
 - `.scratch/<feature-slug>/spec.md` — the spec for a feature currently in flight.
 - `.scratch/<effort>/map.md` — a `/wayfinder` map (see below).
+- `src/portals/<portal>/docs/superpowers/{plans,specs,decisions}/` — durable, dated planning
+  documents carried over from the archived Portal repos. They outlive the work; don't write
+  tickets there.
+- `src/portals/<portal>/docs/self-made/` — a Portal's hand-written PRD and account spec.
+  Reference material, not a tracker.
 
 ## Wayfinding operations
 
