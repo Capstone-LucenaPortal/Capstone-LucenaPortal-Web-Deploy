@@ -118,6 +118,15 @@ describe('buildCharter', () => {
     it('is free of charge', () => {
       expect(serviceByCode(LIVE, 'incident').fee).toBe('Free');
     });
+
+    // Issue #17: the sweeper closes an unconfirmed resolved report after
+    // auto_close_day (7), not confirmation_window_days (3), which expires
+    // never-verified reports.
+    it('states the confirm-or-reopen window from auto_close_day', () => {
+      expect(serviceByCode(LIVE, 'incident').steps).toContain(
+        'You have 7 days to confirm or reopen a resolved report before the city closes it.',
+      );
+    });
   });
 
   describe('LCC Booking', () => {

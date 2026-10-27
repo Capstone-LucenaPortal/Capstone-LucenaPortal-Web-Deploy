@@ -133,7 +133,7 @@ function incident(sources: CharterSources): CharterService {
     steps: config
       ? [
           ...steps,
-          `You have ${plural(config.confirmation_window_days, 'day')} to confirm or reopen a resolved report before the city closes it.`,
+          `You have ${plural(config.auto_close_day, 'day')} to confirm or reopen a resolved report before the city closes it.`,
         ]
       : steps,
   };

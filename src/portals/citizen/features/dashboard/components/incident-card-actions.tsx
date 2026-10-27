@@ -36,9 +36,10 @@ interface Props {
  * later.
  *
  * `!is_verified` → add a photo. `request_incident_photo_upload` accepts the
- * reporter on any non-closed report and the sweeper nudges at `nudge_day`, but
- * the only upload entry point in the portal was the submission page itself. The
- * dashboard displayed "awaiting photo confirmation" with nothing to act on.
+ * reporter on any non-closed report and the sweeper expires it after
+ * `confirmation_window_days`, but the only upload entry point in the portal
+ * was the submission page itself. The dashboard displayed "awaiting photo
+ * confirmation" with nothing to act on.
  */
 export default function IncidentCardActions({ incident, config, onChanged }: Props) {
   const [busy, setBusy] = useState<null | 'confirm' | 'reopen' | 'photo'>(null);
@@ -95,11 +96,14 @@ export default function IncidentCardActions({ incident, config, onChanged }: Pro
   const isResolved = incident.status === 'resolved';
   const needsPhoto = !incident.is_verified && incident.status !== 'closed';
 
+  // The sweeper's two clocks, not to be crossed (issue #17): it closes a
+  // resolved report `auto_close_day` days after `resolved_at`, and expires a
+  // never-verified one `confirmation_window_days` after `submitted_at`.
   const confirmBy = isResolved
-    ? addDays(incident.resolved_at, config?.confirmation_window_days)
+    ? addDays(incident.resolved_at, config?.auto_close_day)
     : null;
   const verifyBy = needsPhoto
-    ? addDays(incident.submitted_at, config?.auto_close_day)
+    ? addDays(incident.submitted_at, config?.confirmation_window_days)
     : null;
 
   if (!isResolved && !needsPhoto) return null;

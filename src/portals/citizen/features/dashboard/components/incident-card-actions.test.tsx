@@ -84,15 +84,21 @@ describe('IncidentCardActions — resolved', () => {
     expect(screen.getByRole('button', { name: /reopen/i })).toBeInTheDocument();
   });
 
-  it('shows the auto-close deadline from the config view, not a hardcoded count', () => {
-    render(<IncidentCardActions incident={incident()} config={config} onChanged={vi.fn()} />);
-    // resolved_at 2026-08-20 + confirmation_window_days 3. Asserted on the
-    // parts rather than one formatted string: the date sits in a <strong>
-    // inside a sentence, and en-PH renders as "August 23, 2026" under Node's
-    // ICU while a browser may order the parts differently.
+  it('shows the auto-close deadline from auto_close_day, the window the sweeper closes it on', () => {
+    // Issue #17: resolved 2026-10-25 01:13 PHT + auto_close_day 7, not
+    // confirmation_window_days 3. Asserted on the parts rather than one
+    // formatted string: the date sits in a <strong> inside a sentence, and a
+    // browser may order the parts differently from Node's ICU.
+    render(
+      <IncidentCardActions
+        incident={incident({ resolved_at: '2026-10-24T17:13:00Z' })}
+        config={config}
+        onChanged={vi.fn()}
+      />,
+    );
     const notice = screen.getByText(/closes automatically/i).textContent ?? '';
-    expect(notice).toMatch(/August/);
-    expect(notice).toMatch(/23/);
+    expect(notice).toMatch(/November/);
+    expect(notice).toMatch(/\b1\b/);
     expect(notice).toMatch(/2026/);
   });
 
@@ -191,18 +197,24 @@ describe('IncidentCardActions — unverified', () => {
     expect(screen.getByLabelText(/add a photo/i)).toHaveAttribute('type', 'file');
   });
 
-  it('shows the verification deadline from auto_close_day', () => {
+  it('shows the verification deadline from confirmation_window_days, the window the sweeper expires it on', () => {
+    // Issue #17: submitted 2026-10-25 PHT + confirmation_window_days 3, not
+    // auto_close_day 7.
     render(
       <IncidentCardActions
-        incident={incident({ status: 'open', is_verified: false })}
+        incident={incident({
+          status: 'open',
+          is_verified: false,
+          submitted_at: '2026-10-25T02:00:00Z',
+          resolved_at: null,
+        })}
         config={config}
         onChanged={vi.fn()}
       />,
     );
-    // submitted_at 2026-08-18 + auto_close_day 7.
     const notice = screen.getByText(/close automatically/i).textContent ?? '';
-    expect(notice).toMatch(/August/);
-    expect(notice).toMatch(/25/);
+    expect(notice).toMatch(/October/);
+    expect(notice).toMatch(/28/);
     expect(notice).toMatch(/2026/);
   });
 

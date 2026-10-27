@@ -45,12 +45,13 @@ export interface IncidentConfig {
   sla_hours_high: number;
   sla_hours_medium: number;
   sla_hours_low: number;
-  /** Day the sweeper nudges an unverified report's reporter to add a photo. */
+  /** Days after `resolved_at` the sweeper nudges the reporter to confirm. */
   nudge_day: number;
-  /** Day an unverified report is auto-closed as `expired_unverified`. */
-  auto_close_day: number;
   /** Days a citizen has to confirm or reopen a `resolved` report before the
-   * sweeper closes it for them. Drives the deadline shown on the resolved card. */
+   * sweeper closes it as `auto_confirmed`. Drives the resolved card's deadline. */
+  auto_close_day: number;
+  /** Days after `submitted_at` a never-verified report is closed as
+   * `expired_unverified`. Drives the unverified card's deadline. */
   confirmation_window_days: number;
   max_active_reports_per_citizen: number;
   max_photos_per_cycle: number;
