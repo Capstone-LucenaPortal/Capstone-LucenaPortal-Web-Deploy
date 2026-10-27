@@ -16,6 +16,12 @@ A person who uses the portal on their own behalf. The portal has exactly one kin
 staff and responders work in the sibling portals, not this one.
 _Avoid_: Resident, User, End user, Applicant, Requester
 
+**Verifier**:
+The person a Citizen presents their Yellow Card to — a barangay official, an inspector, an
+establishment's clerk — checking that it is real. Not a Citizen, and needs no account: they meet
+the portal only through Verification.
+_Avoid_: Scanner, Checker, Inspector (as the general term)
+
 **Citizen Profile**:
 The single record of who a Citizen is — name, birth date, address, contact details. One per
 Citizen, and a prerequisite for every service the portal offers.
@@ -51,6 +57,18 @@ _Avoid_: Key, Slug, Value, Type string
 The health credential the city issues to a Citizen. It exists only once granted, carries its own
 card number and validity dates, and can be publicly verified by a third party.
 _Avoid_: ID, Health card, Certificate
+
+**Digital Card**:
+The image of a Yellow Card a Citizen views and downloads from the portal: the holder's name and a
+scannable code, nothing else. It carries no photo and no signature — the printed card the city
+hands out has those — so it proves who holds the card only alongside another ID.
+_Avoid_: Digital ID, E-card, Virtual card, QR card
+
+**Verification**:
+A Verifier's check, made by pointing their phone's camera at a Digital Card's code, of whether a
+Yellow Card is genuine and still valid. It answers with the card's status and the holder's name
+only — the name is what the Verifier compares against the card in front of them.
+_Avoid_: Validation, Lookup, Scan
 
 **Yellow Card Application**:
 A Citizen's request to be issued a Yellow Card, tracked from submission through decision. Distinct
