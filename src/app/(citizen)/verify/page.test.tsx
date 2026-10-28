@@ -53,8 +53,9 @@ describe('VerifyPage', () => {
     expect(screen.queryByText(ID_CHECK)).not.toBeInTheDocument();
   });
 
-  // Until the DB narrowing (SCRUM-258) lands, the live RPC still returns the
-  // three dropped columns. They must not reach the screen either way.
+  // DB l87 (SCRUM-258) narrowed the RPC to these two columns, but the page
+  // shipped first, against the five-column RPC. Whatever the RPC returns, only
+  // the verdict and the name reach the screen.
   it('shows nothing beyond the verdict and name, even if the RPC returns more', async () => {
     const wideRow = {
       holder_name: 'Juan Dela Cruz',
