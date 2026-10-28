@@ -123,9 +123,12 @@ export interface SubmittedApplication {
 }
 
 /**
- * The five columns `verify_yellow_card(p_token uuid)` returns. This is the
- * system's ONLY anon-callable read RPC: a barangay official scans the QR and
- * gets exactly this, with no table access granted anywhere.
+ * The two columns `verify_yellow_card(p_token uuid)` returns. This is the
+ * system's ONLY anon-callable read RPC: a Verifier scans the QR and gets exactly
+ * this, with no table access granted anywhere. Barangay, card number and Valid
+ * From were dropped (SCRUM-255; narrowed in the database by DB layer l87,
+ * SCRUM-258): anyone holding a Digital Card's link can call it, so it answers
+ * only what the Verifier needs — whose card, and is it good.
  *
  * Deliberately returns zero rows for an unknown token — it is not an oracle and
  * gives no reason. Callers must render one undifferentiated "not recognized"
@@ -134,9 +137,6 @@ export interface SubmittedApplication {
  */
 export interface VerifiedCard {
   holder_name: string;
-  barangay_name: string;
-  card_number: string;
   /** 'active' | 'revoked' | 'superseded' — a row can come back non-active. */
   status: string;
-  valid_from: string;
 }
