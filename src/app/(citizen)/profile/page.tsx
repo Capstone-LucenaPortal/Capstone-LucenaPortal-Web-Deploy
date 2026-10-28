@@ -4,7 +4,7 @@ import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/portals/citizen/features/auth/hooks/use-auth';
 import ProtectedRoute from '@/portals/citizen/features/auth/components/protected-route';
-import CardQrCode from '@/portals/citizen/features/yellow-card/components/card-qr-code';
+import DigitalCard from '@/portals/citizen/features/yellow-card/components/digital-card';
 import PrivacyAndData, { AnonymisedNotice } from '@/portals/citizen/features/profile/components/privacy-and-data';
 import { PhoneInput } from '@/portals/citizen/components/ui/phone-input';
 import type { MyProfile } from '@/portals/citizen/features/profile/types';
@@ -17,7 +17,6 @@ import { authService, AuthError } from '@/portals/citizen/features/auth/lib/auth
 import { PASSWORD_RULES_TEXT } from '@/portals/citizen/features/auth/lib/password-policy';
 import { LIMITS } from '@/portals/citizen/lib/validation';
 import { profileTabFromQuery, type ProfileTab } from '@/portals/citizen/features/profile/lib/tabs';
-import { yellowCardOfficeName } from '@/portals/citizen/lib/contact-info';
 import { formatManilaDate } from '@/shared/dates/manila';
 
 const emptyFormData = {
@@ -429,41 +428,11 @@ function ProfileContent() {
               <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ padding: '24px 32px' }}>
                 <h3 style={{ fontSize: 16, fontWeight: 700, color: '#003DA5', marginBottom: 16 }}>Digital Yellow Card</h3>
 
-                {activeCard ? (
-                  /* The "coming soon" copy that stood here told citizens to
-                     present the Card Number alone — which gives staff nothing
-                     to check it against. The QR encodes the card's
-                     verification_token, which my_yellow_cards exposes for
-                     exactly this purpose, and resolves to the anon-callable
-                     verify_yellow_card RPC. */
-                  <CardQrCode
-                    verificationToken={activeCard.verification_token}
-                    cardNumber={activeCard.card_number}
-                  />
-                ) : nonActiveCard ? (
-                  /* A revoked or superseded card must never render a scannable
-                     code: it would resolve to a "Revoked" verification page and
-                     read to the holder as though the card still works. */
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, background: '#FEF2F2', border: '2px solid #FCA5A5', borderRadius: 8, padding: '32px 24px', textAlign: 'center' }}>
-                    <p style={{ fontSize: 15, fontWeight: 700, color: '#B91C1C' }}>
-                      {nonActiveCard.status === 'revoked' ? 'This card has been revoked' : 'This card has been superseded'}
-                    </p>
-                    <p style={{ fontSize: 20, fontWeight: 800, color: '#666666', fontFamily: 'monospace' }}>{nonActiveCard.card_number}</p>
-                    {nonActiveCard.revoked_reason && (
-                      <p style={{ fontSize: 13, color: '#7F1D1D', maxWidth: 420 }}>{nonActiveCard.revoked_reason}</p>
-                    )}
-                    <p style={{ fontSize: 13, color: '#666666', maxWidth: 420 }}>
-                      {nonActiveCard.status === 'revoked'
-                        ? `It can no longer be presented for city services. If you believe this is an error, contact the ${yellowCardOfficeName()} on the city trunkline published at the foot of every page.`
-                        : 'A newer card has replaced this one. Present your current card instead.'}
-                    </p>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, background: '#F5F5F5', border: '2px dashed #CCCCCC', borderRadius: 8, padding: '40px 24px', textAlign: 'center' }}>
-                    <p style={{ fontSize: 14, fontWeight: 600, color: '#666666' }}>Your digital Yellow Card will appear here</p>
-                    <p style={{ fontSize: 13, color: '#666666', maxWidth: 420 }}>Once your application is approved, a digital copy of your Yellow Card will be generated automatically and made available for viewing and download on this page.</p>
-                  </div>
-                )}
+                <DigitalCard
+                  activeCard={activeCard}
+                  nonActiveCard={nonActiveCard}
+                  application={activeCard ? applications.find((a) => a.id === activeCard.application_id) : null}
+                />
               </div>
             </>
           )}

@@ -59,9 +59,10 @@ card number and validity dates, and can be publicly verified by a third party.
 _Avoid_: ID, Health card, Certificate
 
 **Digital Card**:
-The image of a Yellow Card a Citizen views and downloads from the portal: the holder's name and a
-scannable code, nothing else. It carries no photo and no signature — the printed card the city
-hands out has those — so it proves who holds the card only alongside another ID.
+The image of a Yellow Card a Citizen views and downloads from the portal, laid out like the printed
+card: the holder's name, their address, the card number and a scannable code. It carries no photo
+and no signature — the printed card the city hands out has those — so it proves who holds the card
+only alongside another ID.
 _Avoid_: Digital ID, E-card, Virtual card, QR card
 
 **Verification**:
