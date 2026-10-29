@@ -23,6 +23,7 @@ import { filterByDateRange } from "@/portals/admin/lib/dates";
 import type { BookingRow } from "@/portals/admin/features/booking/lib/bookings";
 import type { IncidentRow } from "@/portals/admin/features/incidents/lib/incidents";
 import type { IncidentConfigRow, VenueRow } from "@/portals/admin/lib/supabase/catalogs";
+import type { ClosureReasonValue } from "@/portals/admin/lib/status-labels";
 import type { YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yellow-card";
 import type { ConventionRangeStats, EventTypeSlice, VenueBooking } from "@/portals/admin/features/booking/types";
 import type { BarangayIssueRow, IssueCategorySlice, IssueRangeStats } from "@/portals/admin/features/incidents/types";
@@ -513,7 +514,26 @@ function decidedRatePct(rows: YellowCardRow[]): number | null {
 
 // Still-open incidents, per admin_incident_analytics.status.
 const INCIDENT_OPEN_STATUSES = new Set(["open", "in_pool", "in_progress"]);
-const INCIDENT_RESOLVED_STATUSES = new Set(["resolved", "closed"]);
+// Whether a `closed` incident counts as resolved, per closure reason.
+// `invalid` (a refusal, l85_refuse_incident.sql), `duplicate` and
+// `expired_unverified` close a report that was never fixed, so they don't
+// (GitHub #18, PO answer 2026-10-27, question 32). The same three are
+// sla.ts's NON_SCOREABLE_CLOSURE_REASONS. A Record, not a Set, so a new
+// closure_reason value fails tsc here until someone decides which side it is.
+const CLOSURE_REASON_IS_RESOLUTION: Record<ClosureReasonValue, boolean> = {
+  citizen_confirmed: true,
+  auto_confirmed: true,
+  invalid: false,
+  duplicate: false,
+  expired_unverified: false,
+};
+
+// incidents_check guarantees a `closed` row has a closure_reason
+// ((status = 'closed') = (closure_reason is not null), l10a).
+function isResolvedIncident(row: IncidentRow): boolean {
+  if (row.status === "resolved") return true;
+  return row.status === "closed" && row.closure_reason !== null && CLOSURE_REASON_IS_RESOLUTION[row.closure_reason];
+}
 
 export type IncidentLevel = NonNullable<IncidentRow["incident_level"]>;
 
@@ -657,7 +677,7 @@ export function issueRangeStats(
 // Callers must render null as "—" (via formatRate), never as a literal 0%.
 function resolvedRatePct(rows: IncidentRow[]): number | null {
   if (rows.length === 0) return null;
-  const resolved = rows.filter((row) => row.status !== null && INCIDENT_RESOLVED_STATUSES.has(row.status)).length;
+  const resolved = rows.filter(isResolvedIncident).length;
   return round1((resolved / rows.length) * 100);
 }
 

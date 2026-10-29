@@ -738,6 +738,30 @@ describe("issueRangeStats", () => {
     expect(result.resolutionRatePct).toBe(0);
   });
 
+  // GitHub #18: a refusal sets status `closed` with reason `invalid`, and the
+  // rate used to count every `closed` row as resolved. Only a resolved
+  // report, or one closed as confirmed or auto-confirmed, counts (PO answer,
+  // 2026-10-27, question 32). The rest stay in the denominator: they were
+  // still reports filed in range.
+  it("resolutionRatePct counts confirmed and auto-confirmed closures, not invalid, duplicate or expired ones", () => {
+    const submitted_at = "2026-05-10T00:00:00Z";
+    const rows = [
+      buildIncidentRow({ submitted_at, status: "resolved" }),
+      buildIncidentRow({ submitted_at, status: "closed", closure_reason: "citizen_confirmed" }),
+      buildIncidentRow({ submitted_at, status: "closed", closure_reason: "auto_confirmed" }),
+      buildIncidentRow({ submitted_at, status: "closed", closure_reason: "invalid" }),
+      buildIncidentRow({ submitted_at, status: "closed", closure_reason: "duplicate" }),
+      buildIncidentRow({ submitted_at, status: "closed", closure_reason: "expired_unverified" }),
+      buildIncidentRow({ submitted_at, status: "open" }),
+      buildIncidentRow({ submitted_at, status: "in_progress" }),
+    ];
+
+    const result = issueRangeStats(rows, range, getDate, slaHours);
+
+    expect(result.reports).toBe(8);
+    expect(result.resolutionRatePct).toBe(37.5);
+  });
+
   // resolutionRateDelta must not coerce a null rate to 0 and report a
   // fabricated swing — it reads a plain "no comparable data" caption
   // whenever either period has zero incidents to compute a rate from.
