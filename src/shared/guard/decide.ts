@@ -72,6 +72,18 @@ export function judgeStaffProfile(profile: StaffRoleProfile | null, portalRole: 
   return profile?.status === "active" ? { kind: "allow" } : { kind: "deactivated" };
 }
 
+/**
+ * Whether a Portal's refusal screen ends the session: only a deactivated
+ * account's, and then in this browser only (signOut({ scope: "local" })).
+ * Every Portal shares one session cookie, so ending another Portal's account
+ * (or a citizen's) on a refusal screen ended it in its own Portal too — and on
+ * every device, signOut()'s default (issue #19). Nothing is gained by ending
+ * it: this guard already keeps it off every page of the refusing Portal.
+ */
+export function refusalEndsSession(verdict: Exclude<RoleVerdict, { kind: "allow" }>): boolean {
+  return verdict.kind === "deactivated";
+}
+
 // Matches the path exactly, or as a segment prefix ("<path>/..."). A bare
 // startsWith would read "/admin/login-history" as the login page.
 function matchesPath(pathname: string, path: string): boolean {
@@ -113,21 +125,39 @@ export function decideRequest(input: GuardInput, portals: readonly PortalRow[] =
     signOut: true,
   };
 
-  // Login is exempt from the role check, or a refused account bounced there
-  // would bounce forever. A row that sends a signed-in visit on into the
-  // Portal ends an idle session here instead: bounced into the Portal it timed
-  // out of, it would only be sent back. It cannot loop — the sign-out lands on
+  const isLogin = matchesPath(pathname, loginPath);
+
+  // Login is never refused, or a refused account bounced there would bounce
+  // forever. A row that sends a signed-in visit on into the Portal ends an
+  // idle session here instead (below): bounced into the Portal it timed out
+  // of, it would only be sent back. It cannot loop — the sign-out lands on
   // login with no session, which is served.
-  if (matchesPath(pathname, loginPath)) {
-    if (!hasSession || portal.signedInLoginRedirect === null) return { kind: "allow" };
-    return isIdle(portal, lastActivity, now)
-      ? idleSignOut
-      : { kind: "redirect", to: portal.signedInLoginRedirect };
-  }
+  const loginRedirect = portal.signedInLoginRedirect;
+  if (isLogin && (!hasSession || loginRedirect === null)) return { kind: "allow" };
 
   if (!hasSession) return { kind: "redirect", to: loginPath };
 
-  if (isIdle(portal, lastActivity, now)) return idleSignOut;
+  // Every Portal shares one session cookie and one idle clock, so this Portal's
+  // timeout ends only a session of its own role: a responder quiet for twenty
+  // minutes — inside Responder's hour — who opens a Staff page is refused
+  // there, not signed out of this browser (issue #19). The role is read only
+  // for an idle session, and a failed read ends it, as before the role mattered.
+  if (isIdle(portal, lastActivity, now)) {
+    if (!profile) return { kind: "read-profile" };
+    if (!profile.ok || profile.profile?.role === portal.role) return idleSignOut;
+  }
+
+  // Only this Portal's own role is sent on in from login — a deactivated one
+  // too, whose forbidden page tells it so; the status is not checked here.
+  // Another role's account (or a citizen's) sent on in would land on
+  // forbidden; it is shown the form instead, its session kept (issue #19). A
+  // failed read is not an answer, and the form is harmless, so it is served.
+  if (isLogin && loginRedirect !== null) {
+    if (!profile) return { kind: "read-profile" };
+    return profile.ok && profile.profile?.role === portal.role
+      ? { kind: "redirect", to: loginRedirect }
+      : { kind: "allow" };
+  }
 
   // Forbidden is where refusals land; role-checking it would loop.
   if (matchesPath(pathname, forbiddenPath)) return { kind: "allow" };

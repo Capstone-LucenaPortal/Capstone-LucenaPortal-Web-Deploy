@@ -19,10 +19,10 @@ export default function ForbiddenPage() {
   const { session, isLoading, isAdmin, profile } = useAuth();
   const router = useRouter();
 
-  // AccessRefusal signs the account out on its own mount, which — because
-  // @supabase/ssr's browser client is a singleton — feeds a real SIGNED_OUT
-  // event back into the same AuthProvider this page reads from, dropping
-  // `session` to null a moment later. Once a refusal has been decided, it is
+  // AccessRefusal signs a deactivated account out on its own mount, which —
+  // because @supabase/ssr's browser client is a singleton — feeds a real
+  // SIGNED_OUT event back into the same AuthProvider this page reads from,
+  // dropping `session` to null a moment later. Once a refusal has been decided, it is
   // pinned here so that later drop doesn't fall through to the "no session"
   // branch below and swap the screen for a /login redirect before the user
   // can read it (or recompute against a now-null profile and show a

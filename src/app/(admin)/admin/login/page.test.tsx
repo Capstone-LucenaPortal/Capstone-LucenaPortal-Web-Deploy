@@ -13,6 +13,7 @@ vi.mock("next/navigation", () => ({
 
 const signInMock = vi.fn();
 let mockSession: { user: { id: string } } | null = null;
+let mockProfile: { role: string; status: string } | null = null;
 let mockIsLoading = false;
 
 // See the note in src/portals/admin/features/auth/hooks/use-auth.test.tsx: vi.mock's first
@@ -21,7 +22,7 @@ let mockIsLoading = false;
 vi.mock("../../../../portals/admin/features/auth/hooks/use-auth", () => ({
   useAuth: () => ({
     session: mockSession,
-    profile: null,
+    profile: mockProfile,
     isLoading: mockIsLoading,
     isAdmin: false,
     isDeactivated: false,
@@ -39,6 +40,7 @@ describe("LoginPage", () => {
     pushMock.mockClear();
     signInMock.mockReset();
     mockSession = null;
+    mockProfile = null;
     mockIsLoading = false;
   });
 
@@ -117,11 +119,47 @@ describe("LoginPage", () => {
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/admin/dashboard"));
   });
 
-  it("redirects an already-authenticated visitor to /dashboard without flashing the form", async () => {
+  it("redirects an already-authenticated admin to /dashboard without flashing the form", async () => {
     mockSession = { user: { id: "user-1" } };
+    mockProfile = { role: "admin", status: "active" };
     renderLoginPage();
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/admin/dashboard"));
     expect(screen.queryByText("Welcome Back")).not.toBeInTheDocument();
+  });
+
+  // Issue #19: sent on to the dashboard, another Portal's account landed on
+  // the refusal screen, which signed it out on every device. Every Portal
+  // shares one session, so it is shown the form instead and keeps it.
+  it("shows the form to a signed-in account of another Portal, without redirecting", async () => {
+    mockSession = { user: { id: "user-1" } };
+    mockProfile = { role: "responder", status: "active" };
+    renderLoginPage();
+    expect(await screen.findByText("Welcome Back")).toBeInTheDocument();
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it("says who is signed in, with a link to their portal", async () => {
+    mockSession = { user: { id: "user-1" } };
+    mockProfile = { role: "super_staff", status: "active" };
+    renderLoginPage();
+    expect(await screen.findByText(/you are signed in with a Super Staff account\./i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Go to the Super Staff portal" })).toHaveAttribute(
+      "href",
+      "/super-staff",
+    );
+  });
+
+  it("says nothing about a session when there is none", async () => {
+    renderLoginPage();
+    expect(await screen.findByText("Welcome Back")).toBeInTheDocument();
+    expect(screen.queryByText(/you are signed in/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the form to a signed-in citizen, without redirecting", async () => {
+    mockSession = { user: { id: "user-1" } };
+    renderLoginPage();
+    expect(await screen.findByText("Welcome Back")).toBeInTheDocument();
+    expect(pushMock).not.toHaveBeenCalled();
   });
 
   // Security-hardening round: the fields used to be submittable empty (the

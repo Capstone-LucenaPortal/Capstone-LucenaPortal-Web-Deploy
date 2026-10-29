@@ -2,9 +2,12 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useId, useState, type FormEvent } from "react";
+import { PORTAL_PREFIX } from "@/shared/guard/portals";
 import { createClient } from "@/shared/supabase/client";
+import { useSignedInStaffRole } from "@/shared/supabase/use-signed-in-staff-role";
 import { signInErrorMessage } from "@/shared/supabase/sign-in-error";
 import { IDLE_SIGNOUT_REASON, IDLE_TIMEOUT_MS, restartIdleClock } from "@/portals/responder/lib/supabase/idle-timeout";
+import { ROLE_ARTICLE, ROLE_LABEL } from "@/portals/responder/features/auth/lib/role-labels";
 
 const FIELD =
   "h-11 rounded-md border border-gray-300 px-3 text-sm text-gray-900";
@@ -28,6 +31,9 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Another Portal's account is shown this form with its session kept
+  // (issue #19), so the form says who is signed in.
+  const signedInAs = useSignedInStaffRole();
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -81,6 +87,14 @@ function LoginForm() {
         </p>
       )}
 
+      {signedInAs && (
+        <p className="mt-4 text-[12.5px] text-pretty text-gray-600">
+          {`You are signed in with ${ROLE_ARTICLE[signedInAs]} ${ROLE_LABEL[signedInAs]} account.`}{" "}
+          <a href={PORTAL_PREFIX[signedInAs]} className="font-semibold text-lucena-blue underline">
+            Go to the {ROLE_LABEL[signedInAs]} portal
+          </a>
+        </p>
+      )}
       <form className="mt-5 flex flex-col gap-3" onSubmit={handleSubmit}>
         <div className="flex flex-col gap-1.5">
           <label

@@ -132,7 +132,7 @@ describe("AdminLayout auth guard", () => {
     renderLayout();
     expect(screen.getByText(/wrong portal/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/your account is a staff account\. sign in at the staff portal instead\./i),
+      screen.getByText(/you are signed in with a staff account\. use the staff portal instead\./i),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Go to the Staff portal" })).toBeInTheDocument();
     expect(screen.queryByText("protected content")).not.toBeInTheDocument();
@@ -160,15 +160,22 @@ describe("AdminLayout auth guard", () => {
     expect(screen.getByRole("link", { name: "Go to the citizen portal" })).toBeInTheDocument();
   });
 
-  // Regression guard: a refused session used to stay alive until a manual
-  // "Sign out" click. AccessRefusal now clears it itself on mount, so a
-  // wrong-role or deactivated account can never keep a live session in a
-  // portal it does not belong to.
-  it("signs the session out as soon as a refusal screen mounts", () => {
+  // A deactivated admin's session is ended on mount, in this browser only.
+  // Another Portal's account keeps its session (issue #19): every Portal
+  // shares one, and the request guard keeps it off every admin page anyway.
+  it("signs a deactivated admin out of this browser as soon as the refusal screen mounts", () => {
+    mockSession = { user: { id: "user-2" } };
+    mockProfile = { role: "admin", status: "inactive" };
+    renderLayout();
+    expect(mockSignOut).toHaveBeenCalledTimes(1);
+    expect(mockSignOut).toHaveBeenCalledWith({ scope: "local" });
+  });
+
+  it("keeps the session of another Portal's account", () => {
     mockSession = { user: { id: "user-2" } };
     mockProfile = { role: "staff", status: "active" };
     renderLayout();
-    expect(mockSignOut).toHaveBeenCalledTimes(1);
+    expect(mockSignOut).not.toHaveBeenCalled();
   });
 
   it("shows a link back to sign in from every refusal screen", () => {
@@ -181,20 +188,17 @@ describe("AdminLayout auth guard", () => {
     );
   });
 
-  // Regression guard: AccessRefusal's auto sign-out feeds a real SIGNED_OUT
-  // event back into AuthProvider (the browser Supabase client is a
-  // singleton), which drops `session` (and `profile`) to null a moment
-  // after this layout first renders the refusal. That must not swap the
+  // Regression guard: AccessRefusal's auto sign-out of a deactivated admin
+  // feeds a real SIGNED_OUT event back into AuthProvider (the browser
+  // Supabase client is a singleton), which drops `session` (and `profile`)
+  // to null a moment after this layout first renders the refusal. That must not swap the
   // screen for a redirect to /login, and must not change the message by
   // recomputing decideRoleAccess against the now-null profile.
   it("keeps the refusal screen on screen — not a /login redirect — after sign-out clears the session mid-render", () => {
     mockSession = { user: { id: "user-2" } };
-    mockProfile = { role: "staff", status: "active" };
+    mockProfile = { role: "admin", status: "inactive" };
     const { rerender } = renderLayout();
-    expect(screen.getByText(/wrong portal/i)).toBeInTheDocument();
-    expect(
-      screen.getByText(/your account is a staff account\. sign in at the staff portal instead\./i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/your account has been deactivated/i)).toBeInTheDocument();
 
     // Simulate the SIGNED_OUT event's downstream effect on AuthProvider.
     mockSession = null;
@@ -205,16 +209,13 @@ describe("AdminLayout auth guard", () => {
       </AdminLayout>,
     );
 
-    expect(screen.getByText(/wrong portal/i)).toBeInTheDocument();
-    expect(
-      screen.getByText(/your account is a staff account\. sign in at the staff portal instead\./i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/your account has been deactivated/i)).toBeInTheDocument();
     expect(pushMock).not.toHaveBeenCalledWith("/admin/login");
   });
 
   it("shows the signed-out confirmation once sign-out actually succeeds", async () => {
     mockSession = { user: { id: "user-2" } };
-    mockProfile = { role: "staff", status: "active" };
+    mockProfile = { role: "admin", status: "inactive" };
     mockSignOut.mockResolvedValue({ error: null });
     renderLayout();
     expect(await screen.findByText(/you have been signed out of this portal/i)).toBeInTheDocument();
@@ -222,7 +223,7 @@ describe("AdminLayout auth guard", () => {
 
   it("does not claim the user was signed out when sign-out fails, and shows a fallback instead", async () => {
     mockSession = { user: { id: "user-2" } };
-    mockProfile = { role: "staff", status: "active" };
+    mockProfile = { role: "admin", status: "inactive" };
     mockSignOut.mockResolvedValue({ error: { message: "network error" } });
     renderLayout();
     expect(await screen.findByText(/could not sign you out/i)).toBeInTheDocument();

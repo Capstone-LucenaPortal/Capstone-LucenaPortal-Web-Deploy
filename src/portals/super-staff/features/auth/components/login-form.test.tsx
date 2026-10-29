@@ -17,12 +17,21 @@ vi.mock("@/shared/supabase/client", () => ({
   createClient: () => ({ auth: { signInWithPassword } }),
 }));
 
+// The role of the account already signed in to this browser (issue #19);
+// use-signed-in-staff-role.test.ts covers how it is read.
+let signedInAs: string | null = null;
+
+vi.mock("@/shared/supabase/use-signed-in-staff-role", () => ({
+  useSignedInStaffRole: () => signedInAs,
+}));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace, refresh }),
 }));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  signedInAs = null;
   document.cookie = `${LAST_ACTIVITY_COOKIE}=1; Path=/`;
 });
 
@@ -88,5 +97,21 @@ describe("LoginForm", () => {
     render(<LoginForm />);
 
     expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  // Issue #19: another Portal's account is shown this form with its session
+  // kept, so the form says who is signed in and links back to their Portal.
+  it("says who is signed in, with a link to their portal", () => {
+    signedInAs = "admin";
+    render(<LoginForm />);
+
+    expect(screen.getByText(/you are signed in with an Admin account\./i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Go to the Admin portal" })).toHaveAttribute("href", "/admin");
+  });
+
+  it("says nothing about a session when no staff account is signed in", () => {
+    render(<LoginForm />);
+
+    expect(screen.queryByText(/you are signed in/i)).not.toBeInTheDocument();
   });
 });

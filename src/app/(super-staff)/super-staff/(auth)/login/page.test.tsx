@@ -5,15 +5,7 @@ import LoginPage from "./page";
 // The server half of the sign-in screen: it reads ?reason=idle and tells
 // LoginForm. login-form.test.tsx covers what the form does with it.
 
-const getUser = vi.fn();
-const redirect = vi.fn();
-
-vi.mock("@/shared/supabase/server", () => ({
-  createClient: async () => ({ auth: { getUser } }),
-}));
-
 vi.mock("next/navigation", () => ({
-  redirect: (path: string) => redirect(path),
   useRouter: () => ({ replace: vi.fn(), refresh: vi.fn() }),
 }));
 
@@ -27,7 +19,6 @@ async function renderPage(search: Record<string, string>) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  getUser.mockResolvedValue({ data: { user: null } });
 });
 
 describe("LoginPage", () => {

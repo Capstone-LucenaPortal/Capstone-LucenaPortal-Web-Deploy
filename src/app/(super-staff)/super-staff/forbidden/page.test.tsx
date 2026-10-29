@@ -12,8 +12,10 @@ vi.mock("next/navigation", () => ({
   redirect: (path: string) => redirect(path),
 }));
 
+const signOut = vi.fn().mockResolvedValue({ error: null });
+
 vi.mock("@/shared/supabase/client", () => ({
-  createClient: () => ({ auth: { signOut: vi.fn().mockResolvedValue({}) } }),
+  createClient: () => ({ auth: { signOut } }),
 }));
 
 const ACTIVE_SUPER_STAFF: StaffProfile = {
@@ -27,6 +29,7 @@ const ACTIVE_SUPER_STAFF: StaffProfile = {
 afterEach(() => {
   vi.restoreAllMocks();
   redirect.mockClear();
+  signOut.mockClear();
 });
 
 // Where the request guard's role check sends the accounts it refuses. The page
@@ -54,6 +57,37 @@ describe("ForbiddenPage", () => {
     render(await ForbiddenPage());
 
     expect(screen.getByText(/deactivated/i)).toBeInTheDocument();
+  });
+
+  // Issue #19: every Portal shares one session, so signing it out here (and
+  // supabase-js signs out every device by default) ended the account's own
+  // Portal too. Only a deactivated account is signed out, in this browser only.
+  it("keeps the session of an employee of another portal, says who is signed in, and links to their portal", async () => {
+    vi.spyOn(profile, "getStaffProfile").mockResolvedValue({ ...ACTIVE_SUPER_STAFF, role: "staff" });
+
+    render(await ForbiddenPage());
+
+    expect(screen.getByText(/you are signed in with an? Staff account/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Go to the Staff portal" })).toHaveAttribute("href", "/staff");
+    expect(screen.queryByText(/signed out/i)).not.toBeInTheDocument();
+    expect(signOut).not.toHaveBeenCalled();
+  });
+
+  it("keeps a citizen's session", async () => {
+    vi.spyOn(profile, "getStaffProfile").mockResolvedValue(null);
+
+    render(await ForbiddenPage());
+
+    expect(screen.queryByText(/signed out/i)).not.toBeInTheDocument();
+    expect(signOut).not.toHaveBeenCalled();
+  });
+
+  it("signs a deactivated employee out of this browser only", async () => {
+    vi.spyOn(profile, "getStaffProfile").mockResolvedValue({ ...ACTIVE_SUPER_STAFF, status: "inactive" });
+
+    render(await ForbiddenPage());
+
+    expect(signOut).toHaveBeenCalledWith({ scope: "local" });
   });
 
   // A stale redirect, or a role restored mid-session: nothing to refuse.

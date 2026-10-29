@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/portals/admin/components/ui/button";
 import { ROLE_ARTICLE, ROLE_LABEL } from "@/portals/admin/features/auth/lib/role-labels";
+import { refusalEndsSession } from "@/shared/guard/decide";
 import { CITIZEN_PORTAL_PATH, PORTAL_PREFIX } from "@/shared/guard/portals";
 import { createClient } from "@/shared/supabase/client";
 import type { RoleAccessDecision } from "@/portals/admin/lib/supabase/access";
@@ -26,15 +27,17 @@ function copy(decision: AccessRefusalDecision): {
     case "not-an-employee":
       return {
         heading: "This portal is for city employees",
-        body: "Your account is not registered as a city employee. If you are a resident, use the citizen portal instead.",
+        body: "You are signed in with an account that is not registered as a city employee. If you are a resident, use the citizen portal instead.",
         link: { href: CITIZEN_PORTAL_PATH, label: "Go to the citizen portal" },
       };
     case "wrong-portal":
       return {
         heading: "Wrong portal",
-        body: `Your account is ${ROLE_ARTICLE[decision.role]} ${ROLE_LABEL[decision.role]} account. Sign in at the ${ROLE_LABEL[decision.role]} portal instead.`,
+        body: `You are signed in with ${ROLE_ARTICLE[decision.role]} ${ROLE_LABEL[decision.role]} account. Use the ${ROLE_LABEL[decision.role]} portal instead.`,
+        // The Portal's root, not its login: the session is kept, and the
+        // root sends it on to that Portal's home.
         link: {
-          href: `${PORTAL_PREFIX[decision.role]}/login`,
+          href: PORTAL_PREFIX[decision.role],
           label: `Go to the ${ROLE_LABEL[decision.role]} portal`,
         },
       };
@@ -47,22 +50,22 @@ function copy(decision: AccessRefusalDecision): {
 }
 
 export function AccessRefusal({ decision }: { decision: AccessRefusalDecision }) {
-  // Neither the (admin) layout nor /forbidden can clear the auth cookie from
-  // a Server Component, and leaving a live session in a portal it does not
-  // belong to means every gated query keeps returning 200 with an empty
-  // array — a working-looking page with no data and no explanation. So the
-  // sign-out happens here, on arrival at the refusal screen itself.
+  // Only a deactivated account is signed out, in this browser only (see
+  // refusalEndsSession), here on arrival: neither the (admin) layout nor
+  // /forbidden can clear the auth cookie from a Server Component.
   //
   // The result is observed rather than discarded: if the revoke call fails,
   // the cookie is still live server-side, and this screen must not claim a
   // sign-out that didn't happen — the same principle src/portals/admin/features/auth/hooks/use-auth.tsx's
   // signOut() and Sidebar.tsx already follow.
+  const endsSession = refusalEndsSession(decision);
   const [signedOut, setSignedOut] = useState<boolean | null>(null);
   useEffect(() => {
+    if (!endsSession) return;
     void createClient()
-      .auth.signOut()
+      .auth.signOut({ scope: "local" })
       .then(({ error }) => setSignedOut(!error));
-  }, []);
+  }, [endsSession]);
 
   const { heading, body, link } = copy(decision);
 

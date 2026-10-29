@@ -298,13 +298,15 @@ describe("middleware role gate", () => {
     expect(response.headers.get("cache-control")).toBe(NO_CACHE["Cache-Control"]);
   });
 
-  it("ends an idle session before spending a read on the role", async () => {
-    profileRow = null;
+  // Issue #19: the idle clock is one cookie shared by every Portal, so Staff's
+  // 15 minutes must not end a responder's session, which has an hour.
+  it("refuses an idle session of another role without ending it", async () => {
+    profileRow = { ...ACTIVE_STAFF, role: "responder" };
 
     const response = await middleware(requestTo("/staff/dashboard", NOW - IDLE_TIMEOUT_MS - 1));
 
-    expect(new URL(response.headers.get("location")!).search).toBe("?reason=idle");
-    expect(profileReads).not.toHaveBeenCalled();
+    expect(new URL(response.headers.get("location")!).pathname).toBe("/staff/forbidden");
+    expect(signOut).not.toHaveBeenCalled();
   });
 
   it("sends a signed-out request to /login without reading a profile", async () => {
@@ -317,11 +319,15 @@ describe("middleware role gate", () => {
   });
 });
 
-// Ported from the old Responder middleware's tests: the one row that sends a
+// Ported from the old Responder middleware's tests: a row that sends a
 // signed-in visit to login on into the Portal. That redirect replaces the
 // response setAll wrote to, so whatever it wrote has to be carried across.
 describe("middleware signed-in login redirect (Responder's row)", () => {
   const RESPONDER_IDLE_MS = 60 * 60 * 1000;
+
+  beforeEach(() => {
+    profileRow = { ...ACTIVE_STAFF, role: "responder" };
+  });
 
   it("carries a refreshed token and its cache headers from /responder/login to the pool", async () => {
     writesOnGetUser = [
@@ -335,13 +341,16 @@ describe("middleware signed-in login redirect (Responder's row)", () => {
     expect(response.headers.get("cache-control")).toBe(NO_CACHE["Cache-Control"]);
   });
 
-  it("sends a session on /responder/login to the pool without reading a profile", async () => {
-    profileRow = null;
+  // Issue #19: sent on into the pool, a Staff session would land on
+  // forbidden, which used to sign it out on every device.
+  it("serves /responder/login to a Staff session and keeps it", async () => {
+    profileRow = ACTIVE_STAFF;
 
     const response = await middleware(requestTo("/responder/login", NOW));
 
-    expect(new URL(response.headers.get("location")!).pathname).toBe("/responder/pool");
-    expect(profileReads).not.toHaveBeenCalled();
+    expect(response.headers.get("location")).toBeNull();
+    expect(profileReads).toHaveBeenCalledWith("my_staff_profile");
+    expect(signOut).not.toHaveBeenCalled();
   });
 
   // An idle session must be ended there, not bounced into the Portal it timed

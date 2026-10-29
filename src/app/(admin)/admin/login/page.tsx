@@ -5,11 +5,13 @@ import { SubmitEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useAuth } from "@/portals/admin/features/auth/hooks/use-auth";
+import { ROLE_ARTICLE, ROLE_LABEL } from "@/portals/admin/features/auth/lib/role-labels";
 import { Button } from "@/portals/admin/components/ui/button";
+import { PORTAL_PREFIX } from "@/shared/guard/portals";
 import { signInErrorMessage } from "@/shared/supabase/sign-in-error";
 
 export default function LoginPage() {
-  const { signIn, session, isLoading } = useAuth();
+  const { signIn, profile, isLoading } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -18,11 +20,19 @@ export default function LoginPage() {
   // second signInWithPassword round-trip against Supabase Auth's rate limits.
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Only an admin account is sent on to the dashboard (a deactivated one is
+  // told so there). Every Portal shares one session, so another Portal's
+  // account (or a citizen's) sent on in would land on the refusal screen; it is
+  // shown the form instead, its session kept (issue #19).
+  const isAdminAccount = profile?.role === "admin";
+  // That other account is named on the form, with a link back to its Portal.
+  const signedInAs = isAdminAccount ? null : (profile?.role ?? null);
+
   useEffect(() => {
-    if (!isLoading && session) {
+    if (!isLoading && isAdminAccount) {
       router.push("/admin/dashboard");
     }
-  }, [isLoading, session, router]);
+  }, [isLoading, isAdminAccount, router]);
 
   async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -42,7 +52,7 @@ export default function LoginPage() {
     }
   }
 
-  if (isLoading || session) {
+  if (isLoading || isAdminAccount) {
     return null;
   }
 
@@ -88,6 +98,15 @@ export default function LoginPage() {
             <h1 className="text-xl font-bold text-gray-900">Welcome Back</h1>
             <p className="text-sm text-gray-500">Please sign in to your account</p>
           </div>
+
+          {signedInAs && (
+            <p className="text-sm text-gray-600">
+              {`You are signed in with ${ROLE_ARTICLE[signedInAs]} ${ROLE_LABEL[signedInAs]} account.`}{" "}
+              <a href={PORTAL_PREFIX[signedInAs]} className="font-medium text-blue-900 underline">
+                Go to the {ROLE_LABEL[signedInAs]} portal
+              </a>
+            </p>
+          )}
 
           <div>
             <label htmlFor="email" className="mb-1 block text-sm font-medium text-gray-700">

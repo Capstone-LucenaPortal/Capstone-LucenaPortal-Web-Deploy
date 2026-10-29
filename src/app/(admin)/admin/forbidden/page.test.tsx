@@ -57,11 +57,11 @@ describe("ForbiddenPage", () => {
     render(<ForbiddenPage />);
     expect(screen.getByText(/wrong portal/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/your account is a Super Staff account\. sign in at the Super Staff portal instead\./i),
+      screen.getByText(/you are signed in with a Super Staff account\. use the Super Staff portal instead\./i),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Go to the Super Staff portal" })).toHaveAttribute(
       "href",
-      "/super-staff/login",
+      "/super-staff",
     );
   });
 
@@ -81,9 +81,27 @@ describe("ForbiddenPage", () => {
     expect(screen.queryByText(/wrong portal/i)).not.toBeInTheDocument();
   });
 
-  it("signs the session out as soon as the refusal screen mounts", () => {
+  // Issue #19: every Portal shares one session, so signing it out here (and
+  // supabase-js signs out every device by default) ended the account's own
+  // Portal too. Only a deactivated account is signed out, in this browser only.
+  it("keeps the session of another Portal's account, with no sign-out message", async () => {
+    render(<ForbiddenPage />);
+    await Promise.resolve();
+    expect(mockSignOut).not.toHaveBeenCalled();
+    expect(screen.queryByText(/sign you out|signed out/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps a citizen's session", () => {
+    mockProfile = null;
+    render(<ForbiddenPage />);
+    expect(mockSignOut).not.toHaveBeenCalled();
+  });
+
+  it("signs a deactivated admin out of this browser only, as soon as the refusal screen mounts", () => {
+    mockProfile = { role: "admin", status: "inactive" };
     render(<ForbiddenPage />);
     expect(mockSignOut).toHaveBeenCalledTimes(1);
+    expect(mockSignOut).toHaveBeenCalledWith({ scope: "local" });
   });
 
   it("shows a link back to sign in", () => {
@@ -115,38 +133,35 @@ describe("ForbiddenPage", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  // Regression guard: AccessRefusal's auto sign-out feeds a real SIGNED_OUT
-  // event back into AuthProvider (the browser Supabase client is a
-  // singleton), which drops `session` (and `profile`) to null a moment
-  // after this page first renders the refusal. That must not swap the
+  // Regression guard: AccessRefusal's auto sign-out of a deactivated admin
+  // feeds a real SIGNED_OUT event back into AuthProvider (the browser
+  // Supabase client is a singleton), which drops `session` (and `profile`)
+  // to null a moment after this page first renders the refusal. That must not swap the
   // screen for a redirect to /login, and must not change the message by
   // recomputing decideRoleAccess against the now-null profile.
   it("keeps the refusal screen on screen — not a /login redirect — after sign-out clears the session mid-render", () => {
+    mockProfile = { role: "admin", status: "inactive" };
     const { rerender } = render(<ForbiddenPage />);
-    expect(screen.getByText(/wrong portal/i)).toBeInTheDocument();
-    expect(
-      screen.getByText(/your account is a Super Staff account\. sign in at the Super Staff portal instead\./i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/your account has been deactivated/i)).toBeInTheDocument();
 
     // Simulate the SIGNED_OUT event's downstream effect on AuthProvider.
     mockSession = null;
     mockProfile = null;
     rerender(<ForbiddenPage />);
 
-    expect(screen.getByText(/wrong portal/i)).toBeInTheDocument();
-    expect(
-      screen.getByText(/your account is a Super Staff account\. sign in at the Super Staff portal instead\./i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/your account has been deactivated/i)).toBeInTheDocument();
     expect(pushMock).not.toHaveBeenCalledWith("/admin/login");
   });
 
   it("shows the signed-out confirmation once sign-out actually succeeds", async () => {
+    mockProfile = { role: "admin", status: "inactive" };
     mockSignOut.mockResolvedValue({ error: null });
     render(<ForbiddenPage />);
     expect(await screen.findByText(/you have been signed out of this portal/i)).toBeInTheDocument();
   });
 
   it("does not claim the user was signed out when sign-out fails, and shows a fallback instead", async () => {
+    mockProfile = { role: "admin", status: "inactive" };
     mockSignOut.mockResolvedValue({ error: { message: "network error" } });
     render(<ForbiddenPage />);
     expect(await screen.findByText(/could not sign you out/i)).toBeInTheDocument();

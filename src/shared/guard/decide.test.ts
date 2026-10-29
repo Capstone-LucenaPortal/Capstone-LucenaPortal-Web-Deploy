@@ -91,10 +91,16 @@ describe("decideRequest — Staff (/staff)", () => {
     ["serves login to a signed-in visit, as before", { pathname: "/staff/login", hasSession: true }, { kind: "allow" }],
     ["serves /forbidden to the account it refuses", { pathname: "/staff/forbidden", hasSession: true }, { kind: "allow" }],
 
-    // Idle timeout: 15 minutes, checked before the role.
+    // Idle timeout: 15 minutes, for this Portal's own role only. The clock is
+    // one cookie shared by every Portal, so another role's session is not this
+    // Portal's to time out (issue #19): it is refused, not signed out.
     ["serves a session whose last activity is inside the window", { pathname: "/staff/dashboard", hasSession: true, profile: ok("staff"), lastActivity: NOW - 15 * MINUTE }, { kind: "allow" }],
-    ["ends an idle session and sends it to login with the reason", { pathname: "/staff/dashboard", hasSession: true, lastActivity: NOW - 15 * MINUTE - 1 }, { kind: "redirect", to: "/staff/login?reason=idle", signOut: true }],
-    ["ends an idle session before spending a read on the role", { pathname: "/staff/dashboard", hasSession: true, lastActivity: NOW - 16 * MINUTE }, { kind: "redirect", to: "/staff/login?reason=idle", signOut: true }],
+    ["ends an idle session and sends it to login with the reason", { pathname: "/staff/dashboard", hasSession: true, profile: ok("staff"), lastActivity: NOW - 15 * MINUTE - 1 }, { kind: "redirect", to: "/staff/login?reason=idle", signOut: true }],
+    ["reads the role of an idle session before ending it", { pathname: "/staff/dashboard", hasSession: true, lastActivity: NOW - 16 * MINUTE }, { kind: "read-profile" }],
+    ["ends an idle session of a deactivated account of this Portal's role", { pathname: "/staff/dashboard", hasSession: true, profile: ok("staff", "inactive"), lastActivity: NOW - 16 * MINUTE }, { kind: "redirect", to: "/staff/login?reason=idle", signOut: true }],
+    ["ends an idle session whose role cannot be read", { pathname: "/staff/dashboard", hasSession: true, profile: readFailed, lastActivity: NOW - 16 * MINUTE }, { kind: "redirect", to: "/staff/login?reason=idle", signOut: true }],
+    ["refuses an idle session of another role without ending it", { pathname: "/staff/dashboard", hasSession: true, profile: ok("responder"), lastActivity: NOW - 16 * MINUTE }, { kind: "redirect", to: "/staff/forbidden" }],
+    ["serves forbidden to an idle session of another role without ending it", { pathname: "/staff/forbidden", hasSession: true, profile: ok("responder"), lastActivity: NOW - 16 * MINUTE }, { kind: "allow" }],
     ["fails open when no activity has been recorded", { pathname: "/staff/dashboard", hasSession: true, profile: ok("staff") }, { kind: "allow" }],
 
     // Session, role check needed.
@@ -108,8 +114,9 @@ describe("decideRequest — Staff (/staff)", () => {
 });
 
 // Super-staff's row: role super_staff, 15-minute idle timeout, a failed
-// profile read → 503, a signed-in visit to login is served as today. Rows
-// ported from the old Super-staff middleware's tests (src/middleware.test.ts:
+// profile read → 503, a signed-in visit to login by a Super Staff account
+// goes on to the accounts pool. Rows ported from the old Super-staff
+// middleware's tests (src/middleware.test.ts:
 // its role gate, idle timeout and matcher cases; the wire-level cases were the
 // same as Staff's and are proxy.test.ts's).
 describe("decideRequest — Super-staff (/super-staff)", () => {
@@ -126,14 +133,28 @@ describe("decideRequest — Super-staff (/super-staff)", () => {
     ["gates the audit log", { pathname: "/super-staff/audit-log" }, { kind: "redirect", to: "/super-staff/login" }],
     ["sends no session to a plain login, not to the idle sign-out", { pathname: "/super-staff/accounts", lastActivity: NOW - 16 * MINUTE }, { kind: "redirect", to: "/super-staff/login" }],
 
+    // A signed-in visit to login goes on into the Portal only for its own
+    // role. Any other account is shown the form, its session kept (issue #19):
+    // sent on in, it would land on forbidden.
+    ["asks for the role of a signed-in visit to login", { pathname: "/super-staff/login", hasSession: true }, { kind: "read-profile" }],
+    ["sends a Super Staff employee off the sign-in form to the accounts pool", { pathname: "/super-staff/login", hasSession: true, profile: ok("super_staff") }, { kind: "redirect", to: "/super-staff/accounts" }],
+    ["serves the sign-in form to a Staff employee, session kept", { pathname: "/super-staff/login", hasSession: true, profile: ok("staff") }, { kind: "allow" }],
+    ["serves the sign-in form to a responder idle past this Portal's 15 minutes, session kept", { pathname: "/super-staff/login", hasSession: true, profile: ok("responder"), lastActivity: NOW - 20 * MINUTE }, { kind: "allow" }],
+    ["ends an idle Super Staff session that arrives at the sign-in form", { pathname: "/super-staff/login", hasSession: true, profile: ok("super_staff"), lastActivity: NOW - 16 * MINUTE }, { kind: "redirect", to: "/super-staff/login?reason=idle", signOut: true }],
+
     // Session, exempt from the role check.
-    ["serves login to a signed-in visit, as before", { pathname: "/super-staff/login", hasSession: true }, { kind: "allow" }],
     ["serves /forbidden to the account it refuses", { pathname: "/super-staff/forbidden", hasSession: true }, { kind: "allow" }],
 
-    // Idle timeout: 15 minutes, checked before the role.
+    // Idle timeout: 15 minutes, for this Portal's own role only. The clock is
+    // one cookie shared by every Portal, so another role's session is not this
+    // Portal's to time out (issue #19): it is refused, not signed out.
     ["serves a session whose last activity is inside the window", { pathname: "/super-staff/accounts", hasSession: true, profile: ok("super_staff"), lastActivity: NOW - 15 * MINUTE }, { kind: "allow" }],
-    ["ends an idle session and sends it to login with the reason", { pathname: "/super-staff/accounts", hasSession: true, lastActivity: NOW - 15 * MINUTE - 1 }, { kind: "redirect", to: "/super-staff/login?reason=idle", signOut: true }],
-    ["ends an idle session before spending a read on the role", { pathname: "/super-staff/accounts", hasSession: true, lastActivity: NOW - 16 * MINUTE }, { kind: "redirect", to: "/super-staff/login?reason=idle", signOut: true }],
+    ["ends an idle session and sends it to login with the reason", { pathname: "/super-staff/accounts", hasSession: true, profile: ok("super_staff"), lastActivity: NOW - 15 * MINUTE - 1 }, { kind: "redirect", to: "/super-staff/login?reason=idle", signOut: true }],
+    ["reads the role of an idle session before ending it", { pathname: "/super-staff/accounts", hasSession: true, lastActivity: NOW - 16 * MINUTE }, { kind: "read-profile" }],
+    ["ends an idle session of a deactivated account of this Portal's role", { pathname: "/super-staff/accounts", hasSession: true, profile: ok("super_staff", "inactive"), lastActivity: NOW - 16 * MINUTE }, { kind: "redirect", to: "/super-staff/login?reason=idle", signOut: true }],
+    ["ends an idle session whose role cannot be read", { pathname: "/super-staff/accounts", hasSession: true, profile: readFailed, lastActivity: NOW - 16 * MINUTE }, { kind: "redirect", to: "/super-staff/login?reason=idle", signOut: true }],
+    ["refuses an idle session of another role without ending it", { pathname: "/super-staff/accounts", hasSession: true, profile: ok("responder"), lastActivity: NOW - 16 * MINUTE }, { kind: "redirect", to: "/super-staff/forbidden" }],
+    ["serves forbidden to an idle session of another role without ending it", { pathname: "/super-staff/forbidden", hasSession: true, profile: ok("responder"), lastActivity: NOW - 16 * MINUTE }, { kind: "allow" }],
     ["fails open when no activity has been recorded", { pathname: "/super-staff/accounts", hasSession: true, profile: ok("super_staff") }, { kind: "allow" }],
 
     // Session, role check needed.
@@ -150,9 +171,9 @@ describe("decideRequest — Super-staff (/super-staff)", () => {
 });
 
 // Responder's row: role responder, 60-minute idle timeout, a failed profile
-// read → 503, a signed-in visit to login goes on to the pool. Rows ported from
-// the old Responder route gate (src/features/auth/lib/route-gate.test.ts) and
-// middleware's tests (src/middleware.test.ts: its role gate, idle timeout and
+// read → 503, a signed-in visit to login by a responder goes on to the pool.
+// Rows ported from the old Responder route gate
+// (src/features/auth/lib/route-gate.test.ts) and middleware's tests (src/middleware.test.ts: its role gate, idle timeout and
 // matcher cases; the wire-level cases are proxy.test.ts's).
 describe("decideRequest — Responder (/responder)", () => {
   runRows([
@@ -171,18 +192,31 @@ describe("decideRequest — Responder (/responder)", () => {
     ["gates a look-alike of the invite flow", { pathname: "/responder/accept-invite-anything" }, { kind: "redirect", to: "/responder/login" }],
     ["sends no session to a plain login, not to the idle sign-out", { pathname: "/responder/pool", lastActivity: NOW - 61 * MINUTE }, { kind: "redirect", to: "/responder/login" }],
 
-    // A signed-in visit to login goes on to the pool, without a role check.
-    ["sends a signed-in visitor off the sign-in form to the pool", { pathname: "/responder/login", hasSession: true }, { kind: "redirect", to: "/responder/pool" }],
-    ["ends an idle session that arrives at the sign-in form, not bounce it into the pool", { pathname: "/responder/login", hasSession: true, lastActivity: NOW - 61 * MINUTE }, { kind: "redirect", to: "/responder/login?reason=idle", signOut: true }],
-    ["sends a live session on the sign-in form to the pool", { pathname: "/responder/login", hasSession: true, lastActivity: NOW - 59 * MINUTE }, { kind: "redirect", to: "/responder/pool" }],
+    // A signed-in visit to login goes on to the pool only for a responder.
+    // Any other account is shown the form, its session kept (issue #19): sent
+    // on into the pool, it would land on forbidden.
+    ["asks for the role of a signed-in visit to the sign-in form", { pathname: "/responder/login", hasSession: true }, { kind: "read-profile" }],
+    ["sends a responder off the sign-in form to the pool", { pathname: "/responder/login", hasSession: true, profile: ok("responder") }, { kind: "redirect", to: "/responder/pool" }],
+    ["sends a deactivated responder on to the pool, whose forbidden page says why", { pathname: "/responder/login", hasSession: true, profile: ok("responder", "inactive") }, { kind: "redirect", to: "/responder/pool" }],
+    ["serves the sign-in form to an employee of another portal, session kept", { pathname: "/responder/login", hasSession: true, profile: ok("admin") }, { kind: "allow" }],
+    ["serves the sign-in form to a citizen, session kept", { pathname: "/responder/login", hasSession: true, profile: noStaffRow }, { kind: "allow" }],
+    ["serves the sign-in form when the role cannot be read, not a 503", { pathname: "/responder/login", hasSession: true, profile: readFailed }, { kind: "allow" }],
+    ["ends an idle session that arrives at the sign-in form, not bounce it into the pool", { pathname: "/responder/login", hasSession: true, profile: ok("responder"), lastActivity: NOW - 61 * MINUTE }, { kind: "redirect", to: "/responder/login?reason=idle", signOut: true }],
+    ["sends a live responder session on the sign-in form to the pool", { pathname: "/responder/login", hasSession: true, profile: ok("responder"), lastActivity: NOW - 59 * MINUTE }, { kind: "redirect", to: "/responder/pool" }],
 
     // Session, exempt from the role check.
     ["serves /forbidden to the account it refuses", { pathname: "/responder/forbidden", hasSession: true }, { kind: "allow" }],
 
-    // Idle timeout: 60 minutes, checked before the role.
+    // Idle timeout: 60 minutes, for this Portal's own role only. The clock is
+    // one cookie shared by every Portal, so another role's session is not this
+    // Portal's to time out (issue #19): it is refused, not signed out.
     ["serves a session whose last activity is inside the window", { pathname: "/responder/pool", hasSession: true, profile: ok("responder"), lastActivity: NOW - 60 * MINUTE }, { kind: "allow" }],
-    ["ends an idle session and sends it to login with the reason", { pathname: "/responder/pool", hasSession: true, lastActivity: NOW - 60 * MINUTE - 1 }, { kind: "redirect", to: "/responder/login?reason=idle", signOut: true }],
-    ["ends an idle session before spending a read on the role", { pathname: "/responder/pool", hasSession: true, lastActivity: NOW - 61 * MINUTE }, { kind: "redirect", to: "/responder/login?reason=idle", signOut: true }],
+    ["ends an idle session and sends it to login with the reason", { pathname: "/responder/pool", hasSession: true, profile: ok("responder"), lastActivity: NOW - 60 * MINUTE - 1 }, { kind: "redirect", to: "/responder/login?reason=idle", signOut: true }],
+    ["reads the role of an idle session before ending it", { pathname: "/responder/pool", hasSession: true, lastActivity: NOW - 61 * MINUTE }, { kind: "read-profile" }],
+    ["ends an idle session of a deactivated account of this Portal's role", { pathname: "/responder/pool", hasSession: true, profile: ok("responder", "inactive"), lastActivity: NOW - 61 * MINUTE }, { kind: "redirect", to: "/responder/login?reason=idle", signOut: true }],
+    ["ends an idle session whose role cannot be read", { pathname: "/responder/pool", hasSession: true, profile: readFailed, lastActivity: NOW - 61 * MINUTE }, { kind: "redirect", to: "/responder/login?reason=idle", signOut: true }],
+    ["refuses an idle session of another role without ending it", { pathname: "/responder/pool", hasSession: true, profile: ok("staff"), lastActivity: NOW - 61 * MINUTE }, { kind: "redirect", to: "/responder/forbidden" }],
+    ["serves forbidden to an idle session of another role without ending it", { pathname: "/responder/forbidden", hasSession: true, profile: ok("staff"), lastActivity: NOW - 61 * MINUTE }, { kind: "allow" }],
     ["keeps a session idle past Staff's 15 minutes", { pathname: "/responder/my-ticket", hasSession: true, profile: ok("responder"), lastActivity: NOW - 16 * MINUTE }, { kind: "allow" }],
     ["fails open when no activity has been recorded", { pathname: "/responder/pool", hasSession: true, profile: ok("responder") }, { kind: "allow" }],
 
@@ -214,11 +248,13 @@ describe("decideRequest — row fields, on a fixture table", () => {
     [
       // Idle timeout.
       ["serves a session inside the idle window", { pathname: "/staff/dashboard", hasSession: true, profile: ok("staff"), lastActivity: NOW - 15 * MINUTE }, { kind: "allow" }],
-      ["signs out a session idle past the window, to login with the idle reason", { pathname: "/staff/dashboard", hasSession: true, lastActivity: NOW - 15 * MINUTE - 1 }, { kind: "redirect", to: "/staff/login?reason=idle", signOut: true }],
-      ["checks idleness before reading the profile", { pathname: "/staff/dashboard", hasSession: true, profile: ok("staff"), lastActivity: NOW - 16 * MINUTE }, { kind: "redirect", to: "/staff/login?reason=idle", signOut: true }],
-      ["signs out an idle session on forbidden too", { pathname: "/staff/forbidden", hasSession: true, lastActivity: NOW - 16 * MINUTE }, { kind: "redirect", to: "/staff/login?reason=idle", signOut: true }],
+      ["signs out a session idle past the window, to login with the idle reason", { pathname: "/staff/dashboard", hasSession: true, profile: ok("staff"), lastActivity: NOW - 15 * MINUTE - 1 }, { kind: "redirect", to: "/staff/login?reason=idle", signOut: true }],
+      ["checks idleness before the role's status", { pathname: "/staff/dashboard", hasSession: true, profile: ok("staff", "inactive"), lastActivity: NOW - 16 * MINUTE }, { kind: "redirect", to: "/staff/login?reason=idle", signOut: true }],
+      ["signs out an idle session of the row's role on forbidden too", { pathname: "/staff/forbidden", hasSession: true, profile: ok("staff"), lastActivity: NOW - 16 * MINUTE }, { kind: "redirect", to: "/staff/login?reason=idle", signOut: true }],
+      ["reads the role of an idle session before ending it", { pathname: "/staff/forbidden", hasSession: true, lastActivity: NOW - 16 * MINUTE }, { kind: "read-profile" }],
+      ["applies only the row's own role's timeout", { pathname: "/staff/dashboard", hasSession: true, profile: ok("responder"), lastActivity: NOW - 16 * MINUTE }, { kind: "redirect", to: "/staff/forbidden" }],
       ["applies each row's own timeout", { pathname: "/responder/pool", hasSession: true, profile: ok("responder"), lastActivity: NOW - 59 * MINUTE }, { kind: "allow" }],
-      ["signs out a Responder idle past 60 minutes", { pathname: "/responder/pool", hasSession: true, lastActivity: NOW - 61 * MINUTE }, { kind: "redirect", to: "/responder/login?reason=idle", signOut: true }],
+      ["signs out a Responder idle past 60 minutes", { pathname: "/responder/pool", hasSession: true, profile: ok("responder"), lastActivity: NOW - 61 * MINUTE }, { kind: "redirect", to: "/responder/login?reason=idle", signOut: true }],
       ["fails open when no activity has been recorded", { pathname: "/staff/dashboard", hasSession: true, profile: ok("staff") }, { kind: "allow" }],
       ["does not read a clock in the future as idle", { pathname: "/staff/dashboard", hasSession: true, profile: ok("staff"), lastActivity: NOW + MINUTE }, { kind: "allow" }],
       ["sends no session to login, not to the idle sign-out", { pathname: "/staff/dashboard", lastActivity: NOW - 16 * MINUTE }, { kind: "redirect", to: "/staff/login" }],
@@ -233,7 +269,9 @@ describe("decideRequest — row fields, on a fixture table", () => {
       ["refuses a deactivated responder", { pathname: "/responder/pool", hasSession: true, profile: ok("responder", "inactive") }, { kind: "redirect", to: "/responder/forbidden" }],
 
       // A signed-in visit to login.
-      ["sends a signed-in visit to /responder/login to the pool", { pathname: "/responder/login", hasSession: true }, { kind: "redirect", to: "/responder/pool" }],
+      ["reads the role of a signed-in visit to /responder/login", { pathname: "/responder/login", hasSession: true }, { kind: "read-profile" }],
+      ["sends that row's own role on to the pool", { pathname: "/responder/login", hasSession: true, profile: ok("responder") }, { kind: "redirect", to: "/responder/pool" }],
+      ["serves /responder/login to another role's signed-in visit", { pathname: "/responder/login", hasSession: true, profile: ok("staff") }, { kind: "allow" }],
       ["serves /responder/login to a visitor with no session", { pathname: "/responder/login" }, { kind: "allow" }],
       ["serves /staff/login to a signed-in visit, as that row says", { pathname: "/staff/login", hasSession: true }, { kind: "allow" }],
 

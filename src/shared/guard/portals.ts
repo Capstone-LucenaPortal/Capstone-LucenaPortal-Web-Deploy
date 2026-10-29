@@ -31,11 +31,14 @@ export interface PortalRow {
   prefix: string;
   /** The one staff_role admitted. Exact match — roles are not hierarchical. */
   role: StaffRole;
-  /** Idle time after which the session is ended; null for none. */
+  /** Idle time after which a session of this Portal's role is ended; null for none. */
   idleTimeoutMs: number | null;
   /** What a failed my_staff_profile read returns: a 503, or the forbidden page. */
   onProfileReadError: "unavailable" | "forbidden";
-  /** Where a signed-in visit to login goes; null to serve the login page. */
+  /**
+   * Where a signed-in visit to login by this Portal's own role goes; null to
+   * serve the login page. Any other account is always served the login page.
+   */
   signedInLoginRedirect: string | null;
 }
 
@@ -63,7 +66,7 @@ export const PORTALS: readonly PortalRow[] = [
     // (src/portals/super-staff/lib/supabase/idle-timeout.ts's IDLE_TIMEOUT_MS).
     idleTimeoutMs: 15 * 60 * 1000,
     onProfileReadError: "unavailable",
-    signedInLoginRedirect: null,
+    signedInLoginRedirect: `${PORTAL_PREFIX.super_staff}/accounts`,
   },
   {
     prefix: PORTAL_PREFIX.responder,

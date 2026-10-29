@@ -27,10 +27,31 @@ function pending() {
 const backToSignIn = () => screen.queryByRole("link", { name: "Back to sign in" });
 
 describe("AccessDenied", () => {
-  it("signs the wrong-portal session out exactly once", async () => {
-    render(<AccessDenied decision={{ kind: "wrong-portal", role: "staff" }} />);
+  it("signs a deactivated account out of this browser only, exactly once", async () => {
+    render(<AccessDenied decision={{ kind: "deactivated" }} />);
 
     await waitFor(() => expect(signOut).toHaveBeenCalledTimes(1));
+    expect(signOut).toHaveBeenCalledWith({ scope: "local" });
+  });
+
+  // Issue #19: every Portal shares one session, so signing it out here (and
+  // supabase-js signs out every device by default) ended the account's own
+  // Portal too. The exits are open at once: there is no sign-out to wait for.
+  it("keeps a wrong-portal session and says who is signed in", () => {
+    render(<AccessDenied decision={{ kind: "wrong-portal", role: "staff" }} />);
+
+    expect(screen.getByText(/you are signed in with a Staff account/i)).toBeInTheDocument();
+    expect(screen.queryByText(/signed out|signing/i)).not.toBeInTheDocument();
+    expect(backToSignIn()).toHaveAttribute("href", "/responder/login");
+    expect(signOut).not.toHaveBeenCalled();
+  });
+
+  it("keeps a citizen's session", () => {
+    render(<AccessDenied decision={{ kind: "not-an-employee" }} />);
+
+    expect(screen.queryByText(/signed out|signing/i)).not.toBeInTheDocument();
+    expect(backToSignIn()).toBeInTheDocument();
+    expect(signOut).not.toHaveBeenCalled();
   });
 
   it("holds the exits shut while the sign-out is still in flight", () => {
@@ -82,7 +103,7 @@ describe("AccessDenied", () => {
     await waitFor(() =>
       expect(
         screen.getByRole("link", { name: "Go to the Staff portal" }),
-      ).toHaveAttribute("href", "/staff/login"),
+      ).toHaveAttribute("href", "/staff"),
     );
   });
 

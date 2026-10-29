@@ -5,9 +5,12 @@ import { Suspense, useState, type FormEvent } from "react";
 import { Button } from "@/portals/staff/components/ui/button";
 import { Card } from "@/portals/staff/components/ui/card";
 import { Input } from "@/portals/staff/components/ui/input";
+import { PORTAL_PREFIX } from "@/shared/guard/portals";
 import { createClient } from "@/shared/supabase/client";
+import { useSignedInStaffRole } from "@/shared/supabase/use-signed-in-staff-role";
 import { signInErrorMessage } from "@/shared/supabase/sign-in-error";
 import { IDLE_SIGNOUT_REASON, IDLE_TIMEOUT_MS, restartIdleClock } from "@/portals/staff/lib/supabase/idle-timeout";
+import { ROLE_ARTICLE, ROLE_LABEL } from "@/portals/staff/features/auth/lib/role-labels";
 
 // useSearchParams() needs a Suspense boundary, or the build refuses to
 // prerender the page.
@@ -26,6 +29,9 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Another Portal's account is shown this form with its session kept
+  // (issue #19), so the form says who is signed in.
+  const signedInAs = useSignedInStaffRole();
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -61,6 +67,14 @@ function LoginForm() {
       {idleSignOut && (
         <p role="status" className="mt-2 text-sm text-gray-600">
           You were signed out after {IDLE_TIMEOUT_MS / 60_000} minutes of inactivity.
+        </p>
+      )}
+      {signedInAs && (
+        <p className="mt-2 text-sm text-gray-600">
+          {`You are signed in with ${ROLE_ARTICLE[signedInAs]} ${ROLE_LABEL[signedInAs]} account.`}{" "}
+          <a href={PORTAL_PREFIX[signedInAs]} className="font-medium text-lucena-blue underline">
+            Go to the {ROLE_LABEL[signedInAs]} portal
+          </a>
         </p>
       )}
       <form className="mt-4 flex flex-col gap-3" onSubmit={handleSubmit}>
