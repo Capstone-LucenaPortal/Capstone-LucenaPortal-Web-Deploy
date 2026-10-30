@@ -135,6 +135,7 @@ export default async function PoolPage({
             <div className="min-h-0 flex-1 overflow-y-auto">
               <ReportDetail
                 incident={selected}
+                responderId={responder.id}
                 now={now}
                 gated={held !== null}
                 heldRef={held?.reference_number ?? null}

@@ -19,6 +19,8 @@ export type AuditRow = {
   /** `inet`, which PostgREST types `unknown`. A string on the wire. */
   ip_address: unknown;
   user_agent: string | null;
+  /** `jsonb`, which PostgREST types `Json`. Its shape varies by writer. */
+  changes: unknown;
 };
 
 /**
@@ -44,7 +46,23 @@ export function toEntry(row: AuditRow): AuditEntry | null {
     sessionId: row.session_id,
     ipAddress: typeof row.ip_address === "string" ? row.ip_address : null,
     userAgent: row.user_agent,
+    references: exportedReferences(row.changes),
   };
+}
+
+/**
+ * `changes.refs` as an export writes it: an array of Reference Numbers. Any
+ * other shape reads as none, never as a partial list. That covers every
+ * non-export entry, including Created account rows, whose `refs` (DB l49)
+ * are field diffs.
+ */
+function exportedReferences(changes: unknown): string[] {
+  if (typeof changes !== "object" || changes === null || !("refs" in changes))
+    return [];
+  const { refs } = changes;
+  return Array.isArray(refs) && refs.every((r) => typeof r === "string")
+    ? refs
+    : [];
 }
 
 /**

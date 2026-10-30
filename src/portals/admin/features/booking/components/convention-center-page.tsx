@@ -3,7 +3,13 @@
 
 
 import { useEffect, useMemo, useState } from "react";
-import { conventionRangeStats, eventTypeMix, monthlyCounts, venueUtilisation } from "@/portals/admin/lib/aggregate";
+import {
+  conventionDateAccessor,
+  conventionRangeStats,
+  eventTypeMix,
+  recentMonthlyCounts,
+  venueUtilisation,
+} from "@/portals/admin/lib/aggregate";
 import { ConventionDateBasis } from "@/portals/admin/features/booking/types";
 import {
   filterByDateRange,
@@ -46,6 +52,14 @@ const BASIS_OPTIONS: { value: ConventionDateBasis; label: string }[] = [
   { value: "booking", label: "Booking Date" },
   { value: "event", label: "Event Date" },
 ];
+
+// The monthly chart's subtitle names the date the picked date type reads. The
+// default (submitted) date type keeps the subtitle as it always was. The
+// table's "Event date" column stays under both date types.
+const MONTHLY_SUBTITLE: Record<ConventionDateBasis, string> = {
+  booking: "Last 6 months",
+  event: "By event date · Last 6 months",
+};
 
 // The real booking_status enum, in display order, each with its human label
 // (src/portals/admin/lib/status-labels.ts — bookings have no Staff sibling to port from, so
@@ -215,21 +229,18 @@ export function ConventionCenterPage() {
     [preset, customStart, customEnd]
   );
   // "booking" reads submitted_at; "event" reads event_date — a booking
-  // record with no event_date drops out of every KPI tile under that basis,
-  // the same way filterByDateRange already drops any row whose accessor
-  // returns null.
-  const statsDateAccessor = useMemo(
-    () => (dateBasis === "event" ? (row: BookingRow) => row.event_date : (row: BookingRow) => row.submitted_at),
-    [dateBasis]
-  );
+  // record with no event_date drops out of the KPI tiles, the table, the CSV
+  // Export, every panel and the monthly chart under that basis. One accessor
+  // feeds all of them so they always count the same rows (issue #24).
+  const getDate = conventionDateAccessor(dateBasis);
   const rangeLabel = useMemo(() => formatManilaRangeLabel(dateRange), [dateRange]);
   const stats = useMemo(
-    () => conventionRangeStats(rows, dateRange, statsDateAccessor),
-    [rows, dateRange, statsDateAccessor]
+    () => conventionRangeStats(rows, dateRange, getDate),
+    [rows, dateRange, getDate]
   );
   const filtered = useMemo(
-    () => filterByDateRange(filterRows(rows, activeTab), (row) => row.submitted_at, dateRange),
-    [rows, activeTab, dateRange]
+    () => filterByDateRange(filterRows(rows, activeTab), getDate, dateRange),
+    [rows, activeTab, getDate, dateRange]
   );
 
   // eventTypeMix reads `filtered`, not raw `rows`, so this panel agrees with
@@ -238,19 +249,17 @@ export function ConventionCenterPage() {
   // active filter would be worse than a stale KPI number, since a stale
   // chart doesn't visually look wrong the way a stale number does.
   const eventTypeMixSlices = useMemo(() => eventTypeMix(filtered), [filtered]);
-  // Unlike eventTypeMix above, monthlyCounts stays on the raw, unfiltered
+  // Unlike eventTypeMix above, recentMonthlyCounts stays on the raw, unfiltered
   // `rows` — not `filtered` — on purpose: it exists to show a multi-month
   // trend, and feeding it an already date-preset-narrowed array would
   // collapse most presets to a single bucket, defeating the chart. Do not
   // "fix" this to match the panel above.
   //
-  // MonthlyBarCard's title promises "Last 6 months"; monthlyCounts itself
-  // returns every Manila month present in `rows` (oldest-first, no fixed
-  // window), so the page slices the trailing 6 itself.
-  const monthlyBookings = useMemo(
-    () => monthlyCounts(rows, (row) => row.submitted_at).slice(-6),
-    [rows]
-  );
+  // MonthlyBarCard's title promises "Last 6 months"; recentMonthlyCounts
+  // keeps the trailing 6 Manila months present, counted by the picked date
+  // type. It never shows a month after the current one, so upcoming event
+  // dates can't push the past months out of the window.
+  const monthlyBookings = useMemo(() => recentMonthlyCounts(rows, getDate), [rows, getDate]);
   // venueUtilisation intentionally stays on raw `rows` too (not `filtered`):
   // it's driven by the full venue catalog via listVenues(), not by which
   // codes happen to appear in the current filter, and was not part of Fix
@@ -377,7 +386,7 @@ export function ConventionCenterPage() {
         />
         <MonthlyBarCard
           title="Bookings by month"
-          subtitle="Last 6 months"
+          subtitle={MONTHLY_SUBTITLE[dateBasis]}
           months={monthlyBookings}
         />
       </div>

@@ -7,8 +7,9 @@ import {
   categoryMix,
   formatRate,
   incidentSlaHours,
+  issueDateAccessor,
   issueRangeStats,
-  monthlyCounts,
+  recentMonthlyCounts,
 } from "@/portals/admin/lib/aggregate";
 import { IssueDateBasis } from "@/portals/admin/features/incidents/types";
 import {
@@ -59,6 +60,18 @@ const BASIS_OPTIONS: { value: IssueDateBasis; label: string }[] = [
   { value: "report", label: "Report Date" },
   { value: "resolution", label: "Resolution Date" },
 ];
+
+// The table's date column and the monthly chart's subtitle name the date the
+// picked date type reads. The default (submitted) date type keeps the
+// subtitle as it always was.
+const DATE_COLUMN: Record<IssueDateBasis, string> = {
+  report: "Submitted",
+  resolution: "Resolved",
+};
+const MONTHLY_SUBTITLE: Record<IssueDateBasis, string> = {
+  report: "Last 6 months",
+  resolution: "By resolution date · Last 6 months",
+};
 
 // The real incident_status enum, in display order, each with its human label
 // sourced from Staff's canonical map (src/portals/admin/lib/status-labels.ts). "All" is a
@@ -282,21 +295,19 @@ export function IssueReportsPage() {
     [preset, customStart, customEnd]
   );
   // "report" reads submitted_at; "resolution" reads resolved_at — an
-  // unresolved incident has no resolved_at and drops out of every KPI tile
-  // under that basis, the same way filterByDateRange already drops any row
-  // whose accessor returns null.
-  const statsDateAccessor = useMemo(
-    () => (dateBasis === "resolution" ? (row: IncidentRow) => row.resolved_at : (row: IncidentRow) => row.submitted_at),
-    [dateBasis]
-  );
+  // unresolved incident has no resolved_at and drops out of the KPI tiles,
+  // the table, the CSV Export, every panel and the monthly chart under that
+  // basis. One accessor feeds all of them so they always count the same rows
+  // (issue #24).
+  const getDate = issueDateAccessor(dateBasis);
   const rangeLabel = useMemo(() => formatManilaRangeLabel(dateRange), [dateRange]);
   const stats = useMemo(
-    () => issueRangeStats(rows, dateRange, statsDateAccessor, slaHours),
-    [rows, dateRange, statsDateAccessor, slaHours]
+    () => issueRangeStats(rows, dateRange, getDate, slaHours),
+    [rows, dateRange, getDate, slaHours]
   );
   const filtered = useMemo(
-    () => filterByDateRange(filterRows(rows, activeTab), (row) => row.submitted_at, dateRange),
-    [rows, activeTab, dateRange]
+    () => filterByDateRange(filterRows(rows, activeTab), getDate, dateRange),
+    [rows, activeTab, getDate, dateRange]
   );
 
   // categoryMix/barangayIncidentRows read `filtered`, not raw `rows`, so
@@ -307,19 +318,16 @@ export function IssueReportsPage() {
   // number does.
   const categoryMixSlices = useMemo(() => categoryMix(filtered), [filtered]);
   const barangayRows = useMemo(() => barangayIncidentRows(filtered), [filtered]);
-  // Unlike the two panels above, monthlyCounts stays on the raw, unfiltered
+  // Unlike the two panels above, recentMonthlyCounts stays on the raw, unfiltered
   // `rows` — not `filtered` — on purpose: it exists to show a multi-month
   // trend, and feeding it an already date-preset-narrowed array would
   // collapse most presets to a single bucket, defeating the chart. Do not
   // "fix" this to match the panels above.
   //
-  // MonthlyBarCard's title promises "Last 6 months"; monthlyCounts itself
-  // returns every Manila month present in `rows` (oldest-first, no fixed
-  // window), so the page slices the trailing 6 itself.
-  const monthlyReports = useMemo(
-    () => monthlyCounts(rows, (row) => row.submitted_at).slice(-6),
-    [rows]
-  );
+  // MonthlyBarCard's title promises "Last 6 months"; recentMonthlyCounts
+  // keeps the trailing 6 Manila months present, never one after the current
+  // month, counted by the picked date type.
+  const monthlyReports = useMemo(() => recentMonthlyCounts(rows, getDate), [rows, getDate]);
   const barangayRowsWithLabels = useMemo(
     () => barangayRows.map((row) => ({ ...row, topCategory: categoryLabel(row.topCategory) })),
     [barangayRows, categoryLabel]
@@ -479,7 +487,7 @@ export function IssueReportsPage() {
         />
         <MonthlyBarCard
           title="Reports by month"
-          subtitle="Last 6 months"
+          subtitle={MONTHLY_SUBTITLE[dateBasis]}
           months={monthlyReports}
         />
       </div>
@@ -542,7 +550,7 @@ export function IssueReportsPage() {
                 header: "Department",
                 render: (row: IncidentRow) => departmentLabel(row.assigned_department_code),
               },
-              { header: "Submitted", render: (row: IncidentRow) => formatManilaDate(row.submitted_at) },
+              { header: DATE_COLUMN[dateBasis], render: (row: IncidentRow) => formatManilaDate(getDate(row)) },
               {
                 header: "Status",
                 render: (row: IncidentRow) => (

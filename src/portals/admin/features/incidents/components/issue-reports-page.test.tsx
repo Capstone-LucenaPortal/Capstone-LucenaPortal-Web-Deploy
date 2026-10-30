@@ -624,6 +624,66 @@ describe("IssueReportsPage", () => {
     }
   });
 
+  // Issue #24: the date type used to reach the KPI tiles only; the table, the
+  // Export and the monthly chart stayed on submitted_at. inc-1 is open (no
+  // resolved_at), inc-2 was reported in July and resolved this month, inc-3
+  // was reported in June and resolved in July.
+  it("the date type also drives the table, its date column, the Export and the monthly chart", async () => {
+    vi.useFakeTimers().setSystemTime(new Date("2026-08-15T04:00:00Z")); // 2026-08-15 12:00 Manila
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      mockListIncidents.mockResolvedValue([
+        buildRow({ id: "inc-1", reference_number: "IR-2026-000001", submitted_at: "2026-08-05T04:00:00Z" }),
+        buildRow({
+          id: "inc-2",
+          reference_number: "IR-2026-000002",
+          status: "resolved",
+          submitted_at: "2026-07-01T04:00:00Z",
+          resolved_at: "2026-08-10T04:00:00Z",
+        }),
+        buildRow({
+          id: "inc-3",
+          reference_number: "IR-2026-000003",
+          status: "resolved",
+          submitted_at: "2026-06-02T04:00:00Z",
+          resolved_at: "2026-07-20T04:00:00Z",
+        }),
+      ]);
+
+      render(<IssueReportsPage />);
+      await screen.findByText("IR-2026-000001");
+
+      const recent = getRecentReportsSection();
+      const chart = screen.getByText("Reports by month").closest("section")!;
+
+      // Default date type: unchanged from before the fix.
+      expect(within(recent).getByRole("columnheader", { name: "Submitted" })).toBeInTheDocument();
+      expect(within(recent).queryByText("IR-2026-000002")).not.toBeInTheDocument();
+      expect(within(chart).getByText("Last 6 months")).toBeInTheDocument();
+      expect(within(chart).getByTitle("Jun: 1")).toBeInTheDocument();
+
+      await user.selectOptions(screen.getByLabelText("Date type"), "resolution");
+
+      expect(within(recent).getByText("IR-2026-000002")).toBeInTheDocument();
+      expect(within(recent).queryByText("IR-2026-000001")).not.toBeInTheDocument();
+      expect(within(recent).queryByText("IR-2026-000003")).not.toBeInTheDocument();
+      expect(within(recent).getByRole("columnheader", { name: "Resolved" })).toBeInTheDocument();
+      expect(within(recent).queryByRole("columnheader", { name: "Submitted" })).not.toBeInTheDocument();
+      expect(within(recent).getByText("Aug 10, 2026")).toBeInTheDocument();
+
+      await user.click(within(recent).getByRole("button", { name: "↓ Export" }));
+      const [, , exported] = mockDownloadCsv.mock.calls[0];
+      expect(exported.map((row: unknown[]) => row[0])).toEqual(["IR-2026-000002"]);
+
+      expect(within(chart).getByText("By resolution date · Last 6 months")).toBeInTheDocument();
+      expect(within(chart).getByTitle("Jul: 1")).toBeInTheDocument();
+      expect(within(chart).getByTitle("Aug: 1")).toBeInTheDocument();
+      expect(within(chart).queryByTitle("Jun: 1")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   // Task 10: the chart panels below the KPI tiles used to read mock data,
   // not listIncidents(). These pin that they now derive from the data-layer
   // rows the page already fetched, via
