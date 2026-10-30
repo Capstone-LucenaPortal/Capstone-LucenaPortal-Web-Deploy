@@ -5,7 +5,7 @@ import type { AuditArea, AuditEntry } from "../types";
 
 // One line. Splitting with `+` degrades the row type to GenericStringError[].
 const COLUMNS =
-  "id, occurred_at, actor_name, area, target_kind, target_id, target_label, change, detail, session_id, ip_address, user_agent, changes";
+  "id, occurred_at, actor_name, area, target_kind, target_id, target_label, change, detail, session_id, ip_address, user_agent";
 
 /** Every audit entry the caller may see. The view self-scopes — do not filter. */
 export async function listAuditEntries(): Promise<AuditEntry[]> {

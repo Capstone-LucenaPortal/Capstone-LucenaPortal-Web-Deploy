@@ -20,12 +20,8 @@ import {
   percentDelta,
   pointsDelta,
   previousPeriodRange,
-  recentMonthlyCounts,
   venueUtilisation,
   yellowCardRangeStats,
-  yellowCardDateAccessor,
-  issueDateAccessor,
-  conventionDateAccessor,
 } from "@/portals/admin/lib/aggregate";
 import type { YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yellow-card";
 import type { IncidentRow } from "@/portals/admin/features/incidents/lib/incidents";
@@ -253,99 +249,6 @@ describe("monthlyCounts", () => {
     );
 
     expect(result).toEqual([{ month: "Feb", count: 1 }]);
-  });
-});
-
-// The date type a page's DateFilterBar holds picks the one row date that the
-// tiles, the table, its panels, the Export and the monthly chart all read.
-describe("date type accessors", () => {
-  it("Yellow Card: Application Date reads submitted_at, Approval/Completion Date reads decided_at", () => {
-    const row = buildYellowCardRow({ submitted_at: "2026-09-01T04:00:00Z", decided_at: "2026-10-02T04:00:00Z" });
-    const pending = buildYellowCardRow({ submitted_at: "2026-09-01T04:00:00Z", decided_at: null });
-
-    expect(yellowCardDateAccessor("application")(row)).toBe("2026-09-01T04:00:00Z");
-    expect(yellowCardDateAccessor("completion")(row)).toBe("2026-10-02T04:00:00Z");
-    expect(yellowCardDateAccessor("completion")(pending)).toBeNull();
-  });
-
-  it("Incident Reports: Report Date reads submitted_at, Resolution Date reads resolved_at", () => {
-    const row = buildIncidentRow({ submitted_at: "2026-09-01T04:00:00Z", resolved_at: "2026-10-02T04:00:00Z" });
-    const open = buildIncidentRow({ submitted_at: "2026-09-01T04:00:00Z", resolved_at: null });
-
-    expect(issueDateAccessor("report")(row)).toBe("2026-09-01T04:00:00Z");
-    expect(issueDateAccessor("resolution")(row)).toBe("2026-10-02T04:00:00Z");
-    expect(issueDateAccessor("resolution")(open)).toBeNull();
-  });
-
-  it("Convention Center: Booking Date reads submitted_at, Event Date reads event_date", () => {
-    const row = buildBookingRow({ submitted_at: "2026-09-01T04:00:00Z", event_date: "2026-12-05" });
-
-    expect(conventionDateAccessor("booking")(row)).toBe("2026-09-01T04:00:00Z");
-    expect(conventionDateAccessor("event")(row)).toBe("2026-12-05");
-  });
-
-  // The pages memoise on the accessor; a fresh function per call would
-  // recompute every derived panel on every render.
-  it("returns the same function for the same date type", () => {
-    expect(yellowCardDateAccessor("completion")).toBe(yellowCardDateAccessor("completion"));
-    expect(issueDateAccessor("resolution")).toBe(issueDateAccessor("resolution"));
-    expect(conventionDateAccessor("event")).toBe(conventionDateAccessor("event"));
-  });
-});
-
-describe("recentMonthlyCounts", () => {
-  // 2026-10-15 12:00 Manila.
-  const now = new Date("2026-10-15T04:00:00Z");
-
-  // Convention Center's "Event Date" counts upcoming bookings too. A booking
-  // for December must not push the past months out of a chart that reads
-  // "Last 6 months".
-  it("never shows a month after the current Manila month, such as a future event_date", () => {
-    const rows = [
-      buildBookingRow({ event_date: "2026-09-10" }),
-      buildBookingRow({ event_date: "2026-10-20" }),
-      buildBookingRow({ event_date: "2026-12-05" }),
-    ];
-
-    const result = recentMonthlyCounts(rows, (row) => row.event_date, now);
-
-    expect(result).toEqual([
-      { month: "Sep", count: 1 },
-      { month: "Oct", count: 1 },
-    ]);
-  });
-
-  // 2026-10-31T16:30:00Z is 00:30 on 1 November in Manila, while UTC is still
-  // in October. The cap is the Manila month, so "now" at that instant already
-  // shows November, and a row at that instant is already outside October.
-  it("caps at the current Manila month, not the UTC one", () => {
-    const rows = [buildYellowCardRow({ decided_at: "2026-10-31T16:30:00Z" })];
-
-    expect(recentMonthlyCounts(rows, (row) => row.decided_at, now)).toEqual([]);
-    expect(recentMonthlyCounts(rows, (row) => row.decided_at, new Date("2026-10-31T16:30:00Z"))).toEqual([
-      { month: "Nov", count: 1 },
-    ]);
-  });
-
-  it("keeps the last 6 months present, oldest first", () => {
-    const rows = ["2026-02", "2026-03", "2026-04", "2026-05", "2026-07", "2026-08", "2026-10"].map((month) =>
-      buildYellowCardRow({ submitted_at: `${month}-10T04:00:00Z` })
-    );
-
-    const result = recentMonthlyCounts(rows, (row) => row.submitted_at, now);
-
-    expect(result.map((bucket) => bucket.month)).toEqual(["Mar", "Apr", "May", "Jul", "Aug", "Oct"]);
-  });
-
-  // A pending application has no decided_at, so under "Approval/Completion
-  // Date" it is in no month at all.
-  it("skips a row whose picked date is null", () => {
-    const rows = [
-      buildYellowCardRow({ submitted_at: "2026-10-01T04:00:00Z", decided_at: null }),
-      buildYellowCardRow({ submitted_at: "2026-09-01T04:00:00Z", decided_at: "2026-10-02T04:00:00Z" }),
-    ];
-
-    expect(recentMonthlyCounts(rows, (row) => row.decided_at, now)).toEqual([{ month: "Oct", count: 1 }]);
   });
 });
 

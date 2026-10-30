@@ -14,10 +14,10 @@
 // the caller. The three pages pass their tab+date `filtered` rows to
 // barangayCoverage/categoryMix/eventTypeMix/barangayIncidentRows, so those
 // panels agree with the table and CSV export beneath them, but pass the raw
-// unfiltered `rows` to recentMonthlyCounts, since a multi-month trend chart
-// fed an already date-narrowed array would collapse to ~1 bucket. See the
-// comment at each page's recentMonthlyCounts call site for the same rule
-// spelled out in-context.
+// unfiltered `rows` to monthlyCounts, since a multi-month trend chart fed an
+// already date-narrowed array would collapse to ~1 bucket. See the comment
+// at each page's monthlyCounts call site for the same rule spelled out
+// in-context.
 import { MANILA_TIME_ZONE } from "@/shared/dates/manila";
 import { filterByDateRange } from "@/portals/admin/lib/dates";
 import type { BookingRow } from "@/portals/admin/features/booking/lib/bookings";
@@ -25,23 +25,9 @@ import type { IncidentRow } from "@/portals/admin/features/incidents/lib/inciden
 import type { IncidentConfigRow, VenueRow } from "@/portals/admin/lib/supabase/catalogs";
 import type { ClosureReasonValue } from "@/portals/admin/lib/status-labels";
 import type { YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yellow-card";
-import type {
-  ConventionDateBasis,
-  ConventionRangeStats,
-  EventTypeSlice,
-  VenueBooking,
-} from "@/portals/admin/features/booking/types";
-import type {
-  BarangayIssueRow,
-  IssueCategorySlice,
-  IssueDateBasis,
-  IssueRangeStats,
-} from "@/portals/admin/features/incidents/types";
-import type {
-  BarangayCoverage,
-  YellowCardDateBasis,
-  YellowCardRangeStats,
-} from "@/portals/admin/features/yellow-card/types";
+import type { ConventionRangeStats, EventTypeSlice, VenueBooking } from "@/portals/admin/features/booking/types";
+import type { BarangayIssueRow, IssueCategorySlice, IssueRangeStats } from "@/portals/admin/features/incidents/types";
+import type { BarangayCoverage, YellowCardRangeStats } from "@/portals/admin/features/yellow-card/types";
 
 export interface MonthlyReportCount {
   month: string;
@@ -80,38 +66,6 @@ function manilaMonthKey(date: Date): string {
 
 function manilaMonthLabel(date: Date): string {
   return manilaMonthLabelFormatter.format(date);
-}
-
-// The row date each page's date type picks. That one accessor drives the KPI
-// tiles, the date-filtered rows (table, panels, client-side Export) and the
-// monthly chart, so the tiles and the table can't count different rows. A
-// row whose picked date is null (a pending application has no decided_at,
-// an open incident no resolved_at) drops out of all of them. Kept in Records
-// so each date type always returns the same function, which the pages
-// memoise on.
-const YELLOW_CARD_DATE: Record<YellowCardDateBasis, (row: YellowCardRow) => string | null> = {
-  application: (row) => row.submitted_at,
-  completion: (row) => row.decided_at,
-};
-const ISSUE_DATE: Record<IssueDateBasis, (row: IncidentRow) => string | null> = {
-  report: (row) => row.submitted_at,
-  resolution: (row) => row.resolved_at,
-};
-const CONVENTION_DATE: Record<ConventionDateBasis, (row: BookingRow) => string | null> = {
-  booking: (row) => row.submitted_at,
-  event: (row) => row.event_date,
-};
-
-export function yellowCardDateAccessor(basis: YellowCardDateBasis): (row: YellowCardRow) => string | null {
-  return YELLOW_CARD_DATE[basis];
-}
-
-export function issueDateAccessor(basis: IssueDateBasis): (row: IncidentRow) => string | null {
-  return ISSUE_DATE[basis];
-}
-
-export function conventionDateAccessor(basis: ConventionDateBasis): (row: BookingRow) => string | null {
-  return CONVENTION_DATE[basis];
 }
 
 /** Sum of the three status buckets — a pure arithmetic helper components
@@ -201,30 +155,6 @@ export function monthlyCounts<T>(
   return [...buckets.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([, bucket]) => ({ month: bucket.label, count: bucket.count }));
-}
-
-/**
- * The "… by month · Last 6 months" chart: monthlyCounts over `rows`, capped
- * at the current Manila month, then the trailing 6 months present.
- *
- * The cap matters for a date that can lie ahead, such as Convention Center's
- * event_date: an upcoming booking would otherwise fill the window with future
- * months and push the past ones out. It compares Manila month keys, never UTC
- * or the browser's zone, for the reason given above manilaMonthKeyFormatter.
- */
-export function recentMonthlyCounts<T>(
-  rows: T[],
-  getDate: (row: T) => string | null,
-  now: Date = new Date()
-): MonthlyReportCount[] {
-  const currentMonth = manilaMonthKey(now);
-  const upToNow = rows.filter((row) => {
-    const value = getDate(row);
-    if (!value) return false;
-    const parsed = new Date(value);
-    return !Number.isNaN(parsed.getTime()) && manilaMonthKey(parsed) <= currentMonth;
-  });
-  return monthlyCounts(upToNow, getDate).slice(-6);
 }
 
 /**

@@ -24,11 +24,6 @@ import VerificationVerdict from '@/portals/citizen/features/yellow-card/componen
  * indistinguishability here is the point — anything finer would let someone
  * probing tokens tell "not a card" from "a card, but revoked".
  *
- * A check that could not be made (no signal, a timeout, a 5xx) is the one other
- * answer, and it gives no verdict on the card: telling a Verifier on a weak
- * signal "do not accept" would turn away a genuine holder (issue #52). It leaks
- * nothing, because a failed request looks the same for every token.
- *
  * There is no manual entry: typing a card number would let anyone look up names
  * by guessing.
  */
@@ -37,15 +32,12 @@ type State =
   | { status: 'idle' }
   | { status: 'loading' }
   | { status: 'found'; card: VerifiedCard }
-  | { status: 'not-found' }
-  | { status: 'unavailable' };
+  | { status: 'not-found' };
 
 function VerifyContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get('token') ?? '';
   const [state, setState] = useState<State>({ status: 'idle' });
-  // Bumped by Retry to re-run the check for the same token without a reload.
-  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!token) {
@@ -55,18 +47,19 @@ function VerifyContent() {
     let cancelled = false;
     setState({ status: 'loading' });
     verifyCard(token)
-      .then((result) => {
+      .then((card) => {
         if (cancelled) return;
-        setState(result.kind === 'found' ? { status: 'found', card: result.card } : { status: result.kind });
+        setState(card ? { status: 'found', card } : { status: 'not-found' });
       })
       .catch(() => {
-        // An unexpected throw says nothing about the card either.
-        if (!cancelled) setState({ status: 'unavailable' });
+        // verifyCard already collapses every failure to null; this is only
+        // reached on an unexpected throw. Same undifferentiated answer.
+        if (!cancelled) setState({ status: 'not-found' });
       });
     return () => {
       cancelled = true;
     };
-  }, [token, attempt]);
+  }, [token]);
 
   const panelStyle: React.CSSProperties = {
     background: 'white',
@@ -107,25 +100,6 @@ function VerifyContent() {
             this page. If you believe this is an error, contact the {yellowCardOfficeName()} on the
             city trunkline published at the foot of every page.
           </p>
-        </div>
-      )}
-
-      {state.status === 'unavailable' && (
-        <div role="alert" style={{ ...panelStyle, borderLeft: '6px solid #6B7280' }}>
-          <h2 style={{ fontSize: 22, fontWeight: 800, color: '#374151', marginBottom: 8 }}>
-            Couldn&apos;t check this card right now
-          </h2>
-          <p style={{ fontSize: 15, color: '#374151', lineHeight: 1.7, marginBottom: 20 }}>
-            This page could not reach the city&apos;s records, so it cannot say anything about this
-            card yet. Check your connection and try again.
-          </p>
-          <button
-            onClick={() => setAttempt((n) => n + 1)}
-            className="inline-flex items-center justify-center bg-lucena-blue text-white border-none rounded text-[15px] font-semibold cursor-pointer transition-all hover:bg-[#002566]"
-            style={{ padding: '12px 28px', background: '#003DA5', width: '100%' }}
-          >
-            Try Again
-          </button>
         </div>
       )}
 

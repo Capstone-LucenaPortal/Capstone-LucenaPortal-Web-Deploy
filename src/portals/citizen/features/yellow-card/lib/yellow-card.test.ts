@@ -699,95 +699,12 @@ describe('yellowCardService.withdrawApplication in mock mode (no backend)', () =
 describe('verifyCard', () => {
   // Anon-callable by design: the barangay official scanning the QR is signed
   // out, and usually not a portal user at all.
-  it('resolves not-found in mock mode rather than inventing a card', async () => {
-    expect(await verifyCard('11111111-2222-3333-4444-555555555555')).toEqual({ kind: 'not-found' });
+  it('resolves null in mock mode rather than inventing a card', async () => {
+    expect(await verifyCard('11111111-2222-3333-4444-555555555555')).toBeNull();
   });
 
-  it('resolves not-found for a blank token without calling anything', async () => {
-    const { rpc, spy } = withRpc({ data: [], error: null });
-    try {
-      expect(await verifyCard('')).toEqual({ kind: 'not-found' });
-      expect(await verifyCard('   ')).toEqual({ kind: 'not-found' });
-      expect(rpc).not.toHaveBeenCalled();
-    } finally {
-      spy.mockRestore();
-    }
-  });
-
-  function withClient(rpc: ReturnType<typeof vi.fn>) {
-    const fakeClient = { rpc } as unknown as ReturnType<typeof supabaseClientModule.getSupabaseClient>;
-    return vi.spyOn(supabaseClientModule, 'getSupabaseClient').mockReturnValue(fakeClient);
-  }
-
-  /** A fake client whose `verify_yellow_card` call resolves `answer`, as supabase-js does. */
-  function withRpc(answer: { data: unknown; error: unknown; status?: number }) {
-    // The supabase-js builder is a thenable that also takes `.abortSignal()`.
-    const rpc = vi.fn(() => Object.assign(Promise.resolve(answer), { abortSignal() { return this; } }));
-    return { rpc, spy: withClient(rpc) };
-  }
-
-  it('resolves found with the card the RPC returned for the trimmed token', async () => {
-    const card = { holder_name: 'Juan Dela Cruz', status: 'active' };
-    const { rpc, spy } = withRpc({ data: [card], error: null, status: 200 });
-    try {
-      expect(await verifyCard('  tok-1 ')).toEqual({ kind: 'found', card });
-      expect(rpc).toHaveBeenCalledWith('verify_yellow_card', { p_token: 'tok-1' });
-    } finally {
-      spy.mockRestore();
-    }
-  });
-
-  // Unknown and deleted tokens both come back as zero rows; a malformed one as
-  // 22P02 (`p_token` is a uuid). All three must look the same to a prober.
-  it.each([
-    ['zero rows', { data: [], error: null, status: 200 }],
-    ['a malformed token (22P02)', { data: null, error: { code: '22P02', message: 'invalid input syntax for type uuid' }, status: 400 }],
-  ])('resolves not-found for %s', async (_case, answer) => {
-    const { spy } = withRpc(answer);
-    try {
-      expect(await verifyCard('tok-1')).toEqual({ kind: 'not-found' });
-    } finally {
-      spy.mockRestore();
-    }
-  });
-
-  // supabase-js does not throw on a network failure: it resolves an error with
-  // status 0. A failed request says nothing about the card (issue #52).
-  it.each([
-    ['a network failure (status 0)', { data: null, error: { code: '', message: 'TypeError: Failed to fetch' }, status: 0 }],
-    ['an HTTP 503', { data: null, error: { code: '', message: 'Service Unavailable' }, status: 503 }],
-    ['any other RPC error', { data: null, error: { code: '42501', message: 'permission denied' }, status: 401 }],
-  ])('resolves unavailable for %s', async (_case, answer) => {
-    const { spy } = withRpc(answer);
-    try {
-      expect(await verifyCard('tok-1')).toEqual({ kind: 'unavailable' });
-    } finally {
-      spy.mockRestore();
-    }
-  });
-
-  // supabase-js sets no timeout of its own, so on a weak signal a request can
-  // hang and leave the Verifier on "Checking this card…" indefinitely.
-  it('gives up on a request that hangs and resolves unavailable', async () => {
-    vi.useFakeTimers();
-    // A request that never answers until aborted, then resolves the way
-    // supabase-js resolves an aborted fetch.
-    const rpc = vi.fn(() => ({
-      abortSignal: (signal: AbortSignal) =>
-        new Promise((resolve) =>
-          signal.addEventListener('abort', () =>
-            resolve({ data: null, error: { code: '', message: 'AbortError: This operation was aborted' }, status: 0 }),
-          ),
-        ),
-    }));
-    const spy = withClient(rpc);
-    try {
-      const result = verifyCard('tok-1');
-      await vi.advanceTimersByTimeAsync(15_000);
-      expect(await result).toEqual({ kind: 'unavailable' });
-    } finally {
-      spy.mockRestore();
-      vi.useRealTimers();
-    }
+  it('resolves null for a blank token without calling anything', async () => {
+    expect(await verifyCard('')).toBeNull();
+    expect(await verifyCard('   ')).toBeNull();
   });
 });
