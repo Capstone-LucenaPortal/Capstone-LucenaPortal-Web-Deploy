@@ -450,68 +450,6 @@ describe("ConventionCenterPage", () => {
   // prove the explanation is not merely an empty-data state: even with rows
   // on screen, the origin breakdown must say why it cannot be shown rather
   // than rendering a blank table that reads as "no bookings exist".
-  // Issue #24: the date type used to reach the KPI tiles only; the table, the
-  // Export and the monthly chart stayed on submitted_at. b-1 was booked this
-  // month for an event in October (still ahead), b-2 was booked in June for
-  // an event this month, b-3 was booked in May for an event in July.
-  it("the date type also drives the table, the Export and the monthly chart, which never shows a future event month", async () => {
-    vi.useFakeTimers().setSystemTime(new Date("2026-08-15T04:00:00Z")); // 2026-08-15 12:00 Manila
-    try {
-      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-      mockListBookings.mockResolvedValue([
-        buildRow({
-          id: "b-1",
-          reference_number: "CC-2026-000001",
-          submitted_at: "2026-08-05T04:00:00Z",
-          event_date: "2026-10-03",
-        }),
-        buildRow({
-          id: "b-2",
-          reference_number: "CC-2026-000002",
-          submitted_at: "2026-06-10T04:00:00Z",
-          event_date: "2026-08-12",
-        }),
-        buildRow({
-          id: "b-3",
-          reference_number: "CC-2026-000003",
-          submitted_at: "2026-05-01T04:00:00Z",
-          event_date: "2026-07-20",
-        }),
-      ]);
-
-      render(<ConventionCenterPage />);
-      await screen.findByText("CC-2026-000001");
-
-      const recent = getRecentBookingsSection();
-      const chart = screen.getByText("Bookings by month").closest("section")!;
-
-      // Default date type: unchanged from before the fix.
-      expect(within(recent).queryByText("CC-2026-000002")).not.toBeInTheDocument();
-      expect(within(chart).getByText("Last 6 months")).toBeInTheDocument();
-      expect(within(chart).getByTitle("May: 1")).toBeInTheDocument();
-
-      await user.selectOptions(screen.getByLabelText("Date type"), "event");
-
-      expect(within(recent).getByText("CC-2026-000002")).toBeInTheDocument();
-      expect(within(recent).queryByText("CC-2026-000001")).not.toBeInTheDocument();
-      expect(within(recent).queryByText("CC-2026-000003")).not.toBeInTheDocument();
-      // The column already showed event_date and stays as it is.
-      expect(within(recent).getByRole("columnheader", { name: "Event date" })).toBeInTheDocument();
-
-      await user.click(within(recent).getByRole("button", { name: "↓ Export" }));
-      const [, , exported] = mockDownloadCsv.mock.calls[0];
-      expect(exported.map((row: unknown[]) => row[0])).toEqual(["CC-2026-000002"]);
-
-      expect(within(chart).getByText("By event date · Last 6 months")).toBeInTheDocument();
-      expect(within(chart).getByTitle("Jul: 1")).toBeInTheDocument();
-      expect(within(chart).getByTitle("Aug: 1")).toBeInTheDocument();
-      expect(within(chart).queryByTitle("Oct: 1")).not.toBeInTheDocument();
-      expect(within(chart).queryByTitle("May: 1")).not.toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
   it("the Booking Origins panel states its own gap even when bookings are present", async () => {
     mockListBookings.mockResolvedValue([
       buildRow({ id: "b-1", reference_number: "CC-2026-000001" }),

@@ -14,7 +14,6 @@ const entry = (patch: Partial<AuditEntry> = {}): AuditEntry => ({
   sessionId: null,
   ipAddress: null,
   userAgent: null,
-  references: [],
   ...patch,
 });
 
