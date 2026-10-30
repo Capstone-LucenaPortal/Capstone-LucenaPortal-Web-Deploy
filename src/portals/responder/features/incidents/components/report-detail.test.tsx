@@ -12,7 +12,11 @@ const verified = anIncident({
   submitted_at: ARMED,
 });
 
+const ME = "11111111-1111-4111-8111-111111111111";
+const COLLEAGUE = "22222222-2222-4222-8222-222222222222";
+
 const props = {
+  responderId: ME,
   now: NOW,
   gated: false,
   heldRef: null,
@@ -198,6 +202,103 @@ describe("ReportDetail", () => {
       );
 
       expect(screen.getByText("unclaimed")).toBeInTheDocument();
+    });
+  });
+
+  /**
+   * Issue #23. getIncident() reads the report whatever its status, so the pane
+   * opens on reports that left the pool. Only an in_pool report gets the clock,
+   * "unclaimed" and Claim; any other status gets a neutral status line in the
+   * banner's place. QA saw INC-2026-000121, resolved on time, read "past the
+   * promise" with "Claim this incident" under it.
+   */
+  describe("a report that is not in the pool", () => {
+    // Due 55m before NOW: an in_pool report would read "past the promise".
+    const lapsed = {
+      ...verified,
+      sla_armed_at: "2026-08-11T19:13:00.000Z",
+      sla_due_at: "2026-08-11T23:13:00.000Z",
+      pooled_at: "2026-08-11T19:13:00.000Z",
+    };
+
+    function expectNoPoolState() {
+      expect(screen.queryByText(/promise/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/no clock is running/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/unclaimed/)).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Claim/ })).not.toBeInTheDocument();
+      expect(screen.queryByText("One tap. First claim wins.")).not.toBeInTheDocument();
+      // Time in the pool stops meaning anything once a report leaves it; a
+      // count against now would run on, like the clock this issue removed.
+      expect(screen.getByText("In pool").nextElementSibling).toHaveTextContent(
+        /^—$/,
+      );
+    }
+
+    it("says Resolved, with no clock and no Claim", () => {
+      render(
+        <ReportDetail incident={{ ...lapsed, status: "resolved" }} {...props} />,
+      );
+
+      expect(screen.getByText("Resolved")).toBeInTheDocument();
+      expectNoPoolState();
+      // The rest of the pane is unchanged.
+      expect(screen.getByText("INC-2026-000076")).toBeInTheDocument();
+      expect(screen.getByText("Flooding")).toBeInTheDocument();
+    });
+
+    it.each([
+      ["closed", "Closed"],
+      ["open", "Not in the pool yet"],
+    ] as const)("says %s as %j, with no clock and no Claim", (status, line) => {
+      render(<ReportDetail incident={{ ...lapsed, status }} {...props} />);
+
+      expect(screen.getByText(line)).toBeInTheDocument();
+      expectNoPoolState();
+    });
+
+    it("calls a ticket I hold mine, and links to it", () => {
+      render(
+        <ReportDetail
+          incident={{ ...lapsed, status: "in_progress", assigned_responder_id: ME }}
+          {...props}
+        />,
+      );
+
+      expect(screen.getByText("Your ticket")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /Your ticket/ })).toHaveAttribute(
+        "href",
+        "/responder/my-ticket",
+      );
+      expectNoPoolState();
+    });
+
+    // The view hides who holds a ticket on purpose: no roster of colleagues'
+    // workload. The pane only says it is not mine.
+    it("says a colleague holds it, without naming them", () => {
+      const { container } = render(
+        <ReportDetail
+          incident={{
+            ...lapsed,
+            status: "in_progress",
+            assigned_responder_id: COLLEAGUE,
+          }}
+          {...props}
+        />,
+      );
+
+      expect(screen.getByText("Claimed by a colleague")).toBeInTheDocument();
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+      expect(container.innerHTML).not.toContain(COLLEAGUE);
+      expectNoPoolState();
+    });
+
+    // Every view column is nullable in the generated types. A status the pane
+    // cannot read fails safe: it must not offer Claim.
+    it("offers no Claim when the status is missing", () => {
+      render(<ReportDetail incident={{ ...lapsed, status: null }} {...props} />);
+
+      expect(screen.getByText("Not in the pool")).toBeInTheDocument();
+      expectNoPoolState();
     });
   });
 });

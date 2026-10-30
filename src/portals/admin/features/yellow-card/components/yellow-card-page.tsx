@@ -2,7 +2,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { barangayCoverage, barangayTotal, formatRate, monthlyCounts, yellowCardRangeStats } from "@/portals/admin/lib/aggregate";
+import {
+  barangayCoverage,
+  barangayTotal,
+  formatRate,
+  recentMonthlyCounts,
+  yellowCardDateAccessor,
+  yellowCardRangeStats,
+} from "@/portals/admin/lib/aggregate";
 import {
   customRangeError,
   filterByDateRange,
@@ -36,6 +43,18 @@ const BASIS_OPTIONS: { value: YellowCardDateBasis; label: string }[] = [
   { value: "application", label: "Application Date" },
   { value: "completion", label: "Approval/Completion Date" },
 ];
+
+// The table's date column and the monthly chart's subtitle name the date the
+// picked date type reads. The default (submitted) date type keeps the
+// subtitle as it always was.
+const DATE_COLUMN: Record<YellowCardDateBasis, string> = {
+  application: "Submitted",
+  completion: "Decided",
+};
+const MONTHLY_SUBTITLE: Record<YellowCardDateBasis, string> = {
+  application: "Last 6 months",
+  completion: "By decision date · Last 6 months",
+};
 
 // The real yellow_card_application_status enum, in display order, each with
 // its human label sourced from Staff's canonical map (src/portals/admin/lib/status-labels.ts).
@@ -180,21 +199,19 @@ export function YellowCardPage() {
   );
   // "application" reads submitted_at (when the applicant filed); "completion"
   // reads decided_at (when staff approved/rejected it) — a still-pending
-  // application therefore has no decided_at and drops out of every KPI tile
-  // under the "completion" basis, the same way filterByDateRange already
-  // drops any row whose accessor returns null.
-  const statsDateAccessor = useMemo(
-    () => (dateBasis === "completion" ? (row: YellowCardRow) => row.decided_at : (row: YellowCardRow) => row.submitted_at),
-    [dateBasis]
-  );
+  // application therefore has no decided_at and drops out of the KPI tiles,
+  // the table, every panel and the monthly chart under the "completion"
+  // basis. One accessor feeds all of them so they always count the same
+  // rows (issue #24).
+  const getDate = yellowCardDateAccessor(dateBasis);
   const rangeLabel = useMemo(() => formatManilaRangeLabel(dateRange), [dateRange]);
   const stats = useMemo(
-    () => yellowCardRangeStats(rows, dateRange, statsDateAccessor, barangayCount),
-    [rows, dateRange, statsDateAccessor, barangayCount]
+    () => yellowCardRangeStats(rows, dateRange, getDate, barangayCount),
+    [rows, dateRange, getDate, barangayCount]
   );
   const filtered = useMemo(
-    () => filterByDateRange(filterRows(rows, activeTab), (row) => row.submitted_at, dateRange),
-    [rows, activeTab, dateRange]
+    () => filterByDateRange(filterRows(rows, activeTab), getDate, dateRange),
+    [rows, activeTab, getDate, dateRange]
   );
   // barangayCoverage reads `filtered`, not raw `rows`, so this panel agrees
   // with the status tab and date preset the table/CSV export below already
@@ -214,20 +231,16 @@ export function YellowCardPage() {
         })),
     [coverage]
   );
-  // Unlike coverage/topBarangays above, monthlyCounts stays on the raw,
+  // Unlike coverage/topBarangays above, recentMonthlyCounts stays on the raw,
   // unfiltered `rows` — not `filtered` — on purpose: it exists to show a
   // multi-month trend, and feeding it an already date-preset-narrowed array
   // would collapse most presets to a single bucket, defeating the chart. Do
   // not "fix" this to match the other panels above.
   //
-  // MonthlyBarCard's title promises "Last 6 months"; monthlyCounts itself
-  // returns every Manila month present in `rows` (oldest-first, no fixed
-  // window — see its own doc comment), so the page slices the trailing 6
-  // itself rather than baking a "last N" assumption into a generic aggregator.
-  const monthlyApplications = useMemo(
-    () => monthlyCounts(rows, (row) => row.submitted_at).slice(-6),
-    [rows]
-  );
+  // MonthlyBarCard's title promises "Last 6 months"; recentMonthlyCounts
+  // keeps the trailing 6 Manila months present, never one after the current
+  // month, counted by the picked date type.
+  const monthlyApplications = useMemo(() => recentMonthlyCounts(rows, getDate), [rows, getDate]);
 
   // exportApplications is a separate audited RPC, not a client-side map over
   // the already-loaded `rows` state: it writes one pii_access audit row per
@@ -242,6 +255,9 @@ export function YellowCardPage() {
     // currently no "All time" pseudo-preset, so this covers every value
     // DateFilterBar can produce; if one is ever added, it is the only case
     // that may send nulls.
+    // The RPC still filters on submitted_at whatever the date type, unlike
+    // the table: following the date type is Capstone-LucenaPortal-DB#19, and
+    // the date type gets passed here once that RPC change is applied.
     // TODO: Custom's from/to are the raw <input type="date"> strings, sent
     // straight to the same RPC whose `date` params get cast to timestamptz in
     // the UTC session zone (see presetDateRange's header in src/portals/admin/lib/dates.ts).
@@ -403,7 +419,7 @@ export function YellowCardPage() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <MonthlyBarCard
           title="Applications by month"
-          subtitle="Last 6 months"
+          subtitle={MONTHLY_SUBTITLE[dateBasis]}
           months={monthlyApplications}
           showCounts
         />
@@ -465,7 +481,7 @@ export function YellowCardPage() {
             columns={[
               { header: "Reference", render: (row: YellowCardRow) => row.reference_number ?? "—" },
               { header: "Barangay", render: (row: YellowCardRow) => row.barangay_name ?? row.barangay_code ?? "—" },
-              { header: "Submitted", render: (row: YellowCardRow) => formatManilaDate(row.submitted_at) },
+              { header: DATE_COLUMN[dateBasis], render: (row: YellowCardRow) => formatManilaDate(getDate(row)) },
               {
                 header: "Status",
                 render: (row: YellowCardRow) => (

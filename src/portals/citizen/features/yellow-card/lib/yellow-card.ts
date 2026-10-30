@@ -371,24 +371,52 @@ export function translateSubmitError(message: string, code?: string): string {
 }
 
 /**
+ * What a QR verification token resolved to. `not-found` is the one answer for an
+ * unknown, malformed or deleted token; `unavailable` means the check itself
+ * failed and says nothing about the card.
+ */
+export type VerifyCardResult =
+  | { kind: 'found'; card: VerifiedCard }
+  | { kind: 'not-found' }
+  | { kind: 'unavailable' };
+
+/**
+ * How long a Verification waits for the RPC. supabase-js sets no timeout of its
+ * own, so without one a request on a weak signal can hang indefinitely.
+ */
+const VERIFY_TIMEOUT_MS = 15_000;
+
+/**
  * Look up a card by its QR verification token. No auth required by design: the
  * official scanning the code is signed out, and often not a portal user at all.
- * Returns null when the token matches nothing.
  */
-export async function verifyCard(token: string): Promise<VerifiedCard | null> {
+export async function verifyCard(token: string): Promise<VerifyCardResult> {
   const trimmed = (token ?? '').trim();
-  if (!trimmed) return null;
+  if (!trimmed) return { kind: 'not-found' };
 
   const client = getSupabaseClient();
-  if (!client) return null;
+  if (!client) return { kind: 'not-found' };
 
-  const { data, error } = await client.rpc('verify_yellow_card', { p_token: trimmed });
-  // Includes `22P02` for a token that is not a well-formed uuid. Surfacing that
-  // separately would confirm the token format to a prober, so every failure —
-  // malformed, unknown, or transient — collapses to the same empty result.
-  if (error) return null;
+  // An aborted request resolves like any network failure (`status: 0`).
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), VERIFY_TIMEOUT_MS);
+  let answer;
+  try {
+    answer = await client.rpc('verify_yellow_card', { p_token: trimmed }).abortSignal(controller.signal);
+  } finally {
+    clearTimeout(timer);
+  }
+  const { data, error } = answer;
+  if (error) {
+    // `22P02` is a token that is not a well-formed uuid. Surfacing it apart from
+    // an unknown token would confirm the token format to a prober, so it is
+    // `not-found` too. Every other error — supabase-js resolves a network failure
+    // as `status: 0` rather than throwing, and a timeout or 5xx likewise — is a failed check,
+    // the same for every token, so telling it apart leaks nothing (issue #52).
+    return error.code === '22P02' ? { kind: 'not-found' } : { kind: 'unavailable' };
+  }
   const rows = (Array.isArray(data) ? data : data ? [data] : []) as VerifiedCard[];
-  return rows[0] ?? null;
+  return rows[0] ? { kind: 'found', card: rows[0] } : { kind: 'not-found' };
 }
 
 /**

@@ -14,6 +14,7 @@ const rows: AuditEntry[] = [
     sessionId: null,
     ipAddress: null,
     userAgent: null,
+    references: [],
   },
   {
     id: "aud-0002",
@@ -26,6 +27,7 @@ const rows: AuditEntry[] = [
     sessionId: null,
     ipAddress: null,
     userAgent: null,
+    references: [],
   },
   {
     id: "aud-0004",
@@ -38,6 +40,7 @@ const rows: AuditEntry[] = [
     sessionId: null,
     ipAddress: null,
     userAgent: null,
+    references: [],
   },
 ];
 
