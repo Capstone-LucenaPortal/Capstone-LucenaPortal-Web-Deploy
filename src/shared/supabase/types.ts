@@ -7480,6 +7480,14 @@ export type Database = {
         }
       }
       anonymise_citizen: { Args: { p_citizen_id: string }; Returns: undefined }
+      booking_hold_lapsed: {
+        Args: {
+          p_at: string
+          p_hold_expires_at: string
+          p_status: Database["public"]["Enums"]["booking_status"]
+        }
+        Returns: boolean
+      }
       booking_money: {
         Args: { p_total_fee: number }
         Returns: {
@@ -7499,6 +7507,10 @@ export type Database = {
           requires_quote: boolean
           total_fee: number
         }[]
+      }
+      booking_status_holds_dates: {
+        Args: { p_status: Database["public"]["Enums"]["booking_status"] }
+        Returns: boolean
       }
       can_read_booking_document: { Args: { p_path: string }; Returns: boolean }
       can_read_incident_photo: { Args: { p_path: string }; Returns: boolean }
@@ -9167,6 +9179,16 @@ export type Database = {
       sweep_send_push_queue: { Args: never; Returns: boolean }
       sweep_yellow_card_deadline_notices: { Args: never; Returns: number }
       system_health_server_stats: { Args: never; Returns: Json }
+      system_health_service_stats: {
+        Args: {
+          p_abandoned_upload_seconds: number
+          p_hold_grace_seconds: number
+          p_lifecycle_grace_seconds: number
+          p_notice_grace_seconds: number
+          p_receipt_grace_seconds: number
+        }
+        Returns: Json
+      }
       system_health_snapshot: { Args: never; Returns: Json }
       update_booking_classification: {
         Args: {
@@ -9727,9 +9749,29 @@ export type Database = {
         }
         Returns: string
       }
+      yc_deadline_state_at: {
+        Args: {
+          p_at: string
+          p_due_at: string
+          p_sla_clock_started_at: string
+          p_sla_elapsed_seconds: number
+          p_sla_target_hours: number
+          p_status: Database["public"]["Enums"]["yellow_card_application_status"]
+        }
+        Returns: string
+      }
       yc_deadline_state_of: {
         Args: {
           p_due_at: string
+          p_sla_clock_started_at: string
+          p_sla_elapsed_seconds: number
+          p_sla_target_hours: number
+          p_status: Database["public"]["Enums"]["yellow_card_application_status"]
+        }
+        Returns: string
+      }
+      yc_recomputed_due_at: {
+        Args: {
           p_sla_clock_started_at: string
           p_sla_elapsed_seconds: number
           p_sla_target_hours: number
