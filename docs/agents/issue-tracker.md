@@ -98,8 +98,12 @@ with `gh pr view 42` and fall back to `gh issue view 42`.
 
 Decide what's being published first:
 
-- **A new unit of planned work** (what `/to-spec` or a plan would produce) → Jira. That's a write
-  to the shared board, so draft it and ask before creating.
+- **A spec** (what `/to-spec` produces) → **the Jira ticket's description**. If a SCRUM ticket
+  already covers the work, the spec goes into that ticket's description, keeping its `Ref:` footer.
+  Otherwise draft a new ticket and ask before creating it. Apply the `ready-for-agent` label in
+  Jira as well.
+- **A new unit of planned work** of any other kind → Jira. That's a write to the shared board, so
+  draft it and ask before creating it.
 - **Engineering children of an existing Jira ticket** (what `/to-tickets` produces) → GitHub
   issues here with `gh issue create`, each carrying its `Parent:` line.
 
@@ -112,10 +116,11 @@ then follow its `Parent:` line to Jira for the wider context.
 
 ## What stays on disk
 
-Specs and wayfinder maps are not tickets. A spec is a living document edited over days; neither a
-Jira description nor a GitHub issue body is a good home for one.
+Specs are **not** kept here: they go into Jira (see above; the user's rule since 2026-10-31,
+first applied on SCRUM-169). Working notes for a feature in flight, such as grilling drafts or a
+demo script, can live in `.scratch/<feature-slug>/`. Once a spec is published, delete any draft
+it replaces.
 
-- `.scratch/<feature-slug>/spec.md` — the spec for a feature currently in flight.
 - `.scratch/<effort>/map.md` — a `/wayfinder` map (see below).
 - `src/portals/<portal>/docs/superpowers/{plans,specs,decisions}/` — durable, dated planning
   documents carried over from the archived Portal repos. They outlive the work; don't write

@@ -213,6 +213,6 @@ change pipeline** and has no CI. Schema is numbered in layers
 thing from the pipeline's gates. From this repo the database may be **read,
 called and observed** — never altered.
 
-The Sandbox project is at **l70b** (verified 2026-09-30). Production was last
+The Sandbox project is at **l91** (verified 2026-10-31). Production was last
 recorded at **l40** and is paused, so its current layer could not be checked —
 treat every layer after l40 as Sandbox-only until someone confirms otherwise.
