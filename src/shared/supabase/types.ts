@@ -2698,14 +2698,30 @@ export type Database = {
       }
       system_health_samples: {
         Row: {
+          accounts_status:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
           connections: number
+          database_status:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
           db_bytes: number
           email_bounced_24h: number
           email_failed_24h: number
           email_oldest_queued_seconds: number | null
           email_queued: number
           id: number
+          incidents_status:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
           jobs_failed_24h: number
+          jobs_status:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
+          lcc_status: Database["public"]["Enums"]["system_health_status"] | null
+          notifications_status:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
           push_bounced_24h: number
           push_failed_24h: number
           push_oldest_queued_seconds: number | null
@@ -2713,16 +2729,40 @@ export type Database = {
           sampled_at: string
           status: Database["public"]["Enums"]["system_health_status"]
           storage_bytes: number
+          storage_status:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
+          yellow_card_status:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
         }
         Insert: {
+          accounts_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
           connections: number
+          database_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
           db_bytes: number
           email_bounced_24h: number
           email_failed_24h: number
           email_oldest_queued_seconds?: number | null
           email_queued: number
           id?: never
+          incidents_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
           jobs_failed_24h: number
+          jobs_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
+          lcc_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
+          notifications_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
           push_bounced_24h: number
           push_failed_24h: number
           push_oldest_queued_seconds?: number | null
@@ -2730,16 +2770,40 @@ export type Database = {
           sampled_at?: string
           status: Database["public"]["Enums"]["system_health_status"]
           storage_bytes: number
+          storage_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
+          yellow_card_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
         }
         Update: {
+          accounts_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
           connections?: number
+          database_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
           db_bytes?: number
           email_bounced_24h?: number
           email_failed_24h?: number
           email_oldest_queued_seconds?: number | null
           email_queued?: number
           id?: never
+          incidents_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
           jobs_failed_24h?: number
+          jobs_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
+          lcc_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
+          notifications_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
           push_bounced_24h?: number
           push_failed_24h?: number
           push_oldest_queued_seconds?: number | null
@@ -2747,6 +2811,12 @@ export type Database = {
           sampled_at?: string
           status?: Database["public"]["Enums"]["system_health_status"]
           storage_bytes?: number
+          storage_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
+          yellow_card_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
         }
         Relationships: []
       }
@@ -7168,13 +7238,29 @@ export type Database = {
       }
       super_system_health_samples: {
         Row: {
+          accounts_status:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
           connections: number | null
+          database_status:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
           db_bytes: number | null
           email_bounced_24h: number | null
           email_failed_24h: number | null
           email_oldest_queued_seconds: number | null
           email_queued: number | null
+          incidents_status:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
           jobs_failed_24h: number | null
+          jobs_status:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
+          lcc_status: Database["public"]["Enums"]["system_health_status"] | null
+          notifications_status:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
           push_bounced_24h: number | null
           push_failed_24h: number | null
           push_oldest_queued_seconds: number | null
@@ -7182,15 +7268,39 @@ export type Database = {
           sampled_at: string | null
           status: Database["public"]["Enums"]["system_health_status"] | null
           storage_bytes: number | null
+          storage_status:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
+          yellow_card_status:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
         }
         Insert: {
+          accounts_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
           connections?: number | null
+          database_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
           db_bytes?: number | null
           email_bounced_24h?: number | null
           email_failed_24h?: number | null
           email_oldest_queued_seconds?: number | null
           email_queued?: number | null
+          incidents_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
           jobs_failed_24h?: number | null
+          jobs_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
+          lcc_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
+          notifications_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
           push_bounced_24h?: number | null
           push_failed_24h?: number | null
           push_oldest_queued_seconds?: number | null
@@ -7198,15 +7308,39 @@ export type Database = {
           sampled_at?: string | null
           status?: Database["public"]["Enums"]["system_health_status"] | null
           storage_bytes?: number | null
+          storage_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
+          yellow_card_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
         }
         Update: {
+          accounts_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
           connections?: number | null
+          database_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
           db_bytes?: number | null
           email_bounced_24h?: number | null
           email_failed_24h?: number | null
           email_oldest_queued_seconds?: number | null
           email_queued?: number | null
+          incidents_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
           jobs_failed_24h?: number | null
+          jobs_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
+          lcc_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
+          notifications_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
           push_bounced_24h?: number | null
           push_failed_24h?: number | null
           push_oldest_queued_seconds?: number | null
@@ -7214,6 +7348,12 @@ export type Database = {
           sampled_at?: string | null
           status?: Database["public"]["Enums"]["system_health_status"] | null
           storage_bytes?: number | null
+          storage_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
+          yellow_card_status?:
+            | Database["public"]["Enums"]["system_health_status"]
+            | null
         }
         Relationships: []
       }
@@ -7895,6 +8035,13 @@ export type Database = {
         }
       }
       next_reference: { Args: { p_prefix: string }; Returns: string }
+      notification_reason_category: {
+        Args: {
+          p_error: string
+          p_status: Database["public"]["Enums"]["notify_status"]
+        }
+        Returns: string
+      }
       notify_citizen: {
         Args: {
           p_body: string
@@ -7921,6 +8068,7 @@ export type Database = {
         Args: { p_end_at: string; p_is_published: boolean; p_start_at: string }
         Returns: string
       }
+      purge_cron_history: { Args: never; Returns: number }
       push_delivery_enabled: { Args: never; Returns: boolean }
       push_endpoint_allowed: { Args: { p_endpoint: string }; Returns: boolean }
       push_worker_authorised: { Args: { p_secret: string }; Returns: boolean }
