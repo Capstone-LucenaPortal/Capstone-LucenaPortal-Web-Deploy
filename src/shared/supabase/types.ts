@@ -2696,6 +2696,60 @@ export type Database = {
           },
         ]
       }
+      system_health_samples: {
+        Row: {
+          connections: number
+          db_bytes: number
+          email_bounced_24h: number
+          email_failed_24h: number
+          email_oldest_queued_seconds: number | null
+          email_queued: number
+          id: number
+          jobs_failed_24h: number
+          push_bounced_24h: number
+          push_failed_24h: number
+          push_oldest_queued_seconds: number | null
+          push_queued: number
+          sampled_at: string
+          status: Database["public"]["Enums"]["system_health_status"]
+          storage_bytes: number
+        }
+        Insert: {
+          connections: number
+          db_bytes: number
+          email_bounced_24h: number
+          email_failed_24h: number
+          email_oldest_queued_seconds?: number | null
+          email_queued: number
+          id?: never
+          jobs_failed_24h: number
+          push_bounced_24h: number
+          push_failed_24h: number
+          push_oldest_queued_seconds?: number | null
+          push_queued: number
+          sampled_at?: string
+          status: Database["public"]["Enums"]["system_health_status"]
+          storage_bytes: number
+        }
+        Update: {
+          connections?: number
+          db_bytes?: number
+          email_bounced_24h?: number
+          email_failed_24h?: number
+          email_oldest_queued_seconds?: number | null
+          email_queued?: number
+          id?: never
+          jobs_failed_24h?: number
+          push_bounced_24h?: number
+          push_failed_24h?: number
+          push_oldest_queued_seconds?: number | null
+          push_queued?: number
+          sampled_at?: string
+          status?: Database["public"]["Enums"]["system_health_status"]
+          storage_bytes?: number
+        }
+        Relationships: []
+      }
       yellow_card_applications: {
         Row: {
           barangay_code: string
@@ -5254,6 +5308,8 @@ export type Database = {
           barangay_name: string | null
           before_photo_count: number | null
           category_label: string | null
+          closed_at: string | null
+          closure_reason: Database["public"]["Enums"]["closure_reason"] | null
           cycle_number: number | null
           description: string | null
           id: string | null
@@ -5264,6 +5320,7 @@ export type Database = {
           reference_number: string | null
           reporter_first_name: string | null
           reporter_phone: string | null
+          resolved_at: string | null
           sla_armed_at: string | null
           sla_due_at: string | null
           status: Database["public"]["Enums"]["incident_status"] | null
@@ -7109,6 +7166,68 @@ export type Database = {
         }
         Relationships: []
       }
+      super_system_health_samples: {
+        Row: {
+          connections: number | null
+          db_bytes: number | null
+          email_bounced_24h: number | null
+          email_failed_24h: number | null
+          email_oldest_queued_seconds: number | null
+          email_queued: number | null
+          jobs_failed_24h: number | null
+          push_bounced_24h: number | null
+          push_failed_24h: number | null
+          push_oldest_queued_seconds: number | null
+          push_queued: number | null
+          sampled_at: string | null
+          status: Database["public"]["Enums"]["system_health_status"] | null
+          storage_bytes: number | null
+        }
+        Insert: {
+          connections?: number | null
+          db_bytes?: number | null
+          email_bounced_24h?: number | null
+          email_failed_24h?: number | null
+          email_oldest_queued_seconds?: number | null
+          email_queued?: number | null
+          jobs_failed_24h?: number | null
+          push_bounced_24h?: number | null
+          push_failed_24h?: number | null
+          push_oldest_queued_seconds?: number | null
+          push_queued?: number | null
+          sampled_at?: string | null
+          status?: Database["public"]["Enums"]["system_health_status"] | null
+          storage_bytes?: number | null
+        }
+        Update: {
+          connections?: number | null
+          db_bytes?: number | null
+          email_bounced_24h?: number | null
+          email_failed_24h?: number | null
+          email_oldest_queued_seconds?: number | null
+          email_queued?: number | null
+          jobs_failed_24h?: number | null
+          push_bounced_24h?: number | null
+          push_failed_24h?: number | null
+          push_oldest_queued_seconds?: number | null
+          push_queued?: number | null
+          sampled_at?: string | null
+          status?: Database["public"]["Enums"]["system_health_status"] | null
+          storage_bytes?: number | null
+        }
+        Relationships: []
+      }
+      super_system_health_summary: {
+        Row: {
+          healthy_pct_24h: number | null
+          healthy_pct_7d: number | null
+          ok_24h: number | null
+          ok_7d: number | null
+          samples_24h: number | null
+          samples_7d: number | null
+        }
+        Relationships: []
+      }
       super_yellow_card_config: {
         Row: {
           at_risk_threshold_pct: number | null
@@ -7605,6 +7724,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      cron_interval_seconds: { Args: { p_schedule: string }; Returns: number }
       custom_access_token_hook: { Args: { event: Json }; Returns: Json }
       delete_my_push_subscription: {
         Args: { p_endpoint: string }
@@ -7613,7 +7733,12 @@ export type Database = {
       email_delivery_enabled: { Args: never; Returns: boolean }
       email_worker_authorised: { Args: { p_secret: string }; Returns: boolean }
       export_yellow_card_applications: {
-        Args: { p_from?: string; p_status?: string; p_to?: string }
+        Args: {
+          p_date_basis?: string
+          p_from?: string
+          p_status?: string
+          p_to?: string
+        }
         Returns: {
           barangay_label: string
           email: string
@@ -7724,6 +7849,10 @@ export type Database = {
       }
       has_module: {
         Args: { p_module: Database["public"]["Enums"]["module_code"] }
+        Returns: boolean
+      }
+      incident_photo_reservation_is_live: {
+        Args: { p_reserved_at: string }
         Returns: boolean
       }
       is_active_staff: { Args: { p_role?: string }; Returns: boolean }
@@ -8451,6 +8580,10 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      sample_system_health: {
+        Args: never
+        Returns: Database["public"]["Enums"]["system_health_status"]
+      }
       save_agency_identity: {
         Args: { p_agency_name: string; p_seal_path: string }
         Returns: {
@@ -8879,11 +9012,13 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      super_system_health: { Args: never; Returns: Json }
       sweep_expired_holds: { Args: never; Returns: number }
       sweep_incident_lifecycle: { Args: never; Returns: number }
       sweep_send_email_queue: { Args: never; Returns: boolean }
       sweep_send_push_queue: { Args: never; Returns: boolean }
       sweep_yellow_card_deadline_notices: { Args: never; Returns: number }
+      system_health_snapshot: { Args: never; Returns: Json }
       update_booking_classification: {
         Args: {
           p_code: string
@@ -9541,6 +9676,7 @@ export type Database = {
       site_info_kind: "emergency_hotline" | "office_contact" | "floor_directory"
       staff_role: "staff" | "responder" | "admin" | "super_staff"
       staff_verification_decision: "accept" | "reject"
+      system_health_status: "ok" | "warning" | "critical"
       tier_review_decision: "accept" | "revise" | "reject"
       upload_kind:
         | "yellow_card_document"
@@ -9773,6 +9909,7 @@ export const Constants = {
       ],
       staff_role: ["staff", "responder", "admin", "super_staff"],
       staff_verification_decision: ["accept", "reject"],
+      system_health_status: ["ok", "warning", "critical"],
       tier_review_decision: ["accept", "revise", "reject"],
       upload_kind: [
         "yellow_card_document",
