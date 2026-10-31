@@ -9166,6 +9166,7 @@ export type Database = {
       sweep_send_email_queue: { Args: never; Returns: boolean }
       sweep_send_push_queue: { Args: never; Returns: boolean }
       sweep_yellow_card_deadline_notices: { Args: never; Returns: number }
+      system_health_server_stats: { Args: never; Returns: Json }
       system_health_snapshot: { Args: never; Returns: Json }
       update_booking_classification: {
         Args: {
