@@ -7902,42 +7902,7 @@ export type Database = {
       }
       force_release_incident: {
         Args: { p_incident_id: string; p_reason: string }
-        Returns: {
-          address: string
-          assigned_department_code: string | null
-          assigned_responder_id: string | null
-          barangay_code: string
-          citizen_id: string
-          closed_at: string | null
-          closure_reason: Database["public"]["Enums"]["closure_reason"] | null
-          created_at: string
-          description: string
-          duplicate_of: string | null
-          id: string
-          incident_level: Database["public"]["Enums"]["incident_level"]
-          incident_type_code: string
-          is_anonymous: boolean
-          is_verified: boolean
-          pooled_at: string | null
-          reference_number: string
-          reopened_count: number
-          resolved_at: string | null
-          routed_at: string | null
-          sla_armed_at: string | null
-          sla_due_at: string | null
-          sla_target_hours: number | null
-          status: Database["public"]["Enums"]["incident_status"]
-          submitted_at: string
-          suggested_department_code: string
-          updated_at: string
-          verified_at: string | null
-        }
-        SetofOptions: {
-          from: "*"
-          to: "incidents"
-          isOneToOne: true
-          isSetofReturn: false
-        }
+        Returns: undefined
       }
       get_document_path: {
         Args: { p_kind: string; p_row_id: string }
@@ -8378,81 +8343,11 @@ export type Database = {
       }
       reject_incident: {
         Args: { p_incident_id: string; p_reason: string }
-        Returns: {
-          address: string
-          assigned_department_code: string | null
-          assigned_responder_id: string | null
-          barangay_code: string
-          citizen_id: string
-          closed_at: string | null
-          closure_reason: Database["public"]["Enums"]["closure_reason"] | null
-          created_at: string
-          description: string
-          duplicate_of: string | null
-          id: string
-          incident_level: Database["public"]["Enums"]["incident_level"]
-          incident_type_code: string
-          is_anonymous: boolean
-          is_verified: boolean
-          pooled_at: string | null
-          reference_number: string
-          reopened_count: number
-          resolved_at: string | null
-          routed_at: string | null
-          sla_armed_at: string | null
-          sla_due_at: string | null
-          sla_target_hours: number | null
-          status: Database["public"]["Enums"]["incident_status"]
-          submitted_at: string
-          suggested_department_code: string
-          updated_at: string
-          verified_at: string | null
-        }
-        SetofOptions: {
-          from: "*"
-          to: "incidents"
-          isOneToOne: true
-          isSetofReturn: false
-        }
+        Returns: undefined
       }
       release_incident: {
         Args: { p_incident_id: string; p_reason: string }
-        Returns: {
-          address: string
-          assigned_department_code: string | null
-          assigned_responder_id: string | null
-          barangay_code: string
-          citizen_id: string
-          closed_at: string | null
-          closure_reason: Database["public"]["Enums"]["closure_reason"] | null
-          created_at: string
-          description: string
-          duplicate_of: string | null
-          id: string
-          incident_level: Database["public"]["Enums"]["incident_level"]
-          incident_type_code: string
-          is_anonymous: boolean
-          is_verified: boolean
-          pooled_at: string | null
-          reference_number: string
-          reopened_count: number
-          resolved_at: string | null
-          routed_at: string | null
-          sla_armed_at: string | null
-          sla_due_at: string | null
-          sla_target_hours: number | null
-          status: Database["public"]["Enums"]["incident_status"]
-          submitted_at: string
-          suggested_department_code: string
-          updated_at: string
-          verified_at: string | null
-        }
-        SetofOptions: {
-          from: "*"
-          to: "incidents"
-          isOneToOne: true
-          isSetofReturn: false
-        }
+        Returns: undefined
       }
       reopen_incident: {
         Args: { p_incident_id: string; p_reason: string }
@@ -8558,42 +8453,7 @@ export type Database = {
       }
       resolve_incident: {
         Args: { p_incident_id: string; p_note?: string }
-        Returns: {
-          address: string
-          assigned_department_code: string | null
-          assigned_responder_id: string | null
-          barangay_code: string
-          citizen_id: string
-          closed_at: string | null
-          closure_reason: Database["public"]["Enums"]["closure_reason"] | null
-          created_at: string
-          description: string
-          duplicate_of: string | null
-          id: string
-          incident_level: Database["public"]["Enums"]["incident_level"]
-          incident_type_code: string
-          is_anonymous: boolean
-          is_verified: boolean
-          pooled_at: string | null
-          reference_number: string
-          reopened_count: number
-          resolved_at: string | null
-          routed_at: string | null
-          sla_armed_at: string | null
-          sla_due_at: string | null
-          sla_target_hours: number | null
-          status: Database["public"]["Enums"]["incident_status"]
-          submitted_at: string
-          suggested_department_code: string
-          updated_at: string
-          verified_at: string | null
-        }
-        SetofOptions: {
-          from: "*"
-          to: "incidents"
-          isOneToOne: true
-          isSetofReturn: false
-        }
+        Returns: undefined
       }
       review_booking: {
         Args: {
@@ -8703,42 +8563,7 @@ export type Database = {
           p_level?: Database["public"]["Enums"]["incident_level"]
           p_note?: string
         }
-        Returns: {
-          address: string
-          assigned_department_code: string | null
-          assigned_responder_id: string | null
-          barangay_code: string
-          citizen_id: string
-          closed_at: string | null
-          closure_reason: Database["public"]["Enums"]["closure_reason"] | null
-          created_at: string
-          description: string
-          duplicate_of: string | null
-          id: string
-          incident_level: Database["public"]["Enums"]["incident_level"]
-          incident_type_code: string
-          is_anonymous: boolean
-          is_verified: boolean
-          pooled_at: string | null
-          reference_number: string
-          reopened_count: number
-          resolved_at: string | null
-          routed_at: string | null
-          sla_armed_at: string | null
-          sla_due_at: string | null
-          sla_target_hours: number | null
-          status: Database["public"]["Enums"]["incident_status"]
-          submitted_at: string
-          suggested_department_code: string
-          updated_at: string
-          verified_at: string | null
-        }
-        SetofOptions: {
-          from: "*"
-          to: "incidents"
-          isOneToOne: true
-          isSetofReturn: false
-        }
+        Returns: undefined
       }
       sample_system_health: {
         Args: never
