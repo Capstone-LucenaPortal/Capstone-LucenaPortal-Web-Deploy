@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import Link from "next/link";
 import { Modal } from "@/portals/responder/components/ui/modal";
 
 function Shell({ opener, modal }: { opener: boolean; modal: boolean }) {
@@ -35,7 +36,7 @@ describe("Modal", () => {
     render(
       <Modal onClose={vi.fn()}>
         <div role="alertdialog" aria-modal="true" aria-label="Lost" tabIndex={-1}>
-          <a href="/responder/pool">Back to pool</a>
+          <Link href="/responder/pool">Back to pool</Link>
         </div>
       </Modal>,
     );

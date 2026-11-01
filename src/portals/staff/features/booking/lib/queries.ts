@@ -49,11 +49,24 @@ export interface QueueOptions {
 }
 
 /**
+ * The rows one screen shows, and how many rows match the tab and the search.
+ * The two differ only when the match runs past QUEUE_LIMIT — which is the
+ * footer's truncation signal.
+ */
+export interface QueueResult {
+  items: BookingQueueItem[];
+  matchCount: number;
+}
+
+/**
  * The queue read.
  *
  * Two orderings, chosen by the filter, and this is deliberate: the needs-action
  * tab is about how long somebody has been waiting on us, and everything else
  * reads as a schedule.
+ *
+ * The match count rides on the same request as the rows, so it is filtered
+ * exactly as they are. A second count query repeating the filters would drift.
  *
  * `db` is ADR-0001's seam: optional and trailing, so every caller goes on
  * omitting it and building the real client, and a test can hand one in whose
@@ -63,13 +76,13 @@ export interface QueueOptions {
 export async function getBookingQueue(
   options: QueueOptions = {},
   db?: Db,
-): Promise<BookingQueueItem[]> {
+): Promise<QueueResult> {
   const supabase = db ?? await createClient();
   const filter = options.status ?? "all";
 
   let query = supabase
     .from("staff_bookings")
-    .select(QUEUE_COLUMNS)
+    .select(QUEUE_COLUMNS, { count: "exact" })
     .limit(QUEUE_LIMIT);
 
   const statuses = statusesFor(filter);
@@ -90,17 +103,21 @@ export async function getBookingQueue(
       .order("start_time", { ascending: true });
   }
 
-  const { data, error } = await query;
+  const { data, count, error } = await query;
   if (error) throw new Error(`staff_bookings read failed: ${error.message}`);
 
-  return ((data as StaffBookingQueueRow[] | null) ?? []).map(toQueueItem);
+  const items = ((data as StaffBookingQueueRow[] | null) ?? []).map(toQueueItem);
+  // count is null only if PostgREST drops the Content-Range it was asked for.
+  // The rows on hand are then the best figure there is, though it hides a cut.
+  return { items, matchCount: count ?? items.length };
 }
 
 /**
  * Tab counts are deliberately whole-view — they do not narrow with the search
  * box and they do not narrow with the tab that is open, which is what makes
  * them a workload summary rather than a restatement of the table below them.
- * Every figure a queue shows is whole-view; see CONTEXT.md, "Queue".
+ * Every figure above a queue's table is whole-view — only the footer, which
+ * counts the table, narrows; see CONTEXT.md, "Queue".
  *
  * PostgREST has no GROUP BY, so one column comes back across the whole view and
  * countByStatus does the tallying. What that leaves worth pinning is that the

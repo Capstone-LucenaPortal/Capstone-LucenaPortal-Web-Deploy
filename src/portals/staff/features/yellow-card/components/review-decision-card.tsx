@@ -65,6 +65,7 @@ export function ReviewDecisionCard({
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
+          <DedupBanner application={application} />
           <ReviewContext application={application} latestReview={latestReview} />
 
           {error && <Toast message={error} variant="error" />}
@@ -281,14 +282,23 @@ function ReviewContext({
     );
   }
 
-  if (application.needs_dedup_review) {
-    return (
-      <div className="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
-        Flagged for duplicate review — this voter ID matches an existing record.
-        Check before approving.
-      </div>
-    );
-  }
-
   return null;
+}
+
+/**
+ * The voter ID matches an existing record. Shown alongside the status notice
+ * rather than as one of its branches, because the flag outlives a revision
+ * request: a resubmitted application carries it just as a pending one does.
+ * Gated on the same rule as the decision buttons, since it only matters to
+ * someone about to decide.
+ */
+function DedupBanner({ application }: { application: YellowCardApplication }) {
+  if (!application.needs_dedup_review || !isReviewable(application.status)) return null;
+
+  return (
+    <div className="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
+      Flagged for duplicate review — this voter ID matches an existing record.
+      Check before approving.
+    </div>
+  );
 }

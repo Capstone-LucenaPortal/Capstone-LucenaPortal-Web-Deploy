@@ -65,7 +65,8 @@ export default function LCCStepOrgDocument({
   const [commercialDownpayment, setCommercialDownpayment] = useState<FeeEstimate | null>(null);
   // Held across retries so a failed/interrupted attempt resumes instead of re-reserving a
   // storage row or re-uploading bytes that already landed. Reset only when a different file
-  // is picked — a retry on the SAME file must keep whatever progress was already made.
+  // is picked or the picked one is dropped — a retry on the SAME file must keep whatever
+  // progress was already made.
   const uploadProgress = useRef<DocumentUploadProgress>({});
   const canSkip = mode === 'claim' && onSkipped !== undefined;
 
@@ -96,13 +97,15 @@ export default function LCCStepOrgDocument({
     e.target.value = '';
     if (!picked) return;
     const problem = await validateUploadFile(picked, 'imageOrPdf');
+    setPhase('form');
+    uploadProgress.current = {};
     if (problem) {
       setFileError(problem);
+      // A refused file also drops the one picked before it (#21).
+      setFile(null);
       return;
     }
     setFileError('');
-    setPhase('form');
-    uploadProgress.current = {};
     setFile(picked);
   }
 

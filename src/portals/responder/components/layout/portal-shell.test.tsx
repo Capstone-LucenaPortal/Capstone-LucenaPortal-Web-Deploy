@@ -2,6 +2,7 @@ import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import Link from "next/link";
 import { PortalShell } from "@/portals/responder/components/layout/portal-shell";
 import { BottomSheet } from "@/portals/responder/components/ui/bottom-sheet";
 import { SessionProvider } from "@/portals/responder/features/auth/hooks/use-session";
@@ -48,7 +49,7 @@ function renderShell(page: React.ReactNode) {
 
 async function openDrawer() {
   const user = userEvent.setup();
-  renderShell(<a href="/responder/pool?report=1">A report</a>);
+  renderShell(<Link href="/responder/pool?report=1">A report</Link>);
   await user.click(screen.getByRole("button", { name: "Open navigation" }));
   return { user, drawer: screen.getByRole("dialog", { name: "Navigation" }) };
 }

@@ -189,6 +189,7 @@ describe("ACTIVE_STATUSES", () => {
   it("holds exactly the statuses that can be at risk", () => {
     const armed = {
       is_verified: true,
+      closure_reason: null,
       sla_armed_at: "2026-08-07T00:00:00.000Z",
       sla_due_at: "2026-08-07T10:00:00.000Z",
       resolved_at: null,

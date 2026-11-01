@@ -2,7 +2,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import YellowCardPage, { metadata } from "@/app/(admin)/admin/(shell)/yellow-card/page";
-import type { YellowCardExportRow, YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yellow-card";
+import type { ExportFilter, YellowCardExportRow, YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yellow-card";
 import { vi } from "vitest";
 
 // vi.mock's first argument is a plain string, not an import specifier, so it
@@ -465,6 +465,77 @@ describe("YellowCardPage", () => {
     }
   });
 
+  // Issue #24: the date type used to reach the tiles only, so under
+  // "Approval/Completion Date" the tiles counted decided applications while
+  // the table, Top barangays and the chart still read submitted_at. Same
+  // fixture shape as the test above: app-1/app-2 are pending and submitted
+  // this month, app-3 was submitted in July and decided this month.
+  it("the date type also drives the table, its date column, Top barangays and the monthly chart", async () => {
+    vi.useFakeTimers().setSystemTime(new Date("2026-08-15T04:00:00Z")); // 2026-08-15 12:00 Manila
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      mockListApplications.mockResolvedValue([
+        buildRow({
+          id: "app-1",
+          reference_number: "YC-2026-000001",
+          barangay_name: "Barangay One",
+          submitted_at: "2026-08-05T04:00:00Z",
+          decided_at: null,
+          status: "pending",
+        }),
+        buildRow({
+          id: "app-2",
+          reference_number: "YC-2026-000002",
+          barangay_name: "Barangay One",
+          submitted_at: "2026-08-06T04:00:00Z",
+          decided_at: null,
+          status: "pending",
+        }),
+        buildRow({
+          id: "app-3",
+          reference_number: "YC-2026-000003",
+          barangay_name: "Barangay Three",
+          submitted_at: "2026-07-01T04:00:00Z",
+          decided_at: "2026-08-10T04:00:00Z",
+          status: "approved",
+        }),
+      ]);
+
+      render(<YellowCardPage />);
+      await screen.findByText("YC-2026-000001");
+
+      const recent = screen.getByText("Recent applications").closest("section")!;
+      const chart = screen.getByText("Applications by month").closest("section")!;
+      const topBarangays = screen.getByText("Top barangays").closest("section")!;
+
+      // Default date type: unchanged from before the fix.
+      expect(within(recent).getByRole("columnheader", { name: "Submitted" })).toBeInTheDocument();
+      expect(within(recent).queryByText("YC-2026-000003")).not.toBeInTheDocument();
+      expect(within(chart).getByText("Last 6 months")).toBeInTheDocument();
+      expect(within(chart).getByTitle("Jul: 1")).toBeInTheDocument();
+      expect(within(chart).getByTitle("Aug: 2")).toBeInTheDocument();
+
+      await user.selectOptions(screen.getByLabelText("Date type"), "completion");
+
+      expect(within(getKpiTile("Applications")).getByText("1")).toBeInTheDocument();
+      expect(within(recent).getByText("YC-2026-000003")).toBeInTheDocument();
+      expect(within(recent).queryByText("YC-2026-000001")).not.toBeInTheDocument();
+      expect(within(recent).queryByText("YC-2026-000002")).not.toBeInTheDocument();
+      expect(within(recent).getByRole("columnheader", { name: "Decided" })).toBeInTheDocument();
+      expect(within(recent).queryByRole("columnheader", { name: "Submitted" })).not.toBeInTheDocument();
+      expect(within(recent).getByText("Aug 10, 2026")).toBeInTheDocument();
+
+      expect(within(topBarangays).getByText("Barangay Three")).toBeInTheDocument();
+      expect(within(topBarangays).queryByText("Barangay One")).not.toBeInTheDocument();
+
+      expect(within(chart).getByText("By decision date · Last 6 months")).toBeInTheDocument();
+      expect(within(chart).getByTitle("Aug: 1")).toBeInTheDocument();
+      expect(within(chart).queryByTitle("Jul: 1")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("the compare toggle shows and hides the real vs-previous-period delta", async () => {
     vi.useFakeTimers().setSystemTime(new Date("2026-08-15T04:00:00Z")); // 2026-08-15 12:00 Manila
     try {
@@ -569,7 +640,59 @@ describe("YellowCardPage", () => {
       status: "approved",
       from: "2026-05-01",
       to: "2026-05-10",
+      dateBasis: "application",
     });
+  });
+
+  // Issue #24 / DB#19: under "Approval/Completion Date" the table lists the
+  // applications DECIDED in the range, so the Export must release that same
+  // set, not the ones submitted in it. The mock stands in for the RPC's
+  // basis filter: it hands back the decided application only when asked for
+  // the "completion" basis, so a page that dropped the date type would
+  // download the pending one instead.
+  it("under Approval/Completion Date, Export sends the date type and downloads the decided set", async () => {
+    vi.useFakeTimers().setSystemTime(new Date("2026-08-15T04:00:00Z")); // 2026-08-15 12:00 Manila
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      mockListApplications.mockResolvedValue([
+        buildRow({
+          id: "app-1",
+          reference_number: "YC-2026-000001",
+          submitted_at: "2026-08-05T04:00:00Z",
+          decided_at: null,
+          status: "pending",
+        }),
+        buildRow({
+          id: "app-3",
+          reference_number: "YC-2026-000003",
+          submitted_at: "2026-07-01T04:00:00Z",
+          decided_at: "2026-08-10T04:00:00Z",
+          status: "approved",
+        }),
+      ]);
+      mockExportApplications.mockImplementation(async (filter: ExportFilter) =>
+        filter.dateBasis === "completion"
+          ? [buildExportRow({ reference: "YC-2026-000003", submitted_on: "2026-07-01", status: "approved" })]
+          : [buildExportRow({ reference: "YC-2026-000001", submitted_on: "2026-08-05", status: "pending" })]
+      );
+
+      render(<YellowCardPage />);
+      await screen.findByText("YC-2026-000001");
+
+      await user.selectOptions(screen.getByLabelText("Date type"), "completion");
+      await user.click(getApplicationsExportButton());
+
+      expect(mockExportApplications).toHaveBeenCalledWith({
+        status: null,
+        from: "2026-08-01",
+        to: "2026-08-15",
+        dateBasis: "completion",
+      });
+      const [, , rows] = mockDownloadCsv.mock.calls[0];
+      expect(rows.map((row: unknown[]) => row[0])).toEqual(["YC-2026-000003"]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // This is the regression guard for the hole this task closes: the export

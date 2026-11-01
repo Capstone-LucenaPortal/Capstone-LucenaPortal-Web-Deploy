@@ -67,6 +67,14 @@ describe("noticeText", () => {
     expect(noticeText("gone")).toBe(NOTICES.gone);
   });
 
+  it("says the photo is too big, not that the upload failed (issue #66)", () => {
+    // The uploader refuses an oversized file before reserving a slot, so the
+    // responder needs to know WHY, not the retry sentence of upload_failed.
+    expect(noticeText("photo_too_large")).toBe(
+      "That photo is over 5 MB. Choose a smaller one.",
+    );
+  });
+
   it("says NOTHING for blocked rather than asserting a hold it cannot name", () => {
     // Issue #9: `blocked` asserts a state -- "you are already holding..." --
     // and the missing reference is evidence against it. The one screen it

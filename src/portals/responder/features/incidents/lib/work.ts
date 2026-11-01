@@ -63,6 +63,27 @@ export function furthestStage(events: IncidentEvent[]): number {
   return index;
 }
 
+/**
+ * The rows of one cycle — a reopen starts the stages and the photo count over.
+ *
+ * The DB already counts this way: trg_stage_monotonic compares stages within
+ * the row's cycle, and resolve_incident wants an after photo in the CURRENT
+ * one. Reading every cycle would lock the new cycle's pills and call a ticket
+ * ready that the RPC will refuse (issue #67). The timeline is NOT filtered —
+ * it is the shared record of every cycle.
+ *
+ * `cycle` is the incident's own `cycle_number`, never recomputed from the rows.
+ * It is null only for an incident with no events, which a held ticket cannot
+ * be (the claim is an event); then nothing matches, and the page asks for a
+ * photo rather than offering a resolve the RPC would refuse.
+ */
+export function inCycle<T extends { cycle_number: number | null }>(
+  rows: T[],
+  cycle: number | null,
+): T[] {
+  return rows.filter((row) => row.cycle_number === cycle);
+}
+
 export interface TimelineEntry {
   at: string;
   title: string;
@@ -114,6 +135,19 @@ const EVENT_LABEL: Record<IncidentEventType, string> = {
 };
 
 /**
+ * l97 writes `photo_added` for the citizen's before photo as well as the
+ * responder's after photo (#57), so that one label depends on who added it.
+ */
+function eventLabel(event: IncidentEvent): string {
+  if (!event.event_type) return "Updated";
+  if (event.event_type === "photo_added" && event.actor_role === "citizen") {
+    return "Photo added by the citizen";
+  }
+
+  return EVENT_LABEL[event.event_type];
+}
+
+/**
  * The timeline, straight from `responder_incident_events`.
  *
  * READ, not derived. `claimed` is a real row now, so nothing is synthesised —
@@ -133,9 +167,7 @@ export function buildTimeline(events: IncidentEvent[]): TimelineEntry[] {
     .filter((event) => event.created_at !== null)
     .map((event) => {
       const at = event.created_at!;
-      const label = event.event_type
-        ? EVENT_LABEL[event.event_type]
-        : "Updated";
+      const label = eventLabel(event);
 
       // A note IS its text — the label would push the only content it carries
       // into the meta line, where the design renders it at 11.5px grey.

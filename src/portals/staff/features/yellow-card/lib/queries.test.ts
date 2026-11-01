@@ -163,9 +163,9 @@ describe("getYellowCardQueue", () => {
     const { fetch } = createRecordingFetch([CANNED_QUEUE_ROW]);
     const db = createTestClient(fetch);
 
-    const queue = await getYellowCardQueue({}, db);
+    const { items } = await getYellowCardQueue({}, db);
 
-    expect(queue).toEqual([
+    expect(items).toEqual([
       {
         id: "app-1",
         reference_number: "YC-2026-000123",
@@ -181,6 +181,27 @@ describe("getYellowCardQueue", () => {
         deadline_state: "overdue",
       },
     ]);
+  });
+
+  /**
+   * The footer's denominator: how many rows match the tab and the search, not
+   * how many came back. Asked for on the same request as the rows, so the
+   * count and the rows cannot be filtered two different ways.
+   */
+  it("asks for an exact count of the matching rows on the same request", async () => {
+    const { fetch, requests } = createRecordingFetch([CANNED_QUEUE_ROW], {
+      rowCount: 140,
+    });
+    const db = createTestClient(fetch);
+
+    const { matchCount } = await getYellowCardQueue(
+      { status: "pending", search: "maria" },
+      db,
+    );
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].headers["prefer"]).toContain("count=exact");
+    expect(matchCount).toBe(140);
   });
 
   /**

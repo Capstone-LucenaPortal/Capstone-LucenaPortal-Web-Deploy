@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import Link from "next/link";
 import { LostRaceDialog } from "@/portals/responder/features/incidents/components/lost-race-dialog";
 
 const push = vi.fn();
@@ -24,7 +25,7 @@ describe("LostRaceDialog", () => {
   it("hides the pool behind it", () => {
     render(
       <div>
-        <a href="/responder/pool?report=1">A report</a>
+        <Link href="/responder/pool?report=1">A report</Link>
         <LostRaceDialog rivalName="Ramon Cruz" />
       </div>,
     );

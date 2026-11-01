@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import IncidentDetailPage from "./page";
 import * as session from "@/portals/staff/features/auth/lib/session";
+import { stubProfileRow } from "@/portals/staff/features/auth/lib/stub-profile-row";
 import * as dossier from "@/portals/staff/features/incidents/lib/incident-dossier";
 import * as config from "@/portals/staff/features/incidents/lib/config";
 import type { StaffUser } from "@/portals/staff/features/auth/types";
@@ -106,8 +107,28 @@ function renderPage(id = "000000de-0000-4004-8000-000000000004") {
   return IncidentDetailPage({ params: Promise.resolve({ id }) });
 }
 
+beforeEach(() => {
+  stubProfileRow(["incidents"]);
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe("IncidentDetailPage — an account without Incidents", () => {
+  it("is told the page is not theirs, and nothing of Incidents is read", async () => {
+    stubReads(makeIncident());
+    stubProfileRow(["yellow_card", "booking"]);
+
+    render(await renderPage());
+
+    expect(
+      screen.getByRole("heading", { name: "This page belongs to the Incidents desk" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Burst main" })).not.toBeInTheDocument();
+    expect(dossier.getIncidentDossier).not.toHaveBeenCalled();
+    expect(config.getAtRiskThreshold).not.toHaveBeenCalled();
+  });
 });
 
 describe("IncidentDetailPage", () => {
@@ -199,6 +220,30 @@ describe("IncidentDetailPage", () => {
   it("shows the due time and the hour target beside the SLA badge", async () => {
     stubReads(makeIncident());
     render(await renderPage());
+    expect(screen.getByText(/4h target/)).toBeInTheDocument();
+  });
+
+  it("gives a routed report refused as Invalid no verdict and no deadline", async () => {
+    // The due line beside "Not scored" would read as a promise still running.
+    stubReads(
+      makeIncident({
+        status: "closed",
+        closure_reason: "invalid",
+        closed_at: "2026-08-07T09:00:00+08:00",
+      }),
+    );
+    render(await renderPage());
+    expect(screen.getByText("Not scored")).toBeInTheDocument();
+    expect(screen.queryByText(/4h target/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^due /)).not.toBeInTheDocument();
+  });
+
+  it("keeps the deadline beside a scored verdict", async () => {
+    stubReads(
+      makeIncident({ status: "resolved", resolved_at: "2026-08-07T11:00:00+08:00" }),
+    );
+    render(await renderPage());
+    expect(screen.getByText("Met")).toBeInTheDocument();
     expect(screen.getByText(/4h target/)).toBeInTheDocument();
   });
 

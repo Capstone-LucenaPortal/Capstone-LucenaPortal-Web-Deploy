@@ -168,6 +168,13 @@ describe('translateIncidentUploadError', () => {
     );
   });
 
+  // #71: an expired reservation (DB l90). The retry that follows reserves afresh.
+  it('names an expired reservation at confirm rather than the generic fallback', () => {
+    expect(
+      translateIncidentUploadError('confirm', 'PT404', 'confirm_upload: incident_photo reservation abc has expired — request a new upload'),
+    ).toBe('Your photo upload took too long and expired. Please try again.');
+  });
+
   it('falls back for an unrecognised code', () => {
     expect(translateIncidentUploadError('reserve', 'XX999', 'boom')).toBe(
       'We could not attach your photo right now. Please try again.',

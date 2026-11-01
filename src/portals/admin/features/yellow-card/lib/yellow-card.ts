@@ -2,6 +2,7 @@ import { createClient } from "@/shared/supabase/client";
 import { toPortalError } from "@/portals/admin/lib/supabase/errors";
 import { fetchAllRows } from "@/portals/admin/lib/supabase/pagination";
 import type { Database } from "@/shared/supabase/types";
+import type { YellowCardDateBasis } from "@/portals/admin/features/yellow-card/types";
 
 export type YellowCardRow =
   Database["public"]["Views"]["admin_yellow_card_analytics"]["Row"];
@@ -14,6 +15,9 @@ export interface ExportFilter {
   status?: string | null;
   from?: string | null;
   to?: string | null;
+  // Which date from/to bound: submitted_at ("application") or decided_at
+  // ("completion"). The RPC reads null as "application".
+  dateBasis?: YellowCardDateBasis | null;
 }
 
 /**
@@ -76,9 +80,10 @@ export async function exportApplications(
   filter: ExportFilter = {},
 ): Promise<YellowCardExportRow[]> {
   const supabase = createClient();
-  // Pass explicit nulls rather than omitting keys — the RPC's parameters
-  // default to null and PostgREST matches on argument NAME, so an omitted key
-  // and a null are not equivalent for overload resolution.
+  // Pass explicit nulls rather than omitting keys — the RPC reads null as its
+  // default (p_date_basis's is 'application') and PostgREST matches on
+  // argument NAME, so an omitted key and a null are not equivalent for
+  // overload resolution.
   //
   // The generated Args type marks these params optional-string rather than
   // nullable (`p_status?: string`), which doesn't admit `null` even though
@@ -91,6 +96,7 @@ export async function exportApplications(
     p_status: filter.status ?? null,
     p_from: filter.from ?? null,
     p_to: filter.to ?? null,
+    p_date_basis: filter.dateBasis ?? null,
   } as Database["public"]["Functions"]["export_yellow_card_applications"]["Args"];
   const { data, error } = await supabase.rpc("export_yellow_card_applications", params);
 

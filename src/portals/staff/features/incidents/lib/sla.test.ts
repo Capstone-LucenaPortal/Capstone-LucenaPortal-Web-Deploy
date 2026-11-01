@@ -84,9 +84,9 @@ describe("deriveSlaState", () => {
     ).toBe("breached");
   });
 
-  it("judges a closed incident by closed_at when it was never resolved", () => {
-    // Expiry closes without resolving. Falling back to sla_due_at would score
-    // every expired report as exactly on time.
+  it("does not score an armed report that expired", () => {
+    // Expiry closes a report nobody fixed, so there is no service to judge. A
+    // late closed_at used to read Breached, as if the desk had missed it.
     expect(
       deriveSlaState(
         row({
@@ -98,7 +98,93 @@ describe("deriveSlaState", () => {
         NOW,
         0.5,
       ),
-    ).toBe("breached");
+    ).toBe("not_scored");
+  });
+
+  it("does not score an expired report even when it carries a resolved_at", () => {
+    // The closure reason wins over the timestamps, as Admin's incidentMet has it.
+    expect(
+      deriveSlaState(
+        row({
+          status: "closed",
+          closure_reason: "expired_unverified",
+          resolved_at: "2026-08-07T11:00:00+08:00",
+          closed_at: "2026-08-07T14:00:00+08:00",
+        }),
+        NOW,
+        0.5,
+      ),
+    ).toBe("not_scored");
+  });
+
+  // INC-2026-000124 to 000128: routed, then refused as Invalid minutes later,
+  // read Met. Refused as a Duplicate after the deadline read Breached.
+  it.each([
+    ["invalid", "before", "2026-08-07T09:00:00+08:00"],
+    ["invalid", "after", "2026-08-07T14:00:00+08:00"],
+    ["duplicate", "before", "2026-08-07T09:00:00+08:00"],
+    ["duplicate", "after", "2026-08-07T14:00:00+08:00"],
+  ] as const)(
+    "does not score a routed report refused as %s %s the deadline",
+    (closure_reason, _when, closed_at) => {
+      expect(
+        deriveSlaState(
+          row({ status: "closed", closure_reason, resolved_at: null, closed_at }),
+          NOW,
+          0.5,
+        ),
+      ).toBe("not_scored");
+    },
+  );
+
+  it.each(["citizen_confirmed", "auto_confirmed"] as const)(
+    "still scores a closure by %s against resolved_at",
+    (closure_reason) => {
+      const closed = (resolved_at: string) =>
+        deriveSlaState(
+          row({
+            status: "closed",
+            closure_reason,
+            resolved_at,
+            closed_at: "2026-08-10T12:00:00+08:00",
+          }),
+          NOW,
+          0.5,
+        );
+      expect(closed("2026-08-07T11:00:00+08:00")).toBe("met");
+      expect(closed("2026-08-07T13:00:00+08:00")).toBe("breached");
+    },
+  );
+
+  it("still reads not_armed for a verified report refused before routing", () => {
+    expect(
+      deriveSlaState(
+        row({
+          status: "closed",
+          closure_reason: "invalid",
+          sla_armed_at: null,
+          sla_due_at: null,
+          closed_at: "2026-08-07T14:00:00+08:00",
+        }),
+        NOW,
+        0.5,
+      ),
+    ).toBe("not_armed");
+  });
+
+  it("still suspends an unverified report refused as invalid", () => {
+    expect(
+      deriveSlaState(
+        row({
+          status: "closed",
+          closure_reason: "invalid",
+          is_verified: false,
+          closed_at: "2026-08-07T14:00:00+08:00",
+        }),
+        NOW,
+        0.5,
+      ),
+    ).toBe("suspended");
   });
 
   it("suspends a closed incident that never armed", () => {

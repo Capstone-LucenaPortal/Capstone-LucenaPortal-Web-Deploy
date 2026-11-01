@@ -12,15 +12,16 @@ import { cn } from "@/portals/responder/lib/utils";
  * outcome is a pill and the SLA verdict sits beside it, and the citizen's phone
  * number is nowhere on this screen.
  *
- * Released and rejected tickets appear here alongside resolved ones (story 48):
- * the work done on a ticket is not erased by handing it back, which is why
- * `responder_history` is scoped to "incidents I have an event on" rather than
- * to assignment.
+ * Released, rejected and taken-back tickets appear here alongside resolved
+ * ones (story 48): the work done on a ticket is not erased by handing it back,
+ * which is why `responder_history` is scoped to "incidents I have an event on"
+ * rather than to assignment. The ticket held right now is not one of them —
+ * the page leaves it out, and it stays on My ticket.
  */
 
 const PILL = "rounded-full px-2.25 py-0.5 text-[11px] font-semibold";
 
-/** The three ways a responder's involvement can end, as they read on screen. */
+/** The three outcomes a responder records themselves, as they read on screen. */
 const OUTCOME: Partial<
   Record<NonNullable<HistoryRowType["my_last_outcome"]>, string>
 > = {
@@ -29,14 +30,26 @@ const OUTCOME: Partial<
   rejected: "Sent back",
 };
 
+/**
+ * The fourth way a responder's involvement ends: a supervisor took the ticket
+ * back. force_released is written with the supervisor as the actor, so it
+ * leaves the responder no outcome of their own. A null outcome can only mean
+ * this once the held ticket is left out of the list (`historyToShow`), since
+ * refuse_incident won't refuse a ticket someone holds.
+ */
+const TAKEN_BACK = "Taken back";
+
 const OUTCOME_TONE: Record<string, string> = {
   Resolved: "bg-green-100 text-green-800",
   Released: "bg-amber-100 text-amber-800",
   "Sent back": "bg-gray-100 text-gray-700",
+  [TAKEN_BACK]: "bg-gray-100 text-gray-700",
 };
 
 export function HistoryRow({ row }: { row: HistoryRowType }) {
-  const outcome = row.my_last_outcome ? OUTCOME[row.my_last_outcome] : undefined;
+  const outcome = row.my_last_outcome
+    ? OUTCOME[row.my_last_outcome]
+    : TAKEN_BACK;
 
   return (
     <article className="border-b border-gray-100 bg-white px-4 py-3 last:border-b-0">

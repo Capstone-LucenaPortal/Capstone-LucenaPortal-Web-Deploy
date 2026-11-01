@@ -1,7 +1,7 @@
 import { getSupabaseClient } from '@/portals/citizen/lib/supabase/client';
-import { validatePassword } from '@/portals/citizen/features/auth/lib/password-policy';
+import { validatePassword } from '@/shared/auth/password-policy';
 import { LIMITS, fieldTooLong, birthDateError, phMobileError } from '@/portals/citizen/lib/validation';
-import type { User, SignupData, CitizenProfileFields } from '@/portals/citizen/features/auth/types';
+import type { User, SignupData, SignupResult, CitizenProfileFields } from '@/portals/citizen/features/auth/types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 const USER_KEY = 'user';
@@ -250,12 +250,12 @@ export const authService = {
     return toUser(data.user as SupabaseAuthUser);
   },
 
-  async signup(data: SignupData): Promise<User> {
+  async signup(data: SignupData): Promise<SignupResult> {
     const client = getSupabaseClient();
     if (!client) {
       const user: User = { id: `USER-${Date.now()}`, email: data.email, name: data.fullName };
       mockSet(user);
-      return user;
+      return { status: 'signed-in', user };
     }
     const params = mapSignupToProfileParams(data); // validate before the network call
     const { data: signUp, error } = await client.auth.signUp({
@@ -270,17 +270,18 @@ export const authService = {
     if (error) throw new AuthError(translateAuthError(error.message, 'signup'));
     // create_citizen_profile needs a session (email in the JWT). signUp returns
     // one only when email confirmation is off. With it on (the Sandbox's
-    // setting), there is no session yet: fail closed with a clear message instead
-    // of returning a user the caller would treat as signed in. The profile is
-    // created from user_metadata once the email link lands on /complete-signup.
+    // setting), there is no session yet. That is a success, not an error (issue
+    // #65), but it returns no User the caller could treat as signed in. The
+    // profile is created from user_metadata once the email link lands on
+    // /complete-signup.
     if (!signUp.session) {
-      throw new AuthError('Account created. Please check your email to confirm your address, then sign in.');
+      return { status: 'confirm-email' };
     }
     const { error: rpcError } = await client.rpc('create_citizen_profile', params);
     if (rpcError && !rpcError.message.toLowerCase().includes('already')) {
       throw new AuthError('Your account was created, but your profile could not be saved. Please sign in and complete your profile.');
     }
-    return toUser(signUp.user as SupabaseAuthUser);
+    return { status: 'signed-in', user: toUser(signUp.user as SupabaseAuthUser) };
   },
 
   async logout(): Promise<void> {

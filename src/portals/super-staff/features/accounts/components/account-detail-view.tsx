@@ -15,6 +15,7 @@ import { createClient } from "@/shared/supabase/client";
 import { Input } from "@/portals/super-staff/components/ui/input";
 import { isLastActiveSuperStaff } from "../lib/guards";
 import { resendSignInLink } from "../lib/invite";
+import { plainRpcError } from "../lib/rpc-error";
 import { toUpdateArgs, type UpdateRpcArgs } from "../lib/update-args";
 import {
   countActiveSuperStaff,
@@ -53,6 +54,23 @@ export function AccountDetailView({ id }: { id: string }) {
   const [activeOpen, setActiveOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  // Read from the cookie without a round-trip: it only shapes the form, and
+  // update_staff_account still refuses a change to one's own role. Until it
+  // arrives, or if the read fails, the account counts as someone else's.
+  const [signedInId, setSignedInId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    createClient()
+      .auth.getSession()
+      .then(({ data }) => {
+        if (active) setSignedInId(data.session?.user.id ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const load = useCallback(async () => {
     const found = await getAccount(id);
@@ -122,7 +140,7 @@ export function AccountDetailView({ id }: { id: string }) {
         "update_staff_account",
         toUpdateArgs(account.id, value) as UpdateRpcArgs,
       );
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(plainRpcError(error.message));
       toast("Changes saved.", "success");
       await load();
     } catch (error) {
@@ -167,7 +185,7 @@ export function AccountDetailView({ id }: { id: string }) {
         p_status: next ? "active" : "inactive",
         p_reason: reason.trim(),
       });
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(plainRpcError(error.message));
       toast(next ? "Account reactivated." : "Account deactivated.", "success");
       setActiveOpen(false);
       setReason("");
@@ -208,6 +226,7 @@ export function AccountDetailView({ id }: { id: string }) {
                 errors={errors}
                 onChange={setValue}
                 emailReadOnly
+                roleLocked={signedInId === account.id}
               />
               <div className="mt-6 flex items-center justify-end gap-3 border-t border-gray-200 pt-4">
                 <Button

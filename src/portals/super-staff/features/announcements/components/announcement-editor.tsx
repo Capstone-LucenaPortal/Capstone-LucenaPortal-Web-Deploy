@@ -18,7 +18,7 @@ import { callRpc } from "@/portals/super-staff/lib/supabase/rpc";
 import { formatDate } from "@/portals/super-staff/lib/utils";
 import { localInputToIso } from "@/portals/super-staff/lib/datetime";
 import { EMPTY, toFormValue, toInput, type FormValue } from "../lib/form-value";
-import { previewPublishedStatus } from "../lib/lifecycle";
+import { previewPublishedStatus, publishedToastMessage } from "../lib/lifecycle";
 import { toCreatePostArgs, toUpdatePostArgs } from "../lib/post-args";
 import { getAnnouncement, listPostCategories } from "../lib/queries";
 import { validateAnnouncement, type AnnouncementErrors } from "../lib/validation";
@@ -136,6 +136,14 @@ export function AnnouncementEditor({ id }: { id?: string }) {
     if (!input) return;
     setBusy(true);
     let savedId = id ?? null;
+    // Taken at the click, exactly as the confirm modal previewed it, so the
+    // toast can't contradict the modal the editor just confirmed.
+    const startAt = localInputToIso(value.startLocal);
+    const outcome = previewPublishedStatus(
+      startAt,
+      localInputToIso(value.endLocal),
+      new Date(),
+    );
     try {
       if (!isEdit) {
         const created = await callRpc("create_post", toCreatePostArgs(input));
@@ -155,7 +163,7 @@ export function AnnouncementEditor({ id }: { id?: string }) {
         p_is_published: true,
       });
       setPublishOpen(false);
-      toast("Announcement published.", "success");
+      toast(publishedToastMessage(outcome, startAt), "success");
     } catch (e: unknown) {
       // The field edits already persisted. Say so — "could not publish" alone
       // would imply nothing was saved.
@@ -199,7 +207,8 @@ export function AnnouncementEditor({ id }: { id?: string }) {
     return <p className="mt-6 text-sm text-gray-500">Announcement not found.</p>;
   }
 
-  // What Publish would produce, for the confirm-modal copy only.
+  // What Publish would produce, for the confirm-modal copy. handlePublish works
+  // it out again at the click for its toast.
   const preview = previewPublishedStatus(
     localInputToIso(value.startLocal),
     localInputToIso(value.endLocal),

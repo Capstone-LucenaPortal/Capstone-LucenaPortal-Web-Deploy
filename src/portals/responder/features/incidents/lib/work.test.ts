@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   buildTimeline,
   furthestStage,
+  inCycle,
   resolvedHeadline,
   slaMarginMs,
   timeOfDay,
 } from "@/portals/responder/features/incidents/lib/work";
-import { anEvent, anIncident } from "@/portals/responder/features/incidents/lib/fixtures";
+import { anEvent, anIncident, aPhoto } from "@/portals/responder/features/incidents/lib/fixtures";
 
 /**
  * WHAT LEFT THIS FILE IN THE CUTOVER, and where it is asserted now. Every one
@@ -68,6 +69,27 @@ describe("furthestStage", () => {
         anEvent({ event_type: "resolved" }),
       ]),
     ).toBe(-1);
+  });
+});
+
+describe("inCycle", () => {
+  it("keeps only the rows of the cycle it is given", () => {
+    const rows = [
+      aPhoto({ id: "p1", cycle_number: 1 }),
+      aPhoto({ id: "p2", cycle_number: 2 }),
+      aPhoto({ id: "p3", cycle_number: 1 }),
+    ];
+    expect(inCycle(rows, 2).map((row) => row.id)).toEqual(["p2"]);
+    expect(inCycle(rows, 1).map((row) => row.id)).toEqual(["p1", "p3"]);
+  });
+
+  it("starts a reopened cycle with no stage reached", () => {
+    // Issue #67: an earlier cycle's stage must not lock the new cycle's pills.
+    const events = [
+      anEvent({ event_type: "stage_working", cycle_number: 1 }),
+      anEvent({ event_type: "claimed", cycle_number: 2 }),
+    ];
+    expect(furthestStage(inCycle(events, 2))).toBe(-1);
   });
 });
 
@@ -152,6 +174,17 @@ describe("buildTimeline", () => {
       "Verified by staff",
       "Routed to your department",
     ]);
+  });
+
+  it("tells a responder's after photo from the citizen's before photo", () => {
+    // Issue #57: l97 writes photo_added for both kinds, so one flat label
+    // would call the citizen's before photo an after photo.
+    const titles = buildTimeline([
+      anEvent({ event_type: "photo_added", actor_role: "citizen" }),
+      anEvent({ event_type: "photo_added", actor_role: "responder" }),
+    ]).map((e) => e.title);
+
+    expect(titles).toEqual(["Photo added by the citizen", "After photo added"]);
   });
 
   it("is empty on a ticket with no events rather than inventing one", () => {

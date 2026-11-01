@@ -126,6 +126,57 @@ describe("IssueReportsPage", () => {
     mockDownloadCsv.mockReset();
   });
 
+  // #48: the Avg Response tile printed `${avgResponseDays}d` after rounding
+  // the mean to one decimal in days, so an empty range and a 27-minute mean
+  // both read "0d" — "answered at once". The clock is pinned mid-month so
+  // the fixtures sit inside the default "Month" preset on any run date; only
+  // Date is faked, so findBy keeps its real timers.
+  describe("Avg Response tile", () => {
+    function tileFor(label: string): HTMLElement {
+      const labelEl = screen.getAllByText(label).find((el) => el.tagName === "P")!;
+      return labelEl.closest("div") as HTMLElement;
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-06-15T12:00:00+08:00"));
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("reads '—' and 'No comparable data' when no incident in range has resolved", async () => {
+      mockListIncidents.mockResolvedValue([buildRow({ submitted_at: "2026-06-10T00:00:00Z" })]);
+
+      render(<IssueReportsPage />);
+      await screen.findByText("IR-2026-000001");
+
+      const tile = tileFor("Avg Response");
+      expect(within(tile).getByText("—")).toBeInTheDocument();
+      expect(within(tile).getByText("No comparable data vs previous period")).toBeInTheDocument();
+      expect(within(tile).queryByText("0d")).not.toBeInTheDocument();
+    });
+
+    it("writes a mean under an hour in minutes, not 0d", async () => {
+      mockListIncidents.mockResolvedValue([
+        buildRow({ id: "inc-1", status: "resolved", submitted_at: "2026-06-10T00:00:00Z", resolved_at: "2026-06-10T00:11:00Z" }),
+        buildRow({
+          id: "inc-2",
+          reference_number: "IR-2026-000002",
+          status: "resolved",
+          submitted_at: "2026-06-10T01:00:00Z",
+          resolved_at: "2026-06-10T01:43:00Z",
+        }),
+      ]);
+
+      render(<IssueReportsPage />);
+      await screen.findByText("IR-2026-000001");
+
+      expect(within(tileFor("Avg Response")).getByText("27 min")).toBeInTheDocument();
+    });
+  });
+
   // The Category mix panel is fed the ACTIVE date range's rows, but its
   // subtitle used to read a fixed "Share of reports this month" — so under
   // Annual (or Today, or a Custom range) the caption contradicted the very
@@ -619,6 +670,66 @@ describe("IssueReportsPage", () => {
 
       expect(screen.getByText("IR-2026-000001")).toBeInTheDocument();
       expect(screen.queryByText("IR-2026-000002")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Issue #24: the date type used to reach the KPI tiles only; the table, the
+  // Export and the monthly chart stayed on submitted_at. inc-1 is open (no
+  // resolved_at), inc-2 was reported in July and resolved this month, inc-3
+  // was reported in June and resolved in July.
+  it("the date type also drives the table, its date column, the Export and the monthly chart", async () => {
+    vi.useFakeTimers().setSystemTime(new Date("2026-08-15T04:00:00Z")); // 2026-08-15 12:00 Manila
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      mockListIncidents.mockResolvedValue([
+        buildRow({ id: "inc-1", reference_number: "IR-2026-000001", submitted_at: "2026-08-05T04:00:00Z" }),
+        buildRow({
+          id: "inc-2",
+          reference_number: "IR-2026-000002",
+          status: "resolved",
+          submitted_at: "2026-07-01T04:00:00Z",
+          resolved_at: "2026-08-10T04:00:00Z",
+        }),
+        buildRow({
+          id: "inc-3",
+          reference_number: "IR-2026-000003",
+          status: "resolved",
+          submitted_at: "2026-06-02T04:00:00Z",
+          resolved_at: "2026-07-20T04:00:00Z",
+        }),
+      ]);
+
+      render(<IssueReportsPage />);
+      await screen.findByText("IR-2026-000001");
+
+      const recent = getRecentReportsSection();
+      const chart = screen.getByText("Reports by month").closest("section")!;
+
+      // Default date type: unchanged from before the fix.
+      expect(within(recent).getByRole("columnheader", { name: "Submitted" })).toBeInTheDocument();
+      expect(within(recent).queryByText("IR-2026-000002")).not.toBeInTheDocument();
+      expect(within(chart).getByText("Last 6 months")).toBeInTheDocument();
+      expect(within(chart).getByTitle("Jun: 1")).toBeInTheDocument();
+
+      await user.selectOptions(screen.getByLabelText("Date type"), "resolution");
+
+      expect(within(recent).getByText("IR-2026-000002")).toBeInTheDocument();
+      expect(within(recent).queryByText("IR-2026-000001")).not.toBeInTheDocument();
+      expect(within(recent).queryByText("IR-2026-000003")).not.toBeInTheDocument();
+      expect(within(recent).getByRole("columnheader", { name: "Resolved" })).toBeInTheDocument();
+      expect(within(recent).queryByRole("columnheader", { name: "Submitted" })).not.toBeInTheDocument();
+      expect(within(recent).getByText("Aug 10, 2026")).toBeInTheDocument();
+
+      await user.click(within(recent).getByRole("button", { name: "↓ Export" }));
+      const [, , exported] = mockDownloadCsv.mock.calls[0];
+      expect(exported.map((row: unknown[]) => row[0])).toEqual(["IR-2026-000002"]);
+
+      expect(within(chart).getByText("By resolution date · Last 6 months")).toBeInTheDocument();
+      expect(within(chart).getByTitle("Jul: 1")).toBeInTheDocument();
+      expect(within(chart).getByTitle("Aug: 1")).toBeInTheDocument();
+      expect(within(chart).queryByTitle("Jun: 1")).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }

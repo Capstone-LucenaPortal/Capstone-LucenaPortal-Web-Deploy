@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import YellowCardDetailPage from "./page";
 import * as dossiers from "@/portals/staff/features/yellow-card/lib/review-dossier";
 import * as session from "@/portals/staff/features/auth/lib/session";
+import { stubProfileRow } from "@/portals/staff/features/auth/lib/stub-profile-row";
 import type { YellowCardReviewDossier } from "@/portals/staff/features/yellow-card/lib/review-dossier";
 import type { StaffUser } from "@/portals/staff/features/auth/types";
 
@@ -74,8 +75,27 @@ function stubReads(overrides: Partial<YellowCardReviewDossier> = {}) {
     .mockResolvedValue({ ...dossier, ...overrides });
 }
 
+beforeEach(() => {
+  stubProfileRow(["yellow_card"]);
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe("YellowCardDetailPage — an account without Yellow Card", () => {
+  it("is told the page is not theirs, and nothing of Yellow Card is read", async () => {
+    const review = stubReads();
+    stubProfileRow(["incidents", "booking"]);
+
+    render(await YellowCardDetailPage({ params: Promise.resolve({ id: "app-1" }) }));
+
+    expect(
+      screen.getByRole("heading", { name: "This page belongs to the Yellow Card desk" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("YC-2026-000069", { exact: false })).not.toBeInTheDocument();
+    expect(review).not.toHaveBeenCalled();
+  });
 });
 
 describe("YellowCardDetailPage", () => {

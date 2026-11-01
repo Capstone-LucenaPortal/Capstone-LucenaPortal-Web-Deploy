@@ -186,12 +186,55 @@ describe('buildSignupMetadata / tryBuildProfileParamsFromMetadata round-trip', (
 });
 
 describe('authService mock mode (no backend)', () => {
-  it('signup returns a User and login round-trips', async () => {
-    const u = await authService.signup(base);
-    expect(u.email).toBe('juan@example.com');
-    expect(u.name).toBe('Juan Rizal Dela Cruz');
+  it('signup returns a signed-in User and login round-trips', async () => {
+    const result = await authService.signup(base);
+    if (result.status !== 'signed-in') throw new Error(`expected signed-in, got ${result.status}`);
+    expect(result.user.email).toBe('juan@example.com');
+    expect(result.user.name).toBe('Juan Rizal Dela Cruz');
     const u2 = await authService.login('juan@example.com', 'whatever');
     expect(u2.email).toBe('juan@example.com');
+  });
+});
+
+describe('signup outcomes (client mode)', () => {
+  const signUpReturning = (session: unknown) => {
+    const rpc = vi.fn(async () => ({ error: null }));
+    const fakeClient = {
+      auth: {
+        signUp: async () => ({
+          data: { user: { id: 'USER-1', email: base.email, user_metadata: { full_name: base.fullName } }, session },
+          error: null,
+        }),
+      },
+      rpc,
+    } as unknown as ReturnType<typeof supabaseClientModule.getSupabaseClient>;
+    const spy = vi.spyOn(supabaseClientModule, 'getSupabaseClient').mockReturnValue(fakeClient);
+    return { rpc, spy };
+  };
+
+  // Issue #65. With email confirmation on, signUp returns no session. That is
+  // a success, and used to be thrown as an AuthError the modal showed in red.
+  it('resolves to a pending email confirmation when signUp returns no session', async () => {
+    const { rpc, spy } = signUpReturning(null);
+    try {
+      await expect(authService.signup(base)).resolves.toEqual({ status: 'confirm-email' });
+      expect(rpc).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('creates the profile and resolves signed in when signUp returns a session', async () => {
+    const { rpc, spy } = signUpReturning({ access_token: 't' });
+    try {
+      await expect(authService.signup(base)).resolves.toEqual({
+        status: 'signed-in',
+        user: { id: 'USER-1', email: 'juan@example.com', name: 'Juan Rizal Dela Cruz' },
+      });
+      expect(rpc).toHaveBeenCalledWith('create_citizen_profile', expect.objectContaining({ p_first_name: 'Juan' }));
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

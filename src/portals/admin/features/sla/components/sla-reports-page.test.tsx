@@ -147,6 +147,10 @@ describe("SLAReportsPage", () => {
     mockListDepartments.mockResolvedValue([]);
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   // The Custom date inputs used to be seeded with literals written the day
   // this page was authored ("2026-07-01"/"2026-07-31"), so clicking into them
   // months later offered a window with nothing to do with the present.
@@ -198,6 +202,12 @@ describe("SLAReportsPage", () => {
   });
 
   it("shows the KPI tiles from getSlaRangeStats' derived figures", async () => {
+    // The clock is pinned mid-month: hoursAgo(72) against the real "now"
+    // falls in the previous month on the 1st-3rd, outside the default "Month"
+    // range (Manila 1st to today), and the incidents dropped out (#76). Only
+    // Date is faked, so userEvent/waitFor keep their real timers.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-15T12:00:00+08:00"));
     // hoursAgo(72)/hoursAgo(24) so every incident shares an identical 2-day
     // response time — avgResponseDays comes out to an exact, assertable "2d".
     const submittedAt = new Date(Date.now() - 72 * 3_600_000).toISOString();
@@ -324,6 +334,32 @@ describe("SLAReportsPage", () => {
     // Total violations 3 + 2 + 1 = 6; worst month is monthA with 3.
     expect(within(trendSection).getByText("6")).toBeInTheDocument();
     expect(within(trendSection).getByText(`${labelA} (3)`)).toBeInTheDocument();
+  });
+
+  // #40: the SLA Violations / Compliance tiles count incidents plus Yellow
+  // Card, but the trend buckets incidents only (computeTrendBuckets), so its
+  // total reads lower than the tile's. Every trend label must say so.
+  it('labels the compliance trend "incidents only" beside its total, subtitle and accessible names', async () => {
+    const user = userEvent.setup();
+    const monthA = daysAgoIso(90);
+    const monthB = daysAgoIso(5);
+    mockListIncidents.mockResolvedValue([
+      buildIncident({ id: "a1", submitted_at: monthA, sla_met: false }),
+      buildIncident({ id: "a2", submitted_at: monthA, sla_met: false }),
+      buildIncident({ id: "b1", submitted_at: monthB, sla_met: false }),
+    ]);
+
+    render(<SLAReportsPage />);
+    await screen.findByText("No department SLA data for this range.");
+    await user.click(screen.getByRole("button", { name: "Annual" }));
+
+    expect(await screen.findByText("Compliance trend")).toBeInTheDocument();
+    const trendSection = sectionFor("Compliance trend");
+    const total = within(trendSection).getByText("Total violations (incidents only):", { exact: false });
+    expect(total).toHaveTextContent("Total violations (incidents only): 3");
+    expect(within(trendSection).getByText(/^.+ · incidents only$/, { selector: "p" })).toBeInTheDocument();
+    expect(within(trendSection).getByRole("img", { name: /incidents only/ })).toBeInTheDocument();
+    expect(within(trendSection).getByRole("table", { name: /incidents only/ })).toBeInTheDocument();
   });
 
   // Admin Portal Fix Plan, Phase 3 accessibility task: the chart's SVG has
@@ -726,6 +762,48 @@ describe("SLAReportsPage", () => {
     // (0 + 100) / 2 = 50%.
     expect(within(historySection).getByText(/100% ·/)).toBeInTheDocument();
     expect(within(historySection).getByText(new RegExp(`${realLabel} \\(100%\\)`))).toBeInTheDocument();
+  });
+
+  // #48: the Avg Response tile printed `${avgResponseDays}d` and the history
+  // column `${avgResponseDays} days`, so a range or month with nothing
+  // resolved read "0d"/"0 days" — "answered at once". Clock pinned
+  // mid-month so the fixtures sit inside the presets on any run date.
+  it("the Avg Response tile reads '—' and 'No comparable data' when no incident in range resolved", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-15T12:00:00+08:00"));
+    mockListIncidents.mockResolvedValue([
+      buildIncident({ id: "inc-1", submitted_at: "2026-06-10T00:00:00Z", status: "open", resolved_at: null }),
+    ]);
+
+    render(<SLAReportsPage />);
+    await screen.findByText("Monthly compliance history");
+
+    const tile = tileFor("Avg Response");
+    await waitFor(() => expect(within(tile).getByText("—")).toBeInTheDocument());
+    expect(within(tile).getByText("No comparable data vs previous period")).toBeInTheDocument();
+    expect(within(tile).queryByText("0d")).not.toBeInTheDocument();
+  });
+
+  it("the monthly history's Avg Response reads '—' for a month with nothing resolved, the formatted mean otherwise", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-15T12:00:00+08:00"));
+    const user = userEvent.setup();
+    mockListIncidents.mockResolvedValue([
+      buildIncident({ id: "open", submitted_at: "2026-05-10T00:00:00Z", status: "open", resolved_at: null }),
+      buildIncident({ id: "quick", submitted_at: "2026-06-10T00:00:00Z", resolved_at: "2026-06-10T05:12:00Z", sla_met: true }),
+    ]);
+
+    render(<SLAReportsPage />);
+    await screen.findByText("No department SLA data for this range.");
+    await user.click(screen.getByRole("button", { name: "Annual" }));
+
+    const historySection = sectionFor("Monthly compliance history");
+    const mayRow = (await within(historySection).findByText("May 2026")).closest("tr") as HTMLElement;
+    const juneRow = within(historySection).getByText("Jun 2026").closest("tr") as HTMLElement;
+    // May: Compliance and Avg Response both "—" (nothing scoreable, nothing resolved).
+    expect(within(mayRow).getAllByText("—")).toHaveLength(2);
+    expect(within(juneRow).getByText("5.2h")).toBeInTheDocument();
+    expect(within(historySection).queryByText(/days$/)).not.toBeInTheDocument();
   });
 
   it("shows an empty state, not a crash, when there are no incidents at all", async () => {

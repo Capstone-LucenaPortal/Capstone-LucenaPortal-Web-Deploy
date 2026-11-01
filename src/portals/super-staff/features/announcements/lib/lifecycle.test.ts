@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { Announcement } from "../types";
-import { computeStatusCounts, previewPublishedStatus } from "./lifecycle";
+import {
+  computeStatusCounts,
+  previewPublishedStatus,
+  publishedToastMessage,
+} from "./lifecycle";
 
 describe("previewPublishedStatus", () => {
   const now = new Date("2026-08-12T10:00:00+08:00");
@@ -25,6 +29,26 @@ describe("previewPublishedStatus", () => {
     expect(previewPublishedStatus(null, "2026-08-01T08:00:00+08:00", now)).toBe(
       "Expired",
     );
+  });
+});
+
+describe("publishedToastMessage", () => {
+  it("names the go-live date when the post was scheduled", () => {
+    expect(
+      publishedToastMessage("Scheduled", "2026-10-31T08:00:00+08:00"),
+    ).toBe("Announcement scheduled for Oct 31, 2026.");
+  });
+
+  it("says the post stays off the portal when it published as Expired", () => {
+    expect(publishedToastMessage("Expired", null)).toBe(
+      "Announcement published as Expired. It stays off the portal until you extend or clear the end date.",
+    );
+  });
+
+  it("says published when the post went live now", () => {
+    expect(
+      publishedToastMessage("Published", "2026-08-01T08:00:00+08:00"),
+    ).toBe("Announcement published.");
   });
 });
 

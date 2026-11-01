@@ -1,5 +1,5 @@
-// Domain types for the monitoring feature (read-only config-impact lens).
-import type { AuditEntry } from "@/portals/super-staff/features/audit-log/types";
+// Domain types for the monitoring feature: the four service-number tiles
+// shown as System Health's Service impact (read-only config-impact lens).
 
 export type TrendDirection = "up" | "down" | "flat";
 
@@ -26,12 +26,4 @@ export type Metrics = {
   openBacklogPrev: number | null;
   bookings7d: number | null;
   bookings7dPrev: number | null;
-};
-
-export type MonitoringSnapshot = {
-  tiles: StatTile[];
-  /** Straight `AuditEntry`s. There was a parallel `RecentConfigChange` type
-   *  here carrying timestamp/change/actor — three fields an entry already has,
-   *  reached through a mapper that existed only to drop the others. */
-  recentConfigChanges: AuditEntry[];
 };

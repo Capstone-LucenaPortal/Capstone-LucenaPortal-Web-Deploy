@@ -11,13 +11,23 @@ import {
   CalendarDays,
   Inbox,
   ScrollText,
-  LayoutDashboard,
+  HeartPulse,
   PanelLeftClose,
   PanelLeftOpen,
   type LucideIcon,
 } from "lucide-react";
+import { useUnsavedChanges } from "@/portals/super-staff/components/providers/unsaved-changes-provider";
 import { listContactMessages } from "@/portals/super-staff/features/inbox/lib/queries";
 import { countUnread } from "@/portals/super-staff/features/inbox/lib/status";
+import { REFRESH_MS } from "@/portals/super-staff/features/system-health/hooks/use-system-health";
+import {
+  checkReachability,
+  getSystemHealth,
+} from "@/portals/super-staff/features/system-health/lib/queries";
+import { SYSTEM_HEALTH_HREF } from "@/portals/super-staff/features/system-health/lib/routes";
+import { STATUS_WORD } from "@/portals/super-staff/features/system-health/components/panel";
+import { navDot, reachabilityStatus, worse } from "@/portals/super-staff/features/system-health/lib/status";
+import type { HealthStatus } from "@/portals/super-staff/features/system-health/types";
 import { cn } from "@/portals/super-staff/lib/utils";
 
 type NavItem = { href: string; label: string; icon: LucideIcon };
@@ -39,15 +49,27 @@ const navEntries: NavEntry[] = [
     ],
   },
   { href: "/super-staff/audit-log", label: "Audit Log", icon: ScrollText },
-  { href: "/super-staff/monitoring", label: "Monitoring", icon: LayoutDashboard },
+  { href: SYSTEM_HEALTH_HREF, label: "System Health", icon: HeartPulse },
 ];
 
+// /super-staff/configuration only redirects to its first tab (its page.tsx).
+const REDIRECTS_TO: Partial<Record<string, string>> = {
+  "/super-staff/configuration": "/super-staff/configuration/incidents",
+};
+
 const STORAGE_KEY = "lucena-sidebar-collapsed";
+
+const DOT_CLASS = { amber: "bg-amber-400", red: "bg-red-500" } as const;
+
+/** What the System Health dot shows: a status, a failed read, or nothing (not a Super Staff). */
+type HealthReading = HealthStatus | "unreadable" | null;
 
 export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [unread, setUnread] = useState(0);
+  const [health, setHealth] = useState<HealthReading>(null);
+  const { requestLeave } = useUnsavedChanges();
 
   useEffect(() => {
     setCollapsed(localStorage.getItem(STORAGE_KEY) === "true");
@@ -57,6 +79,30 @@ export function Sidebar() {
     listContactMessages()
       .then((m) => setUnread(countUnread(m)))
       .catch(() => setUnread(0)); // a nav badge must never break navigation
+  }, []);
+
+  // The System Health dot follows the snapshot's overall status and the app's
+  // reachability, refreshed on the same 60 s beat as the page so an alert
+  // shows on every Super-staff page. A failed read is red: the absence of data
+  // must never look like health.
+  useEffect(() => {
+    let active = true;
+    function load() {
+      Promise.all([getSystemHealth(), checkReachability()])
+        .then(([h, r]) => {
+          if (!active) return;
+          setHealth(h === null ? null : worse(h.status, reachabilityStatus(r)));
+        })
+        .catch(() => {
+          if (active) setHealth("unreadable");
+        });
+    }
+    load();
+    const timer = setInterval(load, REFRESH_MS);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
   }, []);
 
   function toggle() {
@@ -71,10 +117,18 @@ export function Sidebar() {
   function renderItem({ href, label, icon: Icon }: NavItem, nested: boolean) {
     const active = pathname.startsWith(href);
     const badge = href === "/super-staff/inbox" && unread > 0 ? unread : null;
+    const dot =
+      href !== SYSTEM_HEALTH_HREF ? null : health === "unreadable" ? "red" : navDot(health);
     return (
       <Link
         key={href}
         href={href}
+        // Leaving a page with unsaved edits asks first; the guard navigates on
+        // "Discard changes". A link that redirects back to this page isn't
+        // leaving it, so it stays put. onNavigate skips Ctrl/Cmd+click (new tab).
+        onNavigate={(e) => {
+          if (REDIRECTS_TO[href] === pathname || !requestLeave(href)) e.preventDefault();
+        }}
         title={collapsed ? label : undefined}
         className={cn(
           "relative flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors",
@@ -85,9 +139,27 @@ export function Sidebar() {
             : "text-blue-100 hover:bg-white/10 hover:text-white",
         )}
       >
-        <Icon className="h-5 w-5 shrink-0" />
+        <span className="relative shrink-0">
+          <Icon className="h-5 w-5" />
+          {dot !== null && (
+            <span
+              className={cn(
+                "absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full ring-2 ring-lucena-blue",
+                DOT_CLASS[dot],
+              )}
+            />
+          )}
+        </span>
         <span className={cn("ml-3 flex-1", collapsed && "sr-only")}>
           {label}
+          {dot !== null && health !== null && (
+            <>
+              {" "}
+              <span className="sr-only">
+                ({health === "unreadable" ? "Can't read system health" : STATUS_WORD[health]})
+              </span>
+            </>
+          )}
         </span>
         {badge !== null && (
           <span

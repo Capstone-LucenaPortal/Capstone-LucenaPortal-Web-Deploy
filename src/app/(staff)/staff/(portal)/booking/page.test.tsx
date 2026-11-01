@@ -4,6 +4,7 @@ import BookingQueuePage from "./page";
 import * as queries from "@/portals/staff/features/booking/lib/queries";
 import * as config from "@/portals/staff/features/booking/lib/config";
 import { DEFAULT_BOOKING_CONFIG } from "@/portals/staff/features/booking/lib/config";
+import { stubProfileRow } from "@/portals/staff/features/auth/lib/stub-profile-row";
 import { STATUS_ORDER } from "@/portals/staff/features/booking/lib/status";
 import type { BookingQueueItem, BookingStatus } from "@/portals/staff/features/booking/types";
 
@@ -43,7 +44,10 @@ const counts = Object.fromEntries(STATUS_ORDER.map((s) => [s, 0])) as Record<
 >;
 
 function stubQueries() {
-  vi.spyOn(queries, "getBookingQueue").mockResolvedValue([booking]);
+  vi.spyOn(queries, "getBookingQueue").mockResolvedValue({
+    items: [booking],
+    matchCount: 1,
+  });
   vi.spyOn(queries, "getBookingStatusCounts").mockResolvedValue({
     ...counts,
     awaiting_quote: 3,
@@ -63,12 +67,46 @@ async function renderPage(
   params: { status?: string; q?: string; view?: string; month?: string } = {},
 ) {
   cleanup();
+  stubProfileRow(["booking"]);
   stubQueries();
   render(await BookingQueuePage({ searchParams: Promise.resolve(params) }));
 }
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+// QA SAC-019, SAC-020: typed in by an account without Booking, the calendar
+// read 0 rows through has_module() and called a booked month clear.
+describe("BookingQueuePage — an account without Booking", () => {
+  it.each([
+    ["the list", {}],
+    ["the calendar", { view: "calendar", month: "2026-12" }],
+  ])("is told %s is not theirs, and nothing of Booking is read", async (_, params) => {
+    stubProfileRow(["yellow_card", "incidents"]);
+    stubQueries();
+
+    render(await BookingQueuePage({ searchParams: Promise.resolve(params) }));
+
+    expect(
+      screen.getByRole("heading", { name: "This page belongs to the Booking desk" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to the Dashboard" })).toHaveAttribute(
+      "href",
+      "/staff/dashboard",
+    );
+    expect(screen.queryByText("Convention Center Bookings")).not.toBeInTheDocument();
+    expect(screen.queryByText(/clear all month/)).not.toBeInTheDocument();
+    for (const read of [
+      queries.getBookingQueue,
+      queries.getBookingStatusCounts,
+      queries.getBalanceOutstanding,
+      queries.getBookingCalendar,
+      config.getBookingConfig,
+    ]) {
+      expect(read).not.toHaveBeenCalled();
+    }
+  });
 });
 
 describe("BookingQueuePage — list view", () => {
@@ -81,6 +119,19 @@ describe("BookingQueuePage — list view", () => {
     expect(
       screen.getByText("Dela Cruz Family 50th Wedding Anniversary"),
     ).toBeInTheDocument();
+  });
+
+  it("counts the footer against the rows the query matched", async () => {
+    stubProfileRow(["booking"]);
+    stubQueries();
+    vi.mocked(queries.getBookingQueue).mockResolvedValue({
+      items: [booking],
+      matchCount: 140,
+    });
+
+    render(await BookingQueuePage({ searchParams: Promise.resolve({}) }));
+
+    expect(screen.getByText("Showing 1 of 140 bookings")).toBeInTheDocument();
   });
 
   it("passes the parsed status filter through to the query", async () => {

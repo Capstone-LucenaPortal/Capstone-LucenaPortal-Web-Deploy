@@ -592,14 +592,14 @@ describe("getSlaMonthlyHistory", () => {
     ]);
   });
 
-  it("avgResponseDays is 0, not NaN, for a month with no resolved incidents", () => {
+  it("avgResponseDays is null, not 0 or NaN, for a month with no resolved incidents", () => {
     const incidents = [
       buildIncident({ id: "inc-1", submitted_at: "2026-07-05T00:00:00Z", resolved_at: null, sla_met: false }),
     ];
 
     const rows = getSlaMonthlyHistory(incidents, null);
 
-    expect(rows[0].avgResponseDays).toBe(0);
+    expect(rows[0].avgResponseDays).toBeNull();
   });
 
   // Task 1.2 regression guard, updated for Phase 1 final review finding 1: a
@@ -617,7 +617,7 @@ describe("getSlaMonthlyHistory", () => {
     const rows = getSlaMonthlyHistory(incidents, null);
 
     expect(rows).toEqual([
-      { label: "Jul 2026", compliancePct: null, violations: 0, totalRequests: 0, onTime: 0, avgResponseDays: 0 },
+      { label: "Jul 2026", compliancePct: null, violations: 0, totalRequests: 0, onTime: 0, avgResponseDays: null },
     ]);
   });
 
@@ -842,6 +842,17 @@ describe("getSlaRangeStats", () => {
     const stats = getSlaRangeStats(incidents, applications, range);
 
     expect(stats.avgResponseDays).toBe(2);
+  });
+
+  it("avgResponseDays is null, and its delta has nothing to compare, when no incident in range resolved", () => {
+    const incidents = [
+      buildIncident({ id: "inc-1", submitted_at: "2026-07-05T00:00:00Z", status: "open", resolved_at: null }),
+    ];
+
+    const stats = getSlaRangeStats(incidents, [], range);
+
+    expect(stats.avgResponseDays).toBeNull();
+    expect(stats.avgResponseDelta).toBe("No comparable data vs previous period");
   });
 
   it("trend matches getSlaTrend's own output for the same range", () => {

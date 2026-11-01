@@ -171,7 +171,9 @@ export function AuditLogView() {
             ) : (
               rows.map((e) => {
                 const context = forensicContext(e);
-                const expandable = Boolean(e.detail) || context.length > 0;
+                const hasReferences = e.references.length > 0;
+                const expandable =
+                  Boolean(e.detail) || context.length > 0 || hasReferences;
                 const isOpen = expandedId === e.id;
                 return (
                   <Fragment key={e.id}>
@@ -206,11 +208,23 @@ export function AuditLogView() {
                           className="px-4 py-3 text-sm text-gray-600"
                         >
                           {e.detail && <p>{e.detail}</p>}
+                          {/* Every reference an export released, uncapped:
+                              the auditor needs the whole list, not a count. */}
+                          {hasReferences && (
+                            <div className={cn("text-xs", e.detail && "mt-2")}>
+                              <p className="text-gray-500">References</p>
+                              <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-mono text-gray-700">
+                                {e.references.map((ref, i) => (
+                                  <li key={`${i}-${ref}`}>{ref}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
                           {context.length > 0 && (
                             <dl
                               className={cn(
                                 "grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-xs",
-                                e.detail && "mt-2",
+                                (e.detail || hasReferences) && "mt-2",
                               )}
                             >
                               {context.map((f) => (

@@ -24,7 +24,10 @@ export interface SlaTrendPoint {
 export interface SlaTrendRow extends SlaTrendPoint {
   totalRequests: number;
   onTime: number;
-  avgResponseDays: number;
+  // Unrounded mean days to resolve the month's incidents; null when none of
+  // them resolved. Render via formatDuration (src/portals/admin/lib/aggregate.ts),
+  // never `${value} days`.
+  avgResponseDays: number | null;
 }
 
 export interface SlaRangeStats {
@@ -38,7 +41,11 @@ export interface SlaRangeStats {
   // formatRate (src/portals/admin/lib/aggregate.ts), never `${value}%` or `?? 0`, so a
   // quiet period can never misread as "0% compliance".
   compliancePct: number | null;
-  avgResponseDays: number;
+  // Unrounded mean days to resolve incidents in range (incidents only); null
+  // when none resolved. Render via formatDuration
+  // (src/portals/admin/lib/aggregate.ts), never `${value}d`, so an empty range
+  // can never misread as "answered at once".
+  avgResponseDays: number | null;
   avgResponseDelta: string;
   trend: SlaTrendPoint[];
   // Every incident + application filed in range, pooled the same way

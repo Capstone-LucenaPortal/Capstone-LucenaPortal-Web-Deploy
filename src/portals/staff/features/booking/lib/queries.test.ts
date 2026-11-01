@@ -269,9 +269,31 @@ describe("getBookingQueue", () => {
     ]);
     const db = createTestClient(fetch);
 
-    expect(await getBookingQueue({}, db)).toEqual([
+    expect((await getBookingQueue({}, db)).items).toEqual([
       { ...CANNED_QUEUE_ROW, tier_verified: false, reference_number: "—" },
     ]);
+  });
+
+  /**
+   * The footer's denominator: how many rows match the tab and the search, not
+   * how many came back. Asked for on the same request as the rows, so the
+   * count and the rows cannot be filtered two different ways — on Needs action
+   * that means the count covers every needs-action status together.
+   */
+  it("asks for an exact count of the matching rows on the same request", async () => {
+    const { fetch, requests } = createRecordingFetch([CANNED_QUEUE_ROW], {
+      rowCount: 140,
+    });
+    const db = createTestClient(fetch);
+
+    const { matchCount } = await getBookingQueue(
+      { status: NEEDS_ACTION, search: "chamber" },
+      db,
+    );
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].headers["prefer"]).toContain("count=exact");
+    expect(matchCount).toBe(140);
   });
 
   /**
@@ -381,8 +403,8 @@ describe("getBookingStatusCounts", () => {
 
   /**
    * The counts are whole-view, and that is what makes them a workload summary
-   * rather than a restatement of the table below them. Every figure a queue
-   * shows is whole-view — see CONTEXT.md, "Queue".
+   * rather than a restatement of the table below them. Every figure above a
+   * queue's table is whole-view — see CONTEXT.md, "Queue".
    *
    * Asserted as an equality over the whole filter set, and over the absence of
    * a limit, so a search term or a status tab reaching this read fails here

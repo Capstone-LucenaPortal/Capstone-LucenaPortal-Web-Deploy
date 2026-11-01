@@ -3,6 +3,8 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/portals/staff/compon
 import { BackLink } from "@/portals/staff/components/ui/back-link";
 import { getReviewDossier } from "@/portals/staff/features/yellow-card/lib/review-dossier";
 import { getCurrentStaffUser } from "@/portals/staff/features/auth/lib/session";
+import { isAssigned } from "@/portals/staff/features/auth/lib/module-gate";
+import { NotYourModule } from "@/portals/staff/features/auth/components/not-your-module";
 import { getFullName } from "@/portals/staff/features/yellow-card/lib/get-full-name";
 import { YellowCardStatusBadge } from "@/portals/staff/features/yellow-card/components/status-badge";
 import { ReviewDecisionCard } from "@/portals/staff/features/yellow-card/components/review-decision-card";
@@ -25,6 +27,9 @@ export default async function YellowCardDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  // Before the dossier, so a refused account fires no Yellow Card read.
+  if (!(await isAssigned("yellow-card"))) return <NotYourModule module="yellow-card" />;
+
   const { id } = await params;
   const dossier = await getReviewDossier(id);
 

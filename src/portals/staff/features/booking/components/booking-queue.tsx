@@ -17,12 +17,15 @@ import type { BookingQueueItem, BookingStatus } from "../types";
 
 interface BookingQueueProps {
   bookings: BookingQueueItem[];
+  /** How many rows match the tab and the search: the footer's denominator. */
+  matchCount: number;
   counts: Record<BookingStatus, number>;
   needsActionCount: number;
   /** Pesos still owed across every `confirmed` booking, whole-view. */
   balanceOutstanding: number;
   filter: StatusFilter;
   search: string;
+  /** Every booking in the view: the All tab's count, not the footer's. */
   total: number;
   /** The route's one moment (ADR-0005) — a Tier Claim's age is measured to it. */
   now: Date;
@@ -38,6 +41,7 @@ interface BookingQueueProps {
  */
 export function BookingQueue({
   bookings,
+  matchCount,
   counts,
   needsActionCount,
   balanceOutstanding,
@@ -206,8 +210,11 @@ export function BookingQueue({
         )}
       </div>
 
+      {/* The one figure on this screen that is not whole-view: it counts the
+          table, so it narrows with the tab and the search. See CONTEXT.md,
+          "Queue". */}
       <p className="mt-3 text-sm text-gray-500">
-        Showing {bookings.length} of {total} bookings
+        Showing {bookings.length} of {matchCount} bookings
       </p>
     </div>
   );

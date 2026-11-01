@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AuthModal from '@/portals/citizen/features/auth/components/auth-modal';
+import { AuthError } from '@/portals/citizen/features/auth/lib/auth';
 
 const login = vi.fn();
 const signup = vi.fn();
@@ -30,9 +31,9 @@ vi.mock('@/portals/citizen/features/auth/hooks/use-auth', () => ({
   }),
 }));
 
-// Barangays come from the network; an empty list is enough to render the form.
+// Barangays come from the network; one is enough to fill the form in.
 vi.mock('@/portals/citizen/lib/supabase/catalogs', () => ({
-  catalogService: { getBarangays: () => Promise.resolve([]) },
+  catalogService: { getBarangays: () => Promise.resolve([{ code: 'bocohan', label: 'Bocohan' }]) },
 }));
 
 beforeEach(() => {
@@ -139,5 +140,59 @@ describe('AuthModal — sign up', () => {
   it('tells the citizen a responder may call the number on file', () => {
     render(<AuthModal />);
     expect(screen.getByText(/Responders may call this number/i)).toBeInTheDocument();
+  });
+});
+
+describe('AuthModal — sign up submit', { timeout: 20_000 }, () => {
+  beforeEach(() => {
+    mode = 'signup';
+  });
+
+  /** Fill in every required field with valid values, then press Create Account.
+   * Values are set directly rather than typed: what is under test is what the
+   * modal does after the submit, and typing into this many fields is slow.
+   * The same goes for role queries: on a form this size each one costs. */
+  const fillAndSubmit = async () => {
+    render(<AuthModal />);
+    await screen.findByText('Bocohan');
+    const set = (field: HTMLElement, value: string) => fireEvent.change(field, { target: { value } });
+    set(screen.getByLabelText(/^First Name/), 'Juan');
+    set(screen.getByLabelText(/^Last Name/), 'Dela Cruz');
+    set(screen.getByLabelText('Birth month'), '1');
+    set(screen.getByLabelText('Birth day'), '15');
+    set(screen.getByLabelText('Birth year'), '1990');
+    set(screen.getByLabelText(/^Sex/), 'Male');
+    set(screen.getByLabelText(/^Email Address/), 'juan@example.com');
+    set(screen.getByLabelText(/^Confirm Email Address/), 'juan@example.com');
+    set(screen.getByLabelText(/^Mobile Number/), '9123456789');
+    set(screen.getByLabelText(/^Street/), 'Rizal Street');
+    set(screen.getByLabelText(/^Barangay/), 'bocohan');
+    set(screen.getByLabelText(/^Password/), 'Password123!');
+    set(screen.getByLabelText(/^Confirm Password/), 'Password123!');
+    fireEvent.click(screen.getByLabelText(/^I agree to the/));
+    fireEvent.click(screen.getByText('Create Account'));
+  };
+
+  // Issue #65. With email confirmation on, the sign-up succeeds without a
+  // session. The success sentence used to land in the red error line under a
+  // still-filled form, so citizens read it as a failure and submitted again.
+  it('swaps the form for a Check Your Email panel when the email awaits confirmation', async () => {
+    signup.mockResolvedValueOnce('confirm-email');
+    await fillAndSubmit();
+    expect(signup).toHaveBeenCalledWith(expect.objectContaining({ email: 'juan@example.com' }));
+    expect(await screen.findByRole('heading', { name: 'Check Your Email' })).toBeInTheDocument();
+    expect(screen.getByText('juan@example.com')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create Account' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Back to Sign In' }));
+    expect(setAuthMode).toHaveBeenCalledWith('login');
+  });
+
+  it('still shows a real sign-up failure in the error line', async () => {
+    signup.mockRejectedValueOnce(new AuthError('An account with this email already exists. Please sign in instead.'));
+    await fillAndSubmit();
+    expect(await screen.findByRole('alert')).toHaveTextContent('An account with this email already exists');
+    expect(screen.getByRole('button', { name: 'Create Account' })).toBeInTheDocument();
   });
 });

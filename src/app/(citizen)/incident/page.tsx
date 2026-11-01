@@ -62,6 +62,10 @@ function formatSla(hours: number): string {
 // real gate.
 const isActiveIncident = (status: string) => status !== 'closed';
 
+// Only a drag carrying files is taken over by the photo box; dragged text keeps
+// the browser's own handling.
+const carriesFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes('Files');
+
 function IncidentContent() {
   const router = useRouter();
   const { user } = useAuth();
@@ -82,8 +86,11 @@ function IncidentContent() {
   // photoError above — which reports failures of the actual upload, after
   // the report is filed.
   const [photoSelectError, setPhotoSelectError] = useState('');
+  // A file is being dragged over the photo box.
+  const [photoDragOver, setPhotoDragOver] = useState(false);
   // F1: what a failed upload had already reserved/landed, so Retry can resume
-  // the step that failed instead of re-reserving (which burns the per-cycle cap).
+  // the step that failed instead of re-reserving (which burns a per-cycle cap
+  // slot while the old reservation is still live).
   const [photoProgress, setPhotoProgress] = useState<PhotoUploadProgress | undefined>(undefined);
   // Emergency numbers and the trunkline are LGU-editable config, the same rows
   // the homepage renders. Never hardcode one here — an edit in Super Staff has
@@ -148,13 +155,14 @@ function IncidentContent() {
     setFormData(prev => ({ ...prev, [field]: field === 'isAnonymous' ? value === 'true' : value }));
   };
 
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
+  // The one way a photo gets onto the form, whether picked by a click or dropped
+  // on the box (#32), so both are held to the same checks.
+  const acceptPhoto = async (file: File) => {
     const problem = await validateUploadFile(file, 'image');
     if (problem) {
+      // A refused photo also drops the one picked before it (#21).
       setPhotoSelectError(problem);
+      setFormData(prev => ({ ...prev, photoFile: null, photoPreview: null }));
       return;
     }
     setPhotoSelectError('');
@@ -167,6 +175,35 @@ function IncidentContent() {
       }));
     };
     reader.readAsDataURL(file);
+  };
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) void acceptPhoto(file);
+  };
+
+  // Without preventDefault the browser opens a dropped photo in a new tab
+  // instead of handing it to the form.
+  const handlePhotoDragOver = (e: React.DragEvent<HTMLLabelElement>) => {
+    if (!carriesFiles(e)) return;
+    e.preventDefault();
+    setPhotoDragOver(true);
+  };
+
+  const handlePhotoDragLeave = (e: React.DragEvent<HTMLLabelElement>) => {
+    // Moving onto the box's own icon or text is still over the box.
+    if (e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget)) return;
+    setPhotoDragOver(false);
+  };
+
+  const handlePhotoDrop = (e: React.DragEvent<HTMLLabelElement>) => {
+    if (!carriesFiles(e)) return;
+    e.preventDefault();
+    setPhotoDragOver(false);
+    // One photo per report, as with the single-file input.
+    const file = e.dataTransfer.files[0];
+    if (file) void acceptPhoto(file);
   };
 
   // Runs after the report is already filed, so a failure here never costs the
@@ -295,8 +332,10 @@ function IncidentContent() {
                   <button
                     onClick={() => {
                       // F1: resume from wherever the failed attempt got to —
-                      // photoProgress carries the reservation, if one exists —
-                      // rather than re-reserving and burning another cap slot.
+                      // photoProgress carries the reservation, if one exists.
+                      // A live reservation still holds a cap slot, so re-reserving
+                      // would burn another; a stale one is restarted by
+                      // uploadIncidentPhoto itself.
                       if (formData.photoFile) {
                         void runPhotoUpload(incidentId, formData.photoFile, uploadGenerationRef.current, photoProgress);
                       }
@@ -440,9 +479,12 @@ function IncidentContent() {
                 <input type="file" accept="image/jpeg,image/png" onChange={handlePhotoUpload} style={{ display: 'none' }} id="photoInput" />
                 <label
                   htmlFor="photoInput"
-                  style={{ display: 'block', padding: '32px 20px', border: '2px dashed #CCCCCC', borderRadius: 4, textAlign: 'center', cursor: 'pointer', background: '#F9F9F9', transition: 'all 0.2s' }}
+                  style={{ display: 'block', padding: '32px 20px', border: `2px dashed ${photoDragOver ? '#003DA5' : '#CCCCCC'}`, borderRadius: 4, textAlign: 'center', cursor: 'pointer', background: '#F9F9F9', transition: 'all 0.2s' }}
                   onMouseEnter={(e) => e.currentTarget.style.borderColor = '#003DA5'}
                   onMouseLeave={(e) => e.currentTarget.style.borderColor = '#CCCCCC'}
+                  onDragOver={handlePhotoDragOver}
+                  onDragLeave={handlePhotoDragLeave}
+                  onDrop={handlePhotoDrop}
                 >
                   <div style={{ fontSize: 24, marginBottom: 8 }}>📸</div>
                   <p style={{ fontSize: 13, color: '#333333', fontWeight: 600, margin: '0 0 4px 0' }}>Click to upload photo or drag &amp; drop</p>

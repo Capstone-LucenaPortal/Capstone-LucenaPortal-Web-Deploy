@@ -11,7 +11,10 @@ export interface IssueRangeStats {
   // null. Render via formatRate (src/portals/admin/lib/aggregate.ts), never `${value}%`.
   resolutionRatePct: number | null;
   resolutionRateDelta: string;
-  avgResponseDays: number;
+  // Unrounded mean days from submission to resolution; null when no incident
+  // in range has resolved — there is no response time to average. Render via
+  // formatDuration (src/portals/admin/lib/aggregate.ts), never `${value}d`.
+  avgResponseDays: number | null;
   avgResponseDelta: string;
   openBacklog: number;
   // Always null (Admin Portal Fix Plan, Task 1.3) — not merely when

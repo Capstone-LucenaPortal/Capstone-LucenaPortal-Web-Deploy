@@ -17,7 +17,7 @@ vi.mock('@/portals/citizen/features/auth/lib/auth', () => ({
     }),
     ensureCitizenProfile: vi.fn(async () => 'exists'),
     login: vi.fn(async () => ({ id: 'USER-B' })),
-    signup: vi.fn(async () => ({ id: 'USER-B' })),
+    signup: vi.fn(async () => ({ status: 'signed-in', user: { id: 'USER-B' } })),
     logout: vi.fn(async () => {}),
   },
 }));
@@ -132,5 +132,33 @@ describe('AuthProvider password recovery', () => {
     act(() => listener!(null, 'INITIAL_SESSION'));
     act(() => listener!({ id: 'USER-A' }, 'SIGNED_IN'));
     expect(hook.result.current.isPasswordRecovery).toBe(true);
+  });
+});
+
+describe('AuthProvider sign-up', () => {
+  const signupData = {} as Parameters<ReturnType<typeof useAuth>['signup']>[0];
+
+  it('signs the citizen in and closes the modal when the sign-up has a session', async () => {
+    const hook = await mount();
+    act(() => hook.result.current.openAuthModal('signup'));
+    let outcome: unknown;
+    await act(async () => { outcome = await hook.result.current.signup(signupData); });
+    expect(outcome).toBe('signed-in');
+    expect(hook.result.current.user).toMatchObject({ id: 'USER-B' });
+    expect(hook.result.current.showAuthModal).toBe(false);
+  });
+
+  // Issue #65. With email confirmation on there is no session yet: the
+  // citizen is not signed in, and the modal stays open to say so.
+  it('leaves the citizen signed out with the modal open while the email awaits confirmation', async () => {
+    vi.mocked(authService.signup).mockResolvedValueOnce({ status: 'confirm-email' });
+    const hook = await mount();
+    act(() => hook.result.current.openAuthModal('signup'));
+    let outcome: unknown;
+    await act(async () => { outcome = await hook.result.current.signup(signupData); });
+    expect(outcome).toBe('confirm-email');
+    expect(hook.result.current.user).toBeNull();
+    expect(hook.result.current.showAuthModal).toBe(true);
+    expect(localStorage.getItem('lucena_last_activity')).toBeNull();
   });
 });

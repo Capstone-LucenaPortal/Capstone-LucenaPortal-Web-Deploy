@@ -167,7 +167,7 @@ describe("exportApplications", () => {
     mockRpc.mockReset();
   });
 
-  it("calls .rpc('export_yellow_card_applications', { p_status, p_from, p_to }) and passes null for omitted filters", async () => {
+  it("calls .rpc('export_yellow_card_applications', { p_status, p_from, p_to, p_date_basis }) and passes null for omitted filters", async () => {
     mockRpc.mockResolvedValue({ data: [], error: null });
 
     await exportApplications({ status: "approved" });
@@ -180,10 +180,11 @@ describe("exportApplications", () => {
       p_status: "approved",
       p_from: null,
       p_to: null,
+      p_date_basis: null,
     });
   });
 
-  it("passes null for all three filters when no filter is given at all", async () => {
+  it("passes null for all four filters when no filter is given at all", async () => {
     mockRpc.mockResolvedValue({ data: [], error: null });
 
     await exportApplications();
@@ -192,18 +193,25 @@ describe("exportApplications", () => {
       p_status: null,
       p_from: null,
       p_to: null,
+      p_date_basis: null,
     });
   });
 
   it("passes every provided filter value through", async () => {
     mockRpc.mockResolvedValue({ data: [], error: null });
 
-    await exportApplications({ status: "approved", from: "2026-01-01", to: "2026-01-31" });
+    await exportApplications({
+      status: "approved",
+      from: "2026-01-01",
+      to: "2026-01-31",
+      dateBasis: "completion",
+    });
 
     expect(mockRpc).toHaveBeenCalledWith("export_yellow_card_applications", {
       p_status: "approved",
       p_from: "2026-01-01",
       p_to: "2026-01-31",
+      p_date_basis: "completion",
     });
   });
 

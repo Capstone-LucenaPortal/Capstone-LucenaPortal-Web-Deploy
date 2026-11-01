@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import IncidentsQueuePage from "./page";
 import * as queries from "@/portals/staff/features/incidents/lib/queries";
 import * as config from "@/portals/staff/features/incidents/lib/config";
+import { stubProfileRow } from "@/portals/staff/features/auth/lib/stub-profile-row";
 import type { IncidentQueueItem, IncidentStatus } from "@/portals/staff/features/incidents/types";
 
 // The queue's tab row renders QueueActivityBar, which calls useRouter().
@@ -37,15 +38,43 @@ const incident: IncidentQueueItem = {
 };
 
 function stubReads() {
-  const queue = vi.spyOn(queries, "getIncidentQueue").mockResolvedValue([incident]);
+  const queue = vi
+    .spyOn(queries, "getIncidentQueue")
+    .mockResolvedValue({ items: [incident], matchCount: 1 });
   vi.spyOn(queries, "getIncidentStatusCounts").mockResolvedValue(counts);
   vi.spyOn(queries, "getAtRiskCount").mockResolvedValue(2);
   vi.spyOn(config, "getAtRiskThreshold").mockResolvedValue(0.5);
   return queue;
 }
 
+beforeEach(() => {
+  stubProfileRow(["incidents"]);
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe("IncidentsQueuePage — an account without Incidents", () => {
+  it("is told the page is not theirs, and nothing of Incidents is read", async () => {
+    stubProfileRow(["yellow_card", "booking"]);
+    stubReads();
+
+    render(await IncidentsQueuePage({ searchParams: Promise.resolve({}) }));
+
+    expect(
+      screen.getByRole("heading", { name: "This page belongs to the Incidents desk" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Incident Triage Queue")).not.toBeInTheDocument();
+    for (const read of [
+      queries.getIncidentQueue,
+      queries.getIncidentStatusCounts,
+      queries.getAtRiskCount,
+      config.getAtRiskThreshold,
+    ]) {
+      expect(read).not.toHaveBeenCalled();
+    }
+  });
 });
 
 describe("IncidentsQueuePage", () => {
@@ -57,6 +86,14 @@ describe("IncidentsQueuePage", () => {
     expect(screen.getByText("Incident Triage Queue")).toBeInTheDocument();
     expect(screen.getByText("INC-2026-000051")).toBeInTheDocument();
     expect(screen.getByText("Burst main")).toBeInTheDocument();
+  });
+
+  it("counts the footer against the rows the query matched", async () => {
+    stubReads().mockResolvedValue({ items: [incident], matchCount: 140 });
+
+    render(await IncidentsQueuePage({ searchParams: Promise.resolve({}) }));
+
+    expect(screen.getByText("Showing 1 of 140 incidents")).toBeInTheDocument();
   });
 
   it("passes the parsed status and the search term down to the query", async () => {

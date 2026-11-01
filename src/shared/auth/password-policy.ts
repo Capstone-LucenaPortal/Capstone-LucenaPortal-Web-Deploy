@@ -1,5 +1,6 @@
-/** One policy, one place. The UI copy and the enforcement must never diverge
- * again (the old profile page advertised four rules and enforced one). */
+/** One policy, one place, for every Portal that sets a password. The UI copy
+ * and the enforcement must never diverge again (the old profile page
+ * advertised four rules and enforced one). */
 export const PASSWORD_RULES_TEXT = 'At least 8 characters, with at least one letter and one number.';
 
 export function validatePassword(pw: string): string | null {

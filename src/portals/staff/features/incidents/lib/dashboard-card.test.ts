@@ -11,6 +11,7 @@ function row(over: Partial<IncidentPreviewRow> = {}): IncidentPreviewRow {
     incident_level: "critical",
     is_verified: true,
     status: "in_pool",
+    closure_reason: null,
     sla_armed_at: "2026-08-07T08:00:00+08:00",
     sla_due_at: "2026-08-07T16:00:00+08:00",
     resolved_at: null,

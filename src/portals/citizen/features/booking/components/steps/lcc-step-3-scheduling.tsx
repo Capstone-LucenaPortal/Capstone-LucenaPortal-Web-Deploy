@@ -93,14 +93,30 @@ export default function LCCStep3Scheduling({ bookingData, onUpdate, onNext, onBa
     onUpdate({ selectedDate: day, startTime: '', durationHours: minDuration });
   }
 
-  const endHour = startTime ? parseInt(startTime.split(':')[0], 10) + Number(durationHours) : null;
+  const startHour = startTime ? parseInt(startTime.split(':')[0], 10) : null;
+
+  // A longer booking can push the chosen start past closing; it then drops out of the
+  // dropdown, so clear it too rather than keep a value the box no longer shows.
+  function increaseDuration() {
+    const next = Math.min(MAX_DURATION_HOURS, Number(durationHours) + 1);
+    const endsAfterClosing = startHour !== null && startHour + next > closingHour;
+    onUpdate(endsAfterClosing ? { durationHours: next, startTime: '' } : { durationHours: next });
+  }
+
+  const endHour = startHour !== null ? startHour + Number(durationHours) : null;
   const startHourCandidates = Array.from({ length: Math.max(0, closingHour - openingHour) }, (_, i) => i + openingHour);
   const validStartHours = startHourCandidates.filter((h) => h + Number(durationHours) <= closingHour);
   const conflict =
-    selectedDate && startTime
-      ? hasTimeConflict(occupiedRangesFor(selectedDate as Date), parseInt(startTime.split(':')[0], 10), Number(durationHours))
+    selectedDate && startHour !== null
+      ? hasTimeConflict(occupiedRangesFor(selectedDate as Date), startHour, Number(durationHours))
       : false;
-  const canProceed = !!selectedDate && !!startTime && Number(durationHours) >= minDuration && !conflict;
+  const canProceed =
+    !!selectedDate &&
+    !!startTime &&
+    Number(durationHours) >= minDuration &&
+    endHour !== null &&
+    endHour <= closingHour &&
+    !conflict;
   const days = getCalendarDays();
 
   if (loading) {
@@ -281,7 +297,7 @@ export default function LCCStep3Scheduling({ bookingData, onUpdate, onNext, onBa
                   </span>
                   <button
                     type="button"
-                    onClick={() => onUpdate({ durationHours: Math.min(MAX_DURATION_HOURS, Number(durationHours) + 1) })}
+                    onClick={increaseDuration}
                     disabled={Number(durationHours) >= MAX_DURATION_HOURS}
                     style={{
                       width: 36, height: 36, borderRadius: 4, border: '1px solid #CCCCCC',

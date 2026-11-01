@@ -4,6 +4,8 @@ import { BackLink } from "@/portals/staff/components/ui/back-link";
 import { Badge } from "@/portals/staff/components/ui/badge";
 import { formatDate, formatDateTime } from "@/portals/staff/lib/utils";
 import { getCurrentStaffUser } from "@/portals/staff/features/auth/lib/session";
+import { isAssigned } from "@/portals/staff/features/auth/lib/module-gate";
+import { NotYourModule } from "@/portals/staff/features/auth/components/not-your-module";
 import { getAtRiskThreshold } from "@/portals/staff/features/incidents/lib/config";
 import { getIncidentDossier } from "@/portals/staff/features/incidents/lib/incident-dossier";
 import { IncidentTimeline } from "@/portals/staff/features/incidents/components/incident-timeline";
@@ -17,6 +19,7 @@ import { RouteIncidentAction } from "@/portals/staff/features/incidents/componen
 import { ForceReleaseAction } from "@/portals/staff/features/incidents/components/force-release-action";
 import { RefuseIncidentAction } from "@/portals/staff/features/incidents/components/refuse-incident-action";
 import { isRoutable } from "@/portals/staff/features/incidents/lib/status";
+import { deriveSlaState } from "@/portals/staff/features/incidents/lib/sla";
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
@@ -34,6 +37,9 @@ export default async function IncidentDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  // Before the dossier, so a refused account fires no Incidents read.
+  if (!(await isAssigned("incidents"))) return <NotYourModule module="incidents" />;
+
   const { id } = await params;
   const dossier = await getIncidentDossier(id);
 
@@ -70,6 +76,9 @@ export default async function IncidentDetailPage({
   } = dossier;
 
   const now = new Date();
+  // A report refused or expired after routing still carries its deadline, but
+  // beside "Not scored" the due line would read as a promise still running.
+  const slaState = deriveSlaState(incident, now, threshold);
   const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
     incident.address,
   )}`;
@@ -173,7 +182,7 @@ export default async function IncidentDetailPage({
               </p>
               <div className="mt-1 flex items-center gap-2">
                 <SlaIndicator incident={incident} now={now} threshold={threshold} />
-                {incident.sla_due_at && (
+                {incident.sla_due_at && slaState !== "not_scored" && (
                   <span className="text-sm text-gray-500">
                     due {formatDateTime(incident.sla_due_at)}
                     {incident.sla_target_hours !== null &&

@@ -1,7 +1,7 @@
 import { getSupabaseClient } from '@/portals/citizen/lib/supabase/client';
 import { requestService } from '@/portals/citizen/lib/mock/request-store';
 import { LIMITS, fieldTooLong } from '@/portals/citizen/lib/validation';
-import { safeExt, canonicalMime } from '@/portals/citizen/lib/storage/file-validation';
+import { safeExt, canonicalMime, type AllowedExt } from '@/portals/citizen/lib/storage/file-validation';
 import { stripImageMetadata } from '@/portals/citizen/lib/storage/image-sanitizer';
 import type { IncidentSubmission, IncidentResult, MyIncident, MyIncidentPhoto, PhotoUploadProgress } from '../types';
 
@@ -135,6 +135,11 @@ export function translateIncidentUploadError(
       return stage === 'confirm'
         ? 'Your photo was uploaded but we could not finish attaching it. Please try again.'
         : 'We could not find that report.';
+    // The reservation outlived its window (DB l90). `uploadIncidentPhoto`
+    // already restarts a resume that hits this, so it surfaces only when the
+    // first attempt itself ran past the window, and the Retry then restarts.
+    case 'PT404':
+      return 'Your photo upload took too long and expired. Please try again.';
     default:
       return 'We could not attach your photo right now. Please try again.';
   }
@@ -314,20 +319,30 @@ export async function submitIncident(input: IncidentSubmission): Promise<Inciden
  * `is_verified`/`verified_at` and arms the SLA. None of that is set here.
  *
  * The per-cycle photo cap (`max_photos_per_cycle`, default 3) is charged at
- * RESERVATION — `request_incident_photo_upload` counts existing
- * `incident_photos` rows regardless of `uploaded_at`. A naive retry that
- * re-reserves on every attempt burns a cap slot it does not need, and after
- * enough attempts permanently strands the report (the cap can only be reset by
- * a reopen, which a citizen cannot trigger). So a caller that already holds a
- * reservation from a failed attempt passes it back as `progress` to resume
- * from the step that actually failed, instead of starting over:
+ * RESERVATION — `request_incident_photo_upload` counts confirmed
+ * `incident_photos` rows plus reservations that are still LIVE (DB l90: an
+ * unconfirmed reservation is live for 15 minutes after `reserved_at`, stale
+ * after). A retry that re-reserves while the old reservation is live burns a
+ * cap slot it does not need, and enough of them in a row exhaust the cap. So a
+ * caller that already holds a reservation from a failed attempt passes it back
+ * as `progress` to resume from the step that actually failed:
  *
  * - no `progress` -> reserve, upload, confirm (the first attempt).
  * - `progress` with `bytesLanded: false` -> skip reserve; upload to the SAME
  *   `storagePath` (no reservation was consumed, nothing to skip there); confirm.
  * - `progress` with `bytesLanded: true` -> skip reserve AND upload; call
- *   `confirm_upload` alone. Valid because the DB only rejects a confirm once
- *   `uploaded_at` is already set, and it isn't yet.
+ *   `confirm_upload` alone. Valid while the reservation is live and its
+ *   `uploaded_at` is not yet set.
+ *
+ * A resumed reservation may have gone stale in the meantime, and the database
+ * then refuses it at whichever step comes next: the bucket's INSERT policy
+ * rejects the upload (an RLS refusal), or `confirm_upload` raises `PT404`.
+ * Either one restarts the attempt ONCE from a fresh reservation, with the same
+ * file — safe, because a stale reservation no longer holds a cap slot. The
+ * database's refusal is the only staleness signal; there is deliberately no
+ * client-side copy of the 15-minute window. A first attempt (no `progress`)
+ * never restarts, so a refusal there surfaces as-is, and a failed restart
+ * hands back the NEW reservation's progress (or none, if reserving failed).
  *
  * Deliberately does not use `upsert: true` on the storage upload: the
  * `incident-photos` bucket has an INSERT policy and no UPDATE policy, so an
@@ -374,6 +389,33 @@ export async function uploadIncidentPhoto(
     throw new IncidentPhotoError('Please upload a JPG or PNG image.', progress);
   }
 
+  try {
+    await sendIncidentPhoto(client, incidentId, sanitized, ext, progress);
+  } catch (err) {
+    if (!progress || !(err instanceof StaleReservationError)) throw err;
+    await sendIncidentPhoto(client, incidentId, sanitized, ext);
+  }
+}
+
+/** The database refused a resumed reservation as stale (DB l90). Callers just see an `IncidentPhotoError`. */
+class StaleReservationError extends IncidentPhotoError {}
+
+/**
+ * The bucket's INSERT policy refusing an upload. A storage error has no
+ * Postgres errcode, so this reads the Storage API's own `code`, then its text.
+ */
+function isRlsRefusal(error: { message: string; code?: string }): boolean {
+  return error.code === 'AccessDenied' || (error.message ?? '').toLowerCase().includes('row-level security');
+}
+
+/** One reserve -> upload -> confirm pass, resuming `progress` when given. */
+async function sendIncidentPhoto(
+  client: NonNullable<ReturnType<typeof getSupabaseClient>>,
+  incidentId: string,
+  sanitized: File,
+  ext: AllowedExt,
+  progress?: PhotoUploadProgress,
+): Promise<void> {
   let row: PhotoUploadProgress;
 
   if (progress) {
@@ -411,10 +453,10 @@ export async function uploadIncidentPhoto(
       .upload(row.storagePath, sanitized, { contentType: canonicalMime(ext) });
     if (uploadError) {
       // StorageError has no Postgres-style `code`, so there is none to pass on.
-      throw new IncidentPhotoError(
-        translateIncidentUploadError('upload', undefined, uploadError.message),
-        row,
-      );
+      const message = translateIncidentUploadError('upload', undefined, uploadError.message);
+      // Only a resumed path can be stale; on a freshly reserved one the refusal is real.
+      if (progress && isRlsRefusal(uploadError)) throw new StaleReservationError(message, row);
+      throw new IncidentPhotoError(message, row);
     }
     row = { ...row, bytesLanded: true };
   }
@@ -428,9 +470,8 @@ export async function uploadIncidentPhoto(
     p_mime_type: canonicalMime(ext),
   });
   if (confirmError) {
-    throw new IncidentPhotoError(
-      translateIncidentUploadError('confirm', confirmError.code, confirmError.message),
-      row,
-    );
+    const message = translateIncidentUploadError('confirm', confirmError.code, confirmError.message);
+    if (confirmError.code === 'PT404') throw new StaleReservationError(message, row);
+    throw new IncidentPhotoError(message, row);
   }
 }

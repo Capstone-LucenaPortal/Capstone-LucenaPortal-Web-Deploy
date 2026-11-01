@@ -1,3 +1,5 @@
+import { isAssigned } from "@/portals/staff/features/auth/lib/module-gate";
+import { NotYourModule } from "@/portals/staff/features/auth/components/not-your-module";
 import { IncidentQueue } from "@/portals/staff/features/incidents/components/incident-queue";
 import { getAtRiskThreshold } from "@/portals/staff/features/incidents/lib/config";
 import {
@@ -12,6 +14,9 @@ export default async function IncidentsQueuePage({
 }: {
   searchParams: Promise<{ status?: string; q?: string }>;
 }) {
+  // Before anything else, so a refused account fires no Incidents read.
+  if (!(await isAssigned("incidents"))) return <NotYourModule module="incidents" />;
+
   const { status, q } = await searchParams;
   const activeStatus = parseStatusFilter(status);
 
@@ -28,7 +33,7 @@ export default async function IncidentsQueuePage({
   // this read ends it is a Promise.all the page already awaits that sees it.
   const thresholdRead = getAtRiskThreshold();
 
-  const [incidents, statusCounts, atRiskCount] = await Promise.all([
+  const [queue, statusCounts, atRiskCount] = await Promise.all([
     getIncidentQueue({ status: activeStatus, search: q }),
     getIncidentStatusCounts(),
     thresholdRead.then((t) => getAtRiskCount(t, now)),
@@ -44,7 +49,8 @@ export default async function IncidentsQueuePage({
       </p>
       <div className="mt-6">
         <IncidentQueue
-          incidents={incidents}
+          incidents={queue.items}
+          matchCount={queue.matchCount}
           statusCounts={statusCounts}
           atRiskCount={atRiskCount}
           activeStatus={activeStatus}

@@ -68,9 +68,9 @@ export function BookingConfigView() {
   const classifications = useClassificationsEditor();
 
   // A tab is dirty if the scalar form is dirty OR any catalog row is. The
-  // rail's limitation is unchanged: it guards tab-to-tab navigation and
-  // beforeunload, but does NOT intercept sidebar <Link> navigation — App
-  // Router exposes no hook for that.
+  // rail reports it to the shell's unsaved-changes guard, which asks before a
+  // tab switch or a sidebar link leaves and warns on reload/close. Browser
+  // Back/Forward is still unguarded: App Router can't cancel a popstate.
   const anyDirty =
     dirty ||
     venues.dirtyKeys.size > 0 ||

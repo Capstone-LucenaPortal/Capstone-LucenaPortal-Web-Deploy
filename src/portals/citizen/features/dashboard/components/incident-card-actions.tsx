@@ -17,6 +17,13 @@ import {
 } from '../lib/action-styles';
 import ResolutionPhotos from './resolution-photos';
 
+/**
+ * The statuses `sweep_incident_lifecycle` expires a never-verified report from
+ * (its "expire the never-verified" pass). Past the pool ("Claim anyway", or a
+ * Staff route) nothing closes it, so the card must not show a closing date.
+ */
+const UNVERIFIED_EXPIRY_RUNNING = new Set(['open', 'in_pool']);
+
 interface Props {
   incident: MyIncident;
   config: IncidentConfig | null;
@@ -35,11 +42,11 @@ interface Props {
  * unconfirmed resolution held a slot until the auto-close sweep freed it days
  * later.
  *
- * `!is_verified` → add a photo. `request_incident_photo_upload` accepts the
- * reporter on any non-closed report and the sweeper expires it after
- * `confirmation_window_days`, but the only upload entry point in the portal
- * was the submission page itself. The dashboard displayed "awaiting photo
- * confirmation" with nothing to act on.
+ * `!is_verified`, not yet resolved → add a photo. `request_incident_photo_upload`
+ * accepts the reporter on any non-closed report and the sweeper expires an
+ * open or pooled one after `confirmation_window_days`, but the only upload
+ * entry point in the portal was the submission page itself. The dashboard
+ * displayed "awaiting photo confirmation" with nothing to act on.
  */
 export default function IncidentCardActions({ incident, config, onChanged }: Props) {
   const [busy, setBusy] = useState<null | 'confirm' | 'reopen' | 'photo'>(null);
@@ -50,9 +57,10 @@ export default function IncidentCardActions({ incident, config, onChanged }: Pro
   const reasonId = useId();
 
   // A failed attempt hands back its reservation so a retry resumes instead of
-  // re-reserving. That matters here: the per-cycle photo cap is charged at
-  // RESERVATION, so a naive retry loop would burn the citizen's remaining
-  // slots and can permanently strand the report — only a reopen resets it.
+  // re-reserving. The per-cycle photo cap is charged at RESERVATION and a
+  // reservation holds its slot while it is live (DB l90), so a
+  // naive retry loop would burn the citizen's remaining slots meanwhile. A
+  // reservation that has gone stale is restarted by `uploadIncidentPhoto`.
   const photoProgress = useRef<PhotoUploadProgress | undefined>(undefined);
 
   const run = async (kind: 'confirm' | 'reopen', fn: () => Promise<void>) => {
@@ -94,15 +102,20 @@ export default function IncidentCardActions({ incident, config, onChanged }: Pro
   };
 
   const isResolved = incident.status === 'resolved';
-  const needsPhoto = !incident.is_verified && incident.status !== 'closed';
+  // A resolved report asks for confirmation, not a photo (issue #46). An
+  // in_progress one still asks: `inc_verify_on_photo` verifies it whatever its
+  // status, and that is what arms the SLA on a report claimed while unverified.
+  const needsPhoto =
+    !incident.is_verified && incident.status !== 'closed' && !isResolved;
 
   // The sweeper's two clocks, not to be crossed (issue #17): it closes a
   // resolved report `auto_close_day` days after `resolved_at`, and expires a
-  // never-verified one `confirmation_window_days` after `submitted_at`.
+  // never-verified one `confirmation_window_days` after `submitted_at`. The
+  // second clock only runs in UNVERIFIED_EXPIRY_RUNNING.
   const confirmBy = isResolved
     ? addDays(incident.resolved_at, config?.auto_close_day)
     : null;
-  const verifyBy = needsPhoto
+  const verifyBy = needsPhoto && UNVERIFIED_EXPIRY_RUNNING.has(incident.status)
     ? addDays(incident.submitted_at, config?.confirmation_window_days)
     : null;
 

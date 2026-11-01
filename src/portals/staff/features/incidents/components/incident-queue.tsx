@@ -14,6 +14,7 @@ import type { IncidentQueueItem, IncidentStatus } from "../types";
 
 export function IncidentQueue({
   incidents,
+  matchCount,
   statusCounts,
   atRiskCount,
   activeStatus,
@@ -22,6 +23,8 @@ export function IncidentQueue({
   threshold,
 }: {
   incidents: IncidentQueueItem[];
+  /** How many rows match the tab and the search: the footer's denominator. */
+  matchCount: number;
   statusCounts: Record<IncidentStatus, number>;
   atRiskCount: number;
   activeStatus: StatusFilter;
@@ -176,8 +179,11 @@ export function IncidentQueue({
         )}
       </div>
 
+      {/* The one figure on this screen that is not whole-view: it counts the
+          table, so it narrows with the tab and the search. See CONTEXT.md,
+          "Queue". */}
       <p className="mt-3 text-sm text-gray-500">
-        Showing {incidents.length} of {total} incidents
+        Showing {incidents.length} of {matchCount} incidents
       </p>
     </div>
   );

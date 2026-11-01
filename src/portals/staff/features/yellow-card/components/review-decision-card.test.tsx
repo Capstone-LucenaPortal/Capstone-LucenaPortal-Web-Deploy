@@ -155,6 +155,65 @@ describe("ReviewDecisionCard", () => {
     expect(screen.getByText(/Rejected on/)).toBeInTheDocument();
   });
 
+  describe("the duplicate-review banner", () => {
+    const BANNER = /Flagged for duplicate review — this voter ID matches an existing record\. Check before approving\./;
+
+    function flagged(status: YellowCardStatus): YellowCardApplication {
+      return { ...application(status), needs_dedup_review: true };
+    }
+
+    it("shows on a flagged pending application", () => {
+      render(<ReviewDecisionCard application={flagged("pending")} actorName="Juan" />);
+
+      expect(screen.getByText(BANNER)).toBeInTheDocument();
+    });
+
+    it("still shows after a flagged application is resubmitted, ahead of the Resubmitted notice", () => {
+      render(
+        <ReviewDecisionCard
+          application={{ ...flagged("resubmitted"), review_cycles: 1 }}
+          actorName="Juan"
+          latestReview={{
+            id: "rev-3",
+            decision: "revise",
+            reason: "Upload a clearer copy of the voter ID.",
+            reviewed_at: "2026-06-30T08:00:00.000Z",
+            reviewed_by_name: "Maria Santos",
+          }}
+        />,
+      );
+
+      const banner = screen.getByText(BANNER);
+      const resubmitted = screen.getByText(/Resubmitted after a revision request — review cycle 2\./);
+      expect(banner.compareDocumentPosition(resubmitted)).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+      expect(screen.getByText("Upload a clearer copy of the voter ID.")).toBeInTheDocument();
+    });
+
+    it.each<[YellowCardStatus, RegExp]>([
+      ["revision_requested", /Waiting on the applicant to resubmit/],
+      ["approved", /^Approved/],
+      ["rejected", /^Rejected/],
+      ["withdrawn", /Withdrawn by the applicant/],
+    ])(
+      "does not show on a flagged %s application, which keeps its own notice",
+      (status, notice) => {
+        render(<ReviewDecisionCard application={flagged(status)} actorName="Juan" />);
+
+        expect(screen.queryByText(BANNER)).not.toBeInTheDocument();
+        expect(screen.getByText(notice)).toBeInTheDocument();
+      },
+    );
+
+    it("does not show on an unflagged resubmitted application", () => {
+      render(<ReviewDecisionCard application={application("resubmitted")} actorName="Juan" />);
+
+      expect(screen.queryByText(BANNER)).not.toBeInTheDocument();
+      expect(screen.getByText(/Resubmitted after a revision request/)).toBeInTheDocument();
+    });
+  });
+
   it("surfaces a translated failure and never the raw database message", async () => {
     vi.spyOn(actions, "reviewApplication").mockResolvedValue({
       ok: false,

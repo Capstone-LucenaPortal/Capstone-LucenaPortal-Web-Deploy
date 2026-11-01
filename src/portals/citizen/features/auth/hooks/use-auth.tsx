@@ -12,7 +12,7 @@ import {
   isIdleExpired,
   recoveryFlagState,
 } from '@/portals/citizen/features/auth/lib/session-policy';
-import type { User, SignupData } from '@/portals/citizen/features/auth/types';
+import type { User, SignupData, SignupResult } from '@/portals/citizen/features/auth/types';
 
 // Session storage is per-tab; the Supabase session it gates lives in a
 // cookie (ADR 0007) and is shared across every tab of this origin. Using
@@ -41,7 +41,9 @@ interface AuthContextValue {
   dismissIdleNotice: () => void;
   setUser: (user: User | null) => void;
   login: (email: string, password: string) => Promise<void>;
-  signup: (data: SignupData) => Promise<void>;
+  /** Resolves to how the sign-up succeeded. Only `'signed-in'` sets the user
+   * and closes the auth modal; `'confirm-email'` leaves both alone. */
+  signup: (data: SignupData) => Promise<SignupResult['status']>;
   logout: () => Promise<void>;
   openAuthModal: (mode?: 'login' | 'signup' | 'forgot') => void;
   closeAuthModal: () => void;
@@ -271,13 +273,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signup = async (data: SignupData) => {
-    const u = await authService.signup(data);
-    setUserState(u);
+    const result = await authService.signup(data);
+    // Awaiting email confirmation is not a sign-in: no session exists yet, so
+    // the modal stays open to tell the citizen to check their email (#65).
+    if (result.status === 'confirm-email') return result.status;
+    setUserState(result.user);
     endPasswordRecovery();
     if (typeof window !== 'undefined') {
       localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
     }
     setShowAuthModal(false);
+    return result.status;
   };
 
   const logout = async () => {

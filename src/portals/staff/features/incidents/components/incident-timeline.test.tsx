@@ -39,6 +39,23 @@ describe("IncidentTimeline", () => {
     expect(screen.getByText("Working")).toBeInTheDocument();
   });
 
+  it("labels a photo the same whoever added it", () => {
+    // Issue #57: l97 writes photo_added for the citizen's before photo and the
+    // responder's after photo alike; the actor suffix already tells them apart.
+    render(
+      <IncidentTimeline
+        events={[
+          event({ id: "a", event_type: "photo_added", actor_role: "citizen" }),
+          event({ id: "b", event_type: "photo_added", actor_role: "responder" }),
+        ]}
+      />,
+    );
+    const entries = screen.getAllByText("Photo added");
+    expect(entries).toHaveLength(2);
+    expect(within(entries[0].closest("li")!).getByText(/\(citizen\)/)).toBeInTheDocument();
+    expect(within(entries[1].closest("li")!).getByText(/\(responder\)/)).toBeInTheDocument();
+  });
+
   it("names the actor and shows the note", () => {
     render(
       <IncidentTimeline

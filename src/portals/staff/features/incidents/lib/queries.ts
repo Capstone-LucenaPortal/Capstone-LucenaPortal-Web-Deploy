@@ -23,21 +23,24 @@ import type { IncidentQueueItem, IncidentStatus } from "../types";
  *
  * The result is still cast to its row type below. Every list here was verified
  * by live query against the sandbox on 2026-08-07 — `duplicate_of` and
- * `original_reference` on 2026-10-20. Do not add a column without doing the same.
+ * `original_reference` on 2026-10-20. `closure_reason` joined AT_RISK_COLUMNS
+ * and the dashboard card's preview on 2026-10-31, read from the same view the
+ * queue's list already reads it from. Do not add a column without doing the same.
  */
 const QUEUE_COLUMNS = "id, reference_number, type_label, incident_level, status, closure_reason, is_verified, barangay_name, submitted_at, sla_armed_at, sla_due_at, resolved_at, closed_at, duplicate_of, original_reference";
 
 /**
- * What `deriveSlaState` needs and nothing else. Six columns rather than the
+ * What `deriveSlaState` needs and nothing else. Seven columns rather than the
  * queue's fifteen, because the At Risk figure is one number and the rows
- * behind it are never shown.
+ * behind it are never shown. `closure_reason` is always null on the active
+ * rows read here; it is carried because the derivation asks for it.
  *
  * It sits with the select lists above so the standing instruction covers it
  * too — and dropping a column from it is worse than dropping one from a
  * display list: an absent `is_verified` reads as unverified, which suspends
  * every clock and reports nothing at risk at all.
  */
-const AT_RISK_COLUMNS = "is_verified, status, sla_armed_at, sla_due_at, resolved_at, closed_at";
+const AT_RISK_COLUMNS = "is_verified, status, closure_reason, sla_armed_at, sla_due_at, resolved_at, closed_at";
 
 /**
  * The columns the search box looks in — what a desk officer might hold about a
@@ -67,6 +70,16 @@ export interface QueueOptions {
 }
 
 /**
+ * The rows one screen shows, and how many rows match the tab and the search.
+ * The two differ only when the match runs past QUEUE_LIMIT — which is the
+ * footer's truncation signal.
+ */
+export interface QueueResult {
+  items: IncidentQueueItem[];
+  matchCount: number;
+}
+
+/**
  * Ordering, verified by live query on 2026-08-07 — 13 active, then 6 resolved,
  * then 6 closed:
  *
@@ -89,16 +102,20 @@ export interface QueueOptions {
  * QUEUE_LIMIT and cannot reach past it. That holds while the active rows fit
  * on one screenful; the day they do not, this wants a second read of the
  * awaiting-triage rows rather than a bigger limit.
+ *
+ * The match count rides on the same request as the rows, so it is filtered
+ * exactly as they are. A second count query repeating the filters would drift.
+ * The reorder above moves rows within the page and leaves the count alone.
  */
 export async function getIncidentQueue(
   options: QueueOptions = {},
   db?: Db,
-): Promise<IncidentQueueItem[]> {
+): Promise<QueueResult> {
   const supabase = db ?? await createClient();
 
   let query = supabase
     .from("staff_incidents")
-    .select(QUEUE_COLUMNS)
+    .select(QUEUE_COLUMNS, { count: "exact" })
     .order("closed_at", { ascending: true, nullsFirst: true })
     .order("resolved_at", { ascending: true, nullsFirst: true })
     .order("sla_due_at", { ascending: true, nullsFirst: false })
@@ -112,12 +129,15 @@ export async function getIncidentQueue(
   const searchFilter = buildSearchFilter(SEARCH_COLUMNS, options.search);
   if (searchFilter) query = query.or(searchFilter);
 
-  const { data, error } = await query;
+  const { data, count, error } = await query;
   if (error) throw new Error(`staff_incidents read failed: ${error.message}`);
 
-  return awaitingTriageFirst(
+  const items = awaitingTriageFirst(
     ((data as StaffIncidentQueueRow[] | null) ?? []).map(toQueueItem),
   );
+  // count is null only if PostgREST drops the Content-Range it was asked for.
+  // The rows on hand are then the best figure there is, though it hides a cut.
+  return { items, matchCount: count ?? items.length };
 }
 
 /** Stable: a partition, not a re-sort, so the database's order survives it. */
@@ -135,7 +155,8 @@ function awaitingTriageFirst(items: IncidentQueueItem[]): IncidentQueueItem[] {
  * Tab counts are deliberately whole-view — they do not narrow with the search
  * box and they do not narrow with the tab that is open, which is what makes
  * them a workload summary rather than a restatement of the table below them.
- * Every figure a queue shows is whole-view; see CONTEXT.md, "Queue".
+ * Every figure above a queue's table is whole-view — only the footer, which
+ * counts the table, narrows; see CONTEXT.md, "Queue".
  */
 export async function getIncidentStatusCounts(
   db?: Db,

@@ -59,6 +59,51 @@ describe('digitalCardFace', () => {
     ]);
   });
 
+  it('leaves out the barangay line when the address already ends with the barangay', () => {
+    const face = digitalCardFace(
+      card,
+      issuedFrom({ complete_address: 'TEST - JP - 2 Sample Street, Barangay 2', barangay_name: 'Barangay 2' }),
+    );
+    expect(face.addressLines).toEqual(['TEST - JP - 2 SAMPLE STREET, BARANGAY 2']);
+  });
+
+  it('still matches the barangay at the end of the address across case, spacing and a trailing comma or period', () => {
+    for (const [complete_address, printed] of [
+      ['2 Sample Street,  barangay   2', '2 SAMPLE STREET,  BARANGAY   2'],
+      ['2 Sample Street, Barangay 2,', '2 SAMPLE STREET, BARANGAY 2,'],
+      ['2 Sample Street, Barangay 2. ', '2 SAMPLE STREET, BARANGAY 2.'],
+    ]) {
+      const face = digitalCardFace(card, issuedFrom({ complete_address, barangay_name: 'Barangay  2' }));
+      expect(face.addressLines, complete_address).toEqual([printed]);
+    }
+  });
+
+  it('keeps the barangay line when the address only ends with a longer barangay name', () => {
+    const face = digitalCardFace(
+      card,
+      issuedFrom({ complete_address: '2 Sample Street, Barangay 11', barangay_name: 'Barangay 1' }),
+    );
+    expect(face.addressLines).toEqual(['2 SAMPLE STREET, BARANGAY 11', 'BARANGAY 1']);
+  });
+
+  it('keeps the barangay line when the address ends with a different barangay', () => {
+    const face = digitalCardFace(
+      card,
+      issuedFrom({ complete_address: '2 Sample Street, Barangay 3', barangay_name: 'Barangay 2' }),
+    );
+    expect(face.addressLines).toEqual(['2 SAMPLE STREET, BARANGAY 3', 'BARANGAY 2']);
+  });
+
+  it('keeps the barangay line when the barangay name is only the tail of the address\'s last word', () => {
+    const face = digitalCardFace(card, issuedFrom({ complete_address: '12 Rizal St., Sabarra', barangay_name: 'Barra' }));
+    expect(face.addressLines).toEqual(['12 RIZAL ST., SABARRA', 'BARRA']);
+  });
+
+  it('leaves out the barangay line when the address is the barangay name alone', () => {
+    const face = digitalCardFace(card, issuedFrom({ complete_address: 'Barra', barangay_name: 'Barra' }));
+    expect(face.addressLines).toEqual(['BARRA']);
+  });
+
   it('falls back to the card\'s barangay alone when the issuing application is not loaded', () => {
     expect(digitalCardFace(card, null).addressLines).toEqual(['ILAYANG IYAM']);
   });

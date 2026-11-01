@@ -720,7 +720,9 @@ export function DashboardPage() {
                 : status === "error"
                   ? "Unable to load data"
                   : trendAvgPct !== null
-                    ? `Trend avg: ${formatRate(trendAvgPct)}`
+                    // Incidents only, unlike the headline above, which also
+                    // counts Yellow Card (#40).
+                    ? `Trend avg (incidents only): ${formatRate(trendAvgPct)}`
                     : "No SLA trend data in range"
             }
             footnote={

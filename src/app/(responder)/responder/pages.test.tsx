@@ -14,6 +14,7 @@ import {
   aNotification,
   anEvent,
   anIncident,
+  aPhoto,
 } from "@/portals/responder/features/incidents/lib/fixtures";
 import type { Incident } from "@/portals/responder/features/incidents/types";
 
@@ -380,6 +381,79 @@ describe("portal pages", () => {
     expect(screen.getByRole("link", { name: "Call Maria" })).toBeInTheDocument();
   });
 
+  describe("/responder/my-ticket on a reopened ticket (issue #67)", () => {
+    // Cycle 1 went all the way to resolved; the citizen reopened it and it was
+    // claimed again. The DB counts stages and photos per cycle, so must we.
+    beforeEach(() => {
+      db.held = sinkhole({ status: "in_progress", cycle_number: 2 });
+      db.events = [
+        anEvent({ event_type: "claimed", cycle_number: 1 }),
+        anEvent({ event_type: "stage_en_route", cycle_number: 1 }),
+        anEvent({ event_type: "stage_working", cycle_number: 1 }),
+        anEvent({ event_type: "resolved", cycle_number: 1 }),
+        anEvent({ event_type: "reopened", cycle_number: 1 }),
+        anEvent({ event_type: "claimed", cycle_number: 2 }),
+      ];
+      db.photos = [
+        aPhoto({ id: "after-1a", kind: "after", cycle_number: 1 }),
+        aPhoto({ id: "after-1b", kind: "after", cycle_number: 1 }),
+        aPhoto({ id: "after-1c", kind: "after", cycle_number: 1 }),
+      ];
+    });
+
+    it("starts the stages over", async () => {
+      withProviders(await MyTicketPage({ searchParams: Promise.resolve({}) }));
+
+      for (const name of ["En route", "On site", "Working"]) {
+        expect(screen.getByRole("button", { name })).toBeEnabled();
+      }
+    });
+
+    it("marks progress only from this cycle's stages", async () => {
+      db.events.push(anEvent({ event_type: "stage_on_site", cycle_number: 2 }));
+
+      withProviders(await MyTicketPage({ searchParams: Promise.resolve({}) }));
+
+      expect(screen.getByRole("button", { name: "En route" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "On site" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Working" })).toBeEnabled();
+    });
+
+    it("asks for a photo when this cycle has none, whatever earlier cycles had", async () => {
+      withProviders(await MyTicketPage({ searchParams: Promise.resolve({}) }));
+
+      expect(screen.getByText("Photo required")).toBeInTheDocument();
+      expect(screen.getByText("0 of 3 attached this cycle.")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Add photo" })).toBeInTheDocument();
+      // getPhotoUrl is faked to null, so a shown photo is an "Unavailable" tile.
+      expect(screen.queryByText("Unavailable")).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Resolve · needs an after photo" }),
+      ).toBeInTheDocument();
+    });
+
+    it("counts only this cycle's photo once there is one", async () => {
+      db.photos.push(aPhoto({ id: "after-2a", kind: "after", cycle_number: 2 }));
+
+      withProviders(await MyTicketPage({ searchParams: Promise.resolve({}) }));
+
+      expect(screen.getByText("Ready to resolve")).toBeInTheDocument();
+      expect(screen.getByText("1 of 3 attached this cycle.")).toBeInTheDocument();
+      expect(screen.getAllByText("Unavailable")).toHaveLength(1);
+      expect(
+        screen.getByRole("button", { name: "Resolve this incident" }),
+      ).toBeInTheDocument();
+    });
+
+    it("keeps every cycle on the timeline", async () => {
+      withProviders(await MyTicketPage({ searchParams: Promise.resolve({}) }));
+
+      expect(screen.getAllByText("Claimed")).toHaveLength(2);
+      expect(screen.getByText("Resolved")).toBeInTheDocument();
+      expect(screen.getByText("Reopened by the citizen")).toBeInTheDocument();
+    });
+  });
+
   it("/responder/my-ticket?sheet=release warns that the clock keeps running", async () => {
     db.held = sinkhole({ status: "in_progress" });
 
@@ -474,6 +548,33 @@ describe("portal pages", () => {
     // The other tile is measured, and says 0 rather than "—": one release is a
     // real count of zero reopens, not an absence of data.
     expect(screen.getByLabelText("Reopened by citizen: 0")).toBeInTheDocument();
+  });
+
+  it("/responder/history leaves out the ticket held now, tiles included", async () => {
+    // Issue #36: claiming writes an event, so responder_history always carries the
+    // held ticket. It stays on My ticket; History lists finished work.
+    db.held = sinkhole({ id: "inc-held", status: "in_progress" });
+    db.history = [
+      aHistoryRow({
+        id: "inc-held",
+        reference_number: "INC-2026-000122",
+        status: "in_progress",
+        my_last_outcome: null,
+        resolved_at: null,
+        reopened_count: 1,
+      }),
+    ];
+
+    withProviders(await HistoryPage());
+
+    expect(screen.queryByText("INC-2026-000122")).not.toBeInTheDocument();
+    expect(screen.getByText("Nothing finished yet")).toBeInTheDocument();
+    // Its reopen is not counted either: with nothing listed, both tiles are
+    // unmeasured rather than "1".
+    expect(screen.getAllByText("—")).toHaveLength(2);
+    expect(
+      screen.getByLabelText("Reopened by citizen: not yet measured"),
+    ).toBeInTheDocument();
   });
 
   it("/responder/notifications renders as a page, not a sheet", async () => {

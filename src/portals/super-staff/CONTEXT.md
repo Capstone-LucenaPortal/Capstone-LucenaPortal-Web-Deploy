@@ -151,6 +151,68 @@ Published / Expired in the database. The portal **reads** it and never sends it.
 Publication is its own RPC (`set_post_published`) for posts; for events it is
 part of the same update call.
 
+## System health vs Service performance
+
+Two things the old **Monitoring** page mixed, now split by owner (ADR 0008,
+#72):
+
+| | **System health** | **Service performance** |
+|---|---|---|
+| Answers | Is the software itself working? | Is the city meeting its service promises? |
+| Covers | the database, storage, notification delivery, background jobs, accounts and sign-in, response time | SLA compliance, open backlog, at-risk, bookings |
+| Owner | Super-staff, the IT/MIS officer | Admin, who is measured against it |
+| Read from | `super_system_health()`, `super_system_health_samples`, `super_system_health_summary` | `super_metrics` |
+| Screen | `/super-staff/system-health` (General), and one page per section under it | Admin's dashboards; four tiles shown here as **Service impact** |
+
+Super-staff may *view* service performance, to judge whether a configuration
+change landed well; it never owns it. `/super-staff/monitoring` redirects to
+System Health.
+
+**Every status is graded by the database.** The page displays `ok` /
+`warning` / `critical` and never recomputes them. The one exception is
+response time: only the app can time a round trip, so `/api/health` reports
+the milliseconds and the page grades them (over 500 ms warning, over 2 s
+critical). That grade is the one rollup the app does: it folds into the
+**Database** section (the worse of the database's grades and the app's), and
+into the sidebar's System Health dot. A service that depends on Database then
+reads "Affected by Database" when only the app's grade is bad. A failed health
+read turns the dot red.
+
+**Citizen service vs Platform component.** System health is read in two
+groups, one **section** (and one page) per service or component. A **Citizen service** is a workflow a resident uses — Yellow Card,
+Incidents, LCC Bookings. A **Platform component** is something every service
+leans on — the database, storage, notification delivery, background jobs,
+accounts and sign-in. A service is **affected** when a component it depends on
+is unhealthy (storage near quota affects all three; push delivery down affects
+Incidents), and says which, so a red service names its cause.
+_Avoid_: module (that is Staff's word for a queue assignment)
+
+**Root cause.** What General's banner names, once each: a Platform component
+whose own checks fail, with the services it affects, then a service whose
+*own* checks fail. A service whose only trouble is a dependency is never named
+on its own, so one full disk reads as one problem, not four.
+
+**Stuck, not waiting.** A Citizen service's health counts only items the
+*software* should have moved and did not — a booking hold past expiry still
+holding the hall, a Yellow Card deadline that disagrees with the calendar, an
+incident sitting in a pool no responder can be told about. An item waiting on a
+*person* (an unclaimed incident, an unverified payment, an overdue review) is
+Service performance and stays Admin's, however long it waits.
+_Avoid_: backlog, overdue (both are Service performance words)
+
+**Check.** One named thing a section watches (l92–l94): a count, the age of
+the oldest item counted, a status and a "what to do", all from
+`super_system_health()`. A **graded** check has a status and colours its
+section; an **ungraded** one is information only (stray files, dead rows,
+sign-ins) and shows its count with no pill. A section's status is the worst of
+its graded checks. Request errors and failed sign-ins are not checks: only
+Supabase's logs hold them, and the Database and Accounts pages say so.
+_Avoid_: metric, alert
+
+**"System healthy X% of samples", never "uptime".** The figure counts the
+5-minute samples whose overall status was `ok`. App reachability is not
+sampled, so it says nothing about whether the app answered.
+
 ## Explore Lucena is shelved
 
 Super Staff does **not** edit Explore Lucena (SCRUM-185). The content stays
@@ -213,6 +275,6 @@ change pipeline** and has no CI. Schema is numbered in layers
 thing from the pipeline's gates. From this repo the database may be **read,
 called and observed** — never altered.
 
-The Sandbox project is at **l91** (verified 2026-10-31). Production was last
+The Sandbox project is at **l94** (per the DB repo README, 2026-10-31). Production was last
 recorded at **l40** and is paused, so its current layer could not be checked —
 treat every layer after l40 as Sandbox-only until someone confirms otherwise.

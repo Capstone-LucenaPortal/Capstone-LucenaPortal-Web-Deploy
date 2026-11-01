@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, act, fireEvent } from "@testing-library/react";
+import Link from "next/link";
 import { OfflineBanner } from "./offline-banner";
 
 const refresh = vi.fn();
@@ -68,7 +69,7 @@ describe("OfflineBanner", () => {
     render(
       <>
         <OfflineBanner />
-        <a href="/responder/pool">Pool</a>
+        <Link href="/responder/pool">Pool</Link>
       </>,
     );
 

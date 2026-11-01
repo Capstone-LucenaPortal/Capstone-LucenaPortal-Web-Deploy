@@ -37,4 +37,8 @@ export type AuditEntry = {
   sessionId: string | null;
   ipAddress: string | null;
   userAgent: string | null;
+  /** The Reference Numbers of the applications a Yellow Card export released,
+   *  in the order stored (`changes.refs`, written since DB l18). Empty for
+   *  every other entry, and for an export of zero rows. */
+  references: string[];
 };

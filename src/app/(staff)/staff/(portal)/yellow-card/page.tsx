@@ -1,3 +1,5 @@
+import { isAssigned } from "@/portals/staff/features/auth/lib/module-gate";
+import { NotYourModule } from "@/portals/staff/features/auth/components/not-your-module";
 import { ApplicationQueue } from "@/portals/staff/features/yellow-card/components/application-queue";
 import {
   getYellowCardQueue,
@@ -10,11 +12,14 @@ export default async function YellowCardQueuePage({
 }: {
   searchParams: Promise<{ status?: string; q?: string }>;
 }) {
+  // Before anything else, so a refused account fires no Yellow Card read.
+  if (!(await isAssigned("yellow-card"))) return <NotYourModule module="yellow-card" />;
+
   const { status: rawStatus, q } = await searchParams;
   const status = parseStatusFilter(rawStatus);
   const search = q?.trim() ?? "";
 
-  const [applications, counts] = await Promise.all([
+  const [queue, counts] = await Promise.all([
     getYellowCardQueue({ status, search }),
     getYellowCardStatusCounts(),
   ]);
@@ -27,7 +32,8 @@ export default async function YellowCardQueuePage({
       </p>
       <div className="mt-6">
         <ApplicationQueue
-          applications={applications}
+          applications={queue.items}
+          matchCount={queue.matchCount}
           counts={counts}
           status={status}
           search={search}

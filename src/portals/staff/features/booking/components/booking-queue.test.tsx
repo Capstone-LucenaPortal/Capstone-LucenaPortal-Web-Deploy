@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { BookingQueue } from "./booking-queue";
+import { NEEDS_ACTION } from "../lib/queue-params";
 import { STATUS_ORDER } from "../lib/status";
 import { countNeedsAction } from "../lib/actions";
 import type { BookingQueueItem, BookingStatus } from "../types";
@@ -88,6 +89,7 @@ function renderQueue(over: Partial<Parameters<typeof BookingQueue>[0]> = {}) {
   return render(
     <BookingQueue
       bookings={[item()]}
+      matchCount={1}
       counts={{ ...zeroCounts, awaiting_payment: 2, confirmed: 3, fully_paid: 3 }}
       needsActionCount={8}
       balanceOutstanding={69750}
@@ -217,8 +219,37 @@ describe("BookingQueue", () => {
   });
 
   it("says nothing matched rather than rendering a broken table", () => {
-    renderQueue({ bookings: [] });
+    renderQueue({ bookings: [], matchCount: 0 });
     expect(screen.getByText("No bookings match this filter.")).toBeInTheDocument();
+    expect(screen.getByText("Showing 0 of 0 bookings")).toBeInTheDocument();
+  });
+
+  /**
+   * The footer counts the table — the rows matching the tab and the search —
+   * not the queue. Against the whole-view total, Needs action read
+   * "Showing 13 of 30", as if 17 bookings had been cut off. Issue #1. The
+   * `total` prop still feeds the All tab, which stays whole-view.
+   */
+  it("reports the rows shown against the rows that match, not the whole view", () => {
+    renderQueue({
+      bookings: [item(), item({ id: "b" })],
+      matchCount: 2,
+      filter: NEEDS_ACTION,
+      total: 21,
+    });
+
+    expect(screen.getByText("Showing 2 of 2 bookings")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "All (21)" })).toBeInTheDocument();
+  });
+
+  /**
+   * More matches than one screenful: the gap between the two figures is the
+   * truncation signal, so no separate note is needed.
+   */
+  it("shows the true match count when the matches run past one screenful", () => {
+    renderQueue({ matchCount: 140 });
+
+    expect(screen.getByText("Showing 1 of 140 bookings")).toBeInTheDocument();
   });
 
   /**

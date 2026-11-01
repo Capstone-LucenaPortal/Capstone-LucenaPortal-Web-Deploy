@@ -4,7 +4,7 @@ import { getAtRiskThreshold } from "./config";
 import { ACTIVE_STATUSES } from "./status";
 import { readAwaitingTriageCount } from "./queries";
 import type { IncidentsCardData, PreviewItem } from "@/portals/staff/features/dashboard/types";
-import type { IncidentLevel, IncidentStatus } from "../types";
+import type { ClosureReason, IncidentLevel, IncidentStatus } from "../types";
 
 const PREVIEW_LIMIT = 3;
 
@@ -15,6 +15,7 @@ export type IncidentPreviewRow = {
   incident_level: IncidentLevel;
   is_verified: boolean | null;
   status: IncidentStatus;
+  closure_reason: ClosureReason | null;
   sla_armed_at: string | null;
   sla_due_at: string | null;
   resolved_at: string | null;
@@ -103,7 +104,7 @@ export async function getIncidentCard(): Promise<IncidentsCardData> {
       supabase
         .from("staff_incidents")
         .select(
-          "id, type_label, barangay_name, incident_level, is_verified, status, sla_armed_at, sla_due_at, resolved_at, closed_at",
+          "id, type_label, barangay_name, incident_level, is_verified, status, closure_reason, sla_armed_at, sla_due_at, resolved_at, closed_at",
         )
         .in("status", ACTIVE_STATUSES)
         .order("sla_due_at", { ascending: true, nullsFirst: false })

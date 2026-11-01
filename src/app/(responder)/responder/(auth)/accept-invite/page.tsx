@@ -1,11 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useState, type FormEvent } from "react";
+import { PASSWORD_RULES_TEXT, validatePassword } from "@/shared/auth/password-policy";
 import { createClient } from "@/shared/supabase/client";
 import { restartIdleClock } from "@/portals/responder/lib/supabase/idle-timeout";
-
-const MIN_PASSWORD = 8;
 
 const FIELD =
   "h-11 rounded-md border border-gray-300 px-3 text-sm text-gray-900";
@@ -23,6 +23,7 @@ export default function AcceptInvitePage() {
   const router = useRouter();
   const passwordId = useId();
   const confirmId = useId();
+  const rulesId = useId();
   const [phase, setPhase] = useState<Phase>("verifying");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -105,8 +106,9 @@ export default function AcceptInvitePage() {
     event.preventDefault();
     setError(null);
 
-    if (password.length < MIN_PASSWORD) {
-      setError(`Use at least ${MIN_PASSWORD} characters.`);
+    const policyError = validatePassword(password);
+    if (policyError) {
+      setError(policyError);
       return;
     }
     if (password !== confirm) {
@@ -160,9 +162,9 @@ export default function AcceptInvitePage() {
           If it still fails, ask your Super Staff to send a new one.
         </p>
         <div className="mt-5">
-          <a href="/responder/login" className={BACK}>
+          <Link href="/responder/login" className={BACK}>
             Back to sign in
-          </a>
+          </Link>
         </div>
       </div>
     );
@@ -185,9 +187,9 @@ export default function AcceptInvitePage() {
           instead.
         </p>
         <div className="mt-5">
-          <a href="/responder/login" className={BACK}>
+          <Link href="/responder/login" className={BACK}>
             Back to sign in
-          </a>
+          </Link>
         </div>
       </div>
     );
@@ -217,10 +219,11 @@ export default function AcceptInvitePage() {
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            aria-describedby={rulesId}
             className={FIELD}
           />
-          <span className="text-[11.5px] text-gray-500">
-            At least {MIN_PASSWORD} characters
+          <span id={rulesId} className="text-[11.5px] text-gray-500">
+            {PASSWORD_RULES_TEXT}
           </span>
         </div>
 

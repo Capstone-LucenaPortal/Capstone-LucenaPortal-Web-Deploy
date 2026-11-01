@@ -14,7 +14,7 @@ import type { MyYellowCardApplication, MyYellowCard } from '@/portals/citizen/fe
 import { yellowCardService } from '@/portals/citizen/features/yellow-card/lib/yellow-card';
 import { computeYellowCardStatus } from '@/portals/citizen/features/dashboard/lib/status';
 import { authService, AuthError } from '@/portals/citizen/features/auth/lib/auth';
-import { PASSWORD_RULES_TEXT } from '@/portals/citizen/features/auth/lib/password-policy';
+import { PASSWORD_RULES_TEXT } from '@/shared/auth/password-policy';
 import { LIMITS } from '@/portals/citizen/lib/validation';
 import { profileTabFromQuery, type ProfileTab } from '@/portals/citizen/features/profile/lib/tabs';
 import { formatManilaDate } from '@/shared/dates/manila';

@@ -180,7 +180,7 @@ describe("AcceptInvitePage", () => {
     await user.type(screen.getByLabelText("Confirm password"), "short");
     await user.click(screen.getByRole("button", { name: "Set password and continue" }));
 
-    expect(await screen.findByText("Use at least 8 characters.")).toBeInTheDocument();
+    expect(await screen.findByText("Password must be at least 8 characters.")).toBeInTheDocument();
     expect(mockUpdateUser).not.toHaveBeenCalled();
   });
 

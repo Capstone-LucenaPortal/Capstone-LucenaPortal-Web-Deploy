@@ -10,7 +10,10 @@ the glossary those three modules share.
 
 **Queue**:
 The whole-view list of one module's records, filtered by a status tab. Every figure
-a queue shows is whole-view — it does not change when someone clicks a tab.
+a queue shows above its table is whole-view — the stat tiles, the tab counts, the
+activity bar — and does not change when someone clicks a tab or searches. The one
+exception is the table's footer ("Showing N of M"): it counts the table, not the
+queue, so M is the number of records matching the open tab and the search.
 _Avoid_: List, inbox, dashboard (the Dashboard is a separate, cross-module screen).
 
 **Arrival**:
@@ -105,3 +108,10 @@ _Avoid_: "The queue is at risk" (rows are; the queue is not — the guard Breach
 carries, and the one this term is likelier to lose, having a figure over it),
 Breaching and overdue (the deadline has already passed — that is Breach),
 Critical (a level, not a clock).
+
+**Not scored**:
+An incident whose clock armed but that was then refused (Invalid, Duplicate) or
+expired. Nobody worked it, so it gets no SLA verdict, and its deadline is not shown.
+The closure reason decides it, whatever the row's timestamps say. Admin's SLA
+figures leave the same three closures out.
+_Avoid_: Met or Breached for a refused report, exempt, waived.

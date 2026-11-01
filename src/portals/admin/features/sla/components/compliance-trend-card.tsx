@@ -71,18 +71,24 @@ export function ComplianceTrendCard({
 
   const labelStep = Math.max(1, Math.ceil(points.length / 8));
 
+  // The trend buckets incidents only (computeTrendBuckets keeps Yellow
+  // Card's pausable clock out), while the SLA Violations and Compliance
+  // tiles above count both — so every label here says so, or the two
+  // violation totals read as a contradiction (#40).
+  const incidentsOnlySubtitle = `${subtitle} · incidents only`;
+
   return (
     <section className="rounded-none border border-gray-200 bg-white p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-lg font-semibold text-gray-900">Compliance trend</h2>
-        <p className="text-sm text-gray-500">{subtitle}</p>
+        <p className="text-sm text-gray-500">{incidentsOnlySubtitle}</p>
       </div>
 
       <svg
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         className="mt-4 h-52 w-full"
         role="img"
-        aria-label={`SLA compliance trend, ${subtitle}`}
+        aria-label={`SLA compliance trend, ${incidentsOnlySubtitle}`}
       >
         {gridLevels.map((level) => (
           <g key={level}>
@@ -172,7 +178,7 @@ export function ComplianceTrendCard({
           already used elsewhere in this codebase (see
           src/portals/admin/features/incidents/components/barangay-reports-table.tsx). */}
       <table className="sr-only">
-        <caption>{`Compliance trend data, ${subtitle}`}</caption>
+        <caption>{`Compliance trend data, ${incidentsOnlySubtitle}`}</caption>
         <thead>
           <tr>
             <th scope="col">Period</th>
@@ -193,7 +199,7 @@ export function ComplianceTrendCard({
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 pt-3 text-xs text-gray-600">
         <span>
-          Total violations: <strong className="text-gray-900">{totalViolations}</strong>
+          Total violations (incidents only): <strong className="text-gray-900">{totalViolations}</strong>
         </span>
         <span>
           Worst: <strong className="text-gray-900">{worstLabel}</strong>

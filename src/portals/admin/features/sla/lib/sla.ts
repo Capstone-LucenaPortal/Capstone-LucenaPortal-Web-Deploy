@@ -182,8 +182,8 @@ export function applicationMet(row: YellowCardRow): boolean | null {
  * submitted_at (when the request was filed); "resolution" reads resolved_at
  * for incidents / decided_at for Yellow Card applications (when staff closed
  * it out) — the same request/resolution split the other converted pages
- * apply to their own date-basis toggles (see e.g. issueRangeStats's
- * statsDateAccessor in the Issue Reports page). A row not yet resolved has a
+ * apply to their own date-basis toggles (see e.g. issueDateAccessor in
+ * src/portals/admin/lib/aggregate.ts). A row not yet resolved has a
  * null value under "resolution" and is dropped by filterByDateRange, the
  * same way any other null-accessor row is.
  */
@@ -446,9 +446,9 @@ export function getSlaTrend(
  * shape has no room for. Same incidents-only rule (see computeTrendBuckets).
  *
  * `avgResponseDays` is computed per bucket via averageResolutionDays over
- * just that bucket's rows — a month with no resolved incidents in it reads
- * 0d, the same "no data" convention averageResolutionDays already uses
- * range-wide in getSlaRangeStats.
+ * just that bucket's rows — a month with no resolved incidents in it gets
+ * `null` (rendered "—" via formatDuration), the same "no data" convention
+ * averageResolutionDays already uses range-wide in getSlaRangeStats.
  *
  * Range-bounded like every other converted panel in this portal: under a
  * narrow preset (Today/Week) this collapses to at most one row, which is
@@ -493,7 +493,9 @@ export function getSlaMonthlyHistory(
  * `avgResponseDays` is incidents-only, not pooled: it is a TIME duration,
  * and the two SLA clocks are not comparable (see getSlaTrend's doc comment
  * above) — averaging a paused-while-with-citizen clock together with a
- * continuously-running one would not be a faithful reading of either.
+ * continuously-running one would not be a faithful reading of either. It
+ * is `null` when no incident in range resolved (render via formatDuration,
+ * never `${value}d`), and its delta reads "No comparable data" then.
  *
  * `trend` reuses getSlaTrend(incidents, range, dateBasis) directly rather
  * than re-deriving it, so the CSV export (which reads `stats.trend`) and the

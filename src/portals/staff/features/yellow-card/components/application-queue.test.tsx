@@ -63,7 +63,7 @@ function item(overrides: Partial<YellowCardQueueItem> = {}): YellowCardQueueItem
 describe("ApplicationQueue", () => {
   it("renders a stat tile for every status including withdrawn", () => {
     render(
-      <ApplicationQueue applications={[item()]} counts={counts} status="all" search="" />,
+      <ApplicationQueue applications={[item()]} matchCount={1} counts={counts} status="all" search="" />,
     );
 
     expect(screen.getByText("Withdrawn")).toBeInTheDocument();
@@ -72,7 +72,7 @@ describe("ApplicationQueue", () => {
 
   it("lists the applications it is given, with the full name and barangay", () => {
     render(
-      <ApplicationQueue applications={[item()]} counts={counts} status="all" search="" />,
+      <ApplicationQueue applications={[item()]} matchCount={1} counts={counts} status="all" search="" />,
     );
 
     expect(screen.getByText("YC-2026-000069")).toBeInTheDocument();
@@ -86,7 +86,7 @@ describe("ApplicationQueue", () => {
 
   it("carries the active status through the search form so a search keeps the tab", () => {
     const { container } = render(
-      <ApplicationQueue applications={[item()]} counts={counts} status="pending" search="" />,
+      <ApplicationQueue applications={[item()]} matchCount={1} counts={counts} status="pending" search="" />,
     );
 
     const hidden = container.querySelector('input[name="status"]');
@@ -97,6 +97,7 @@ describe("ApplicationQueue", () => {
     render(
       <ApplicationQueue
         applications={[item()]}
+        matchCount={1}
         counts={counts}
         status="all"
         search="santos"
@@ -127,6 +128,7 @@ describe("ApplicationQueue", () => {
             deadline_state: null,
           }),
         ]}
+        matchCount={3}
         counts={counts}
         status="all"
         search=""
@@ -142,10 +144,11 @@ describe("ApplicationQueue", () => {
 
   it("shows an empty state when the server returned no rows", () => {
     render(
-      <ApplicationQueue applications={[]} counts={counts} status="approved" search="zzz" />,
+      <ApplicationQueue applications={[]} matchCount={0} counts={counts} status="approved" search="zzz" />,
     );
 
     expect(screen.getByText("No applications match your search.")).toBeInTheDocument();
+    expect(screen.getByText("Showing 0 of 0 results")).toBeInTheDocument();
   });
 
   /**
@@ -158,6 +161,7 @@ describe("ApplicationQueue", () => {
     render(
       <ApplicationQueue
         applications={[item()]}
+        matchCount={1}
         counts={{
           pending: 2,
           resubmitted: 5,
@@ -174,11 +178,42 @@ describe("ApplicationQueue", () => {
     expect(countProp).toHaveBeenCalledWith(7);
   });
 
-  it("reports the filtered count against the true total, not the page length", () => {
+  /**
+   * The footer counts the table — the rows matching the tab and the search —
+   * not the queue. Against the whole-view total, one search hit on a tab read
+   * "Showing 1 of 30", as if 29 matches had been cut off. Issue #1.
+   */
+  it("reports the rows shown against the rows that match, not the whole view", () => {
     render(
-      <ApplicationQueue applications={[item()]} counts={counts} status="pending" search="" />,
+      <ApplicationQueue
+        applications={[item()]}
+        matchCount={1}
+        counts={counts}
+        status="pending"
+        search="juan"
+      />,
     );
 
-    expect(screen.getByText("Showing 1 of 30 results")).toBeInTheDocument();
+    expect(screen.getByText("Showing 1 of 1 results")).toBeInTheDocument();
+    // The All tab stays whole-view: only the footer narrows.
+    expect(screen.getByRole("link", { name: /All \(30\)/ })).toBeInTheDocument();
+  });
+
+  /**
+   * More matches than one screenful: the gap between the two figures is the
+   * truncation signal, so no separate note is needed.
+   */
+  it("shows the true match count when the matches run past one screenful", () => {
+    render(
+      <ApplicationQueue
+        applications={[item()]}
+        matchCount={140}
+        counts={counts}
+        status="all"
+        search=""
+      />,
+    );
+
+    expect(screen.getByText("Showing 1 of 140 results")).toBeInTheDocument();
   });
 });

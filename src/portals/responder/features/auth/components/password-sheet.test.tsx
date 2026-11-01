@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { PasswordSheet } from "@/portals/responder/features/auth/components/password-sheet";
+import { PASSWORD_RULES_TEXT } from "@/shared/auth/password-policy";
 
 function open(onSubmit = vi.fn().mockResolvedValue(null)) {
   render(<PasswordSheet open onClose={vi.fn()} onSubmit={onSubmit} />);
@@ -29,22 +30,48 @@ describe("password sheet", () => {
     expect(update).toBeDisabled();
   });
 
+  it("shows the password rule before anything is typed", () => {
+    open();
+
+    expect(screen.getByText(PASSWORD_RULES_TEXT)).toBeInTheDocument();
+  });
+
   it("flags a password under 8 characters", () => {
     const { next, update } = open();
 
     type(next, "short");
 
-    expect(screen.getByText("At least 8 characters")).toBeInTheDocument();
+    expect(
+      screen.getByText("Password must be at least 8 characters."),
+    ).toBeInTheDocument();
     expect(next).toHaveAttribute("aria-invalid", "true");
     expect(update).toBeDisabled();
   });
 
-  it("clears the length warning once long enough", () => {
-    const { next } = open();
+  it("blocks a long enough password with no number", () => {
+    const { current, next, confirm, update } = open();
 
-    type(next, "longenough1");
+    type(current, "oldpassword");
+    type(next, "abcdefgh");
+    type(confirm, "abcdefgh");
+
+    expect(
+      screen.getByText("Password must include at least one number."),
+    ).toBeInTheDocument();
+    expect(next).toHaveAttribute("aria-invalid", "true");
+    expect(update).toBeDisabled();
+  });
+
+  it("clears the warning once the password meets every rule", () => {
+    const { current, next, confirm, update } = open();
+
+    type(current, "oldpassword");
+    type(next, "lucena2026");
+    type(confirm, "lucena2026");
 
     expect(next).not.toHaveAttribute("aria-invalid");
+    expect(screen.getByText("Meets every rule.")).toBeInTheDocument();
+    expect(update).toBeEnabled();
   });
 
   it("blocks submit while the confirmation does not match", () => {

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import Link from "next/link";
 import { BottomSheet } from "@/portals/responder/components/ui/bottom-sheet";
 
 /** A page with the sheet's opener on it and something behind the sheet. */
@@ -12,7 +13,7 @@ function Page() {
       <button type="button" onClick={() => setOpen(true)}>
         Sign out
       </button>
-      <a href="/responder/pool">Pool</a>
+      <Link href="/responder/pool">Pool</Link>
       <BottomSheet open={open} onClose={() => setOpen(false)} title="Sign out?">
         <button type="button" onClick={() => setOpen(false)}>
           Stay signed in

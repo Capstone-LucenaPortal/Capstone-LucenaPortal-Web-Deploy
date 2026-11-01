@@ -435,7 +435,8 @@ describe("DashboardPage", () => {
 
     const card = await screen.findByRole("link", { name: /^SLA Reports/ });
     const recentLabel = manilaMonthLabel(recentDate);
-    expect(await within(card).findByText("Trend avg: 100%")).toBeInTheDocument();
+    // #40: the headline counts Yellow Card too; the trend average doesn't.
+    expect(await within(card).findByText("Trend avg (incidents only): 100%")).toBeInTheDocument();
     expect(within(card).getByText(`Best: ${recentLabel} (100%)`)).toBeInTheDocument();
   });
 

@@ -1,7 +1,7 @@
 import type { HistoryRow } from "@/portals/responder/features/incidents/types";
 
 /**
- * The two tiles on /history -- the success signals from PRD §9.
+ * What /history lists, and its two tiles -- the success signals from PRD §9.
  *
  * Both return null rather than 0 when there is nothing to measure. A new
  * account showing "0%" reads as a failing responder; "—" reads as what it is.
@@ -39,4 +39,25 @@ export function historyStats(rows: HistoryRow[], now: Date): HistoryStats {
       : null,
     reopenedCount: rows.reduce((sum, r) => sum + (r.reopened_count ?? 0), 0),
   };
+}
+
+/**
+ * The rows /history lists: everything but the ticket the responder holds now.
+ *
+ * ⚠️ THE HELD TICKET IS FOUND BY ID, NEVER INFERRED FROM `status`.
+ * responder_history admits every incident the caller has an event on, and
+ * claiming writes one, so the held ticket is always in it -- with a null
+ * outcome, or with a stale one when it was released or resolved and then
+ * claimed again. But the view is not scoped to assignment: a colleague's
+ * in-progress ticket this responder once released is also `in_progress`, and
+ * must still read "Released".
+ */
+export function historyToShow(
+  rows: HistoryRow[],
+  heldId: string | null,
+): HistoryRow[] {
+  // The generated row type allows a null id; without a held ticket there is
+  // nothing to leave out, so don't let `null !== null` drop such a row.
+  if (heldId === null) return rows;
+  return rows.filter((r) => r.id !== heldId);
 }

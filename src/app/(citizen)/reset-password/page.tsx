@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { authService, RESET_LINK_UNUSABLE_MESSAGE } from '@/portals/citizen/features/auth/lib/auth';
-import { validatePassword, PASSWORD_RULES_TEXT } from '@/portals/citizen/features/auth/lib/password-policy';
+import { validatePassword, PASSWORD_RULES_TEXT } from '@/shared/auth/password-policy';
 import { useAuth } from '@/portals/citizen/features/auth/hooks/use-auth';
 import { PROFILE_TAB_SECURITY } from '@/portals/citizen/features/profile/lib/tabs';
 

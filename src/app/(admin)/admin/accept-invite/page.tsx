@@ -6,12 +6,12 @@
 // and when it resends a recovery link to an existing one. The visitor has no
 // session yet, so the shared request guard (src/shared/guard/decide.ts)
 // exempts this path from both the authentication gate and the role gate.
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/portals/admin/components/ui/button";
+import { PASSWORD_RULES_TEXT, validatePassword } from "@/shared/auth/password-policy";
 import { createClient } from "@/shared/supabase/client";
-
-const MIN_PASSWORD = 8;
 
 // "invalid" means the link itself is spent or expired — a fact we learned from
 // GoTrue. "failed" means we never got an answer, which is a different problem
@@ -103,8 +103,9 @@ export default function AcceptInvitePage() {
     event.preventDefault();
     setError(null);
 
-    if (password.length < MIN_PASSWORD) {
-      setError(`Use at least ${MIN_PASSWORD} characters.`);
+    const policyError = validatePassword(password);
+    if (policyError) {
+      setError(policyError);
       return;
     }
     if (password !== confirm) {
@@ -148,9 +149,9 @@ export default function AcceptInvitePage() {
           again. If it still fails, ask your Super Staff to send a new one.
         </p>
         <div className="mt-6">
-          <a href="/admin/login">
+          <Link href="/admin/login">
             <Button variant="secondary">Back to sign in</Button>
-          </a>
+          </Link>
         </div>
       </>
     );
@@ -171,9 +172,9 @@ export default function AcceptInvitePage() {
           sign in normally instead.
         </p>
         <div className="mt-6">
-          <a href="/admin/login">
+          <Link href="/admin/login">
             <Button variant="secondary">Back to sign in</Button>
-          </a>
+          </Link>
         </div>
       </>
     );
@@ -198,8 +199,12 @@ export default function AcceptInvitePage() {
               placeholder="New password"
               required
               autoComplete="new-password"
+              aria-describedby="password-rules"
               className="w-full rounded-none border border-gray-300 px-3 py-2 text-sm focus:border-blue-900 focus:outline-none"
             />
+            <p id="password-rules" className="mt-1 text-xs text-gray-500">
+              {PASSWORD_RULES_TEXT}
+            </p>
           </div>
           <div>
             <label htmlFor="confirm" className="mb-1 block text-sm font-medium text-gray-700">

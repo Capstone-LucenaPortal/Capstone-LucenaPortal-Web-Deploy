@@ -101,6 +101,7 @@ export function AccessDenied({ decision }: { decision: Refusal }) {
                   {link.label}
                 </a>
               )}
+              {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- a full page load, so nothing the router cached or prefetched under the refused session is reused, and none of its client state survives */}
               <a
                 href="/responder/login"
                 className="flex h-12 items-center justify-center rounded-md border border-gray-300 bg-white text-[15px] font-semibold text-gray-900 hover:bg-gray-50"

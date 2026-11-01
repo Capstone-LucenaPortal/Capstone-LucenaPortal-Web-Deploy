@@ -185,7 +185,7 @@ describe('IncidentCardActions — the responder’s after photos', () => {
 describe('IncidentCardActions — unverified', () => {
   // The dashboard used to render "awaiting photo confirmation" with nothing to
   // act on, while the sweeper nudged at day 5 and auto-closed at day 7.
-  it('offers a photo upload on an unverified, non-closed report', () => {
+  it('offers a photo upload on an unverified, unresolved report', () => {
     render(
       <IncidentCardActions
         incident={incident({ status: 'open', is_verified: false })}
@@ -197,13 +197,40 @@ describe('IncidentCardActions — unverified', () => {
     expect(screen.getByLabelText(/add a photo/i)).toHaveAttribute('type', 'file');
   });
 
-  it('shows the verification deadline from confirmation_window_days, the window the sweeper expires it on', () => {
-    // Issue #17: submitted 2026-10-25 PHT + confirmation_window_days 3, not
-    // auto_close_day 7.
+  // Issue #17: submitted 2026-10-25 PHT + confirmation_window_days 3, not
+  // auto_close_day 7. Issue #46: only in the two statuses the sweeper's expire
+  // pass covers.
+  it.each(['open', 'in_pool'] as const)(
+    'shows the verification deadline from confirmation_window_days on an unverified %s report',
+    (status) => {
+      render(
+        <IncidentCardActions
+          incident={incident({
+            status,
+            is_verified: false,
+            submitted_at: '2026-10-25T02:00:00Z',
+            resolved_at: null,
+          })}
+          config={config}
+          onChanged={vi.fn()}
+        />,
+      );
+      expect(screen.getByLabelText(/add a photo/i)).toHaveAttribute('type', 'file');
+      const notice = screen.getByText(/close automatically/i).textContent ?? '';
+      expect(notice).toMatch(/October/);
+      expect(notice).toMatch(/28/);
+      expect(notice).toMatch(/2026/);
+    },
+  );
+
+  // Issue #46: the sweeper only expires unverified reports that are still open
+  // or in the pool. A claimed one ("Claim anyway") has no closing date, but a
+  // photo still verifies it and arms its SLA.
+  it('asks for a photo on an unverified in_progress report without promising a closing date', () => {
     render(
       <IncidentCardActions
         incident={incident({
-          status: 'open',
+          status: 'in_progress',
           is_verified: false,
           submitted_at: '2026-10-25T02:00:00Z',
           resolved_at: null,
@@ -212,11 +239,50 @@ describe('IncidentCardActions — unverified', () => {
         onChanged={vi.fn()}
       />,
     );
-    const notice = screen.getByText(/close automatically/i).textContent ?? '';
-    expect(notice).toMatch(/October/);
-    expect(notice).toMatch(/28/);
-    expect(notice).toMatch(/2026/);
+    expect(screen.getByText(/not verified yet/i).textContent).toMatch(/act on it\.$/);
+    expect(screen.getByLabelText(/add a photo/i)).toHaveAttribute('type', 'file');
+    expect(screen.queryByText(/close automatically/i)).not.toBeInTheDocument();
   });
+
+  it('shows only the confirm deadline on an unverified resolved report', () => {
+    render(
+      <IncidentCardActions
+        incident={incident({
+          status: 'resolved',
+          is_verified: false,
+          submitted_at: '2026-10-20T02:00:00Z',
+          resolved_at: '2026-10-24T17:13:00Z',
+        })}
+        config={config}
+        onChanged={vi.fn()}
+      />,
+    );
+    // "closes automatically" is the resolved block's wording, "close
+    // automatically" the unverified block's: one present, the other absent.
+    const notice = screen.getByText(/closes automatically/i).textContent ?? '';
+    expect(notice).toMatch(/November/);
+    expect(notice).toMatch(/\b1\b/);
+    expect(notice).toMatch(/2026/);
+    expect(screen.getByRole('button', { name: /it's fixed/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /reopen/i })).toBeInTheDocument();
+    expect(screen.queryByText(/not verified yet/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/add a photo/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/close automatically/i)).not.toBeInTheDocument();
+  });
+
+  it.each(['open', 'in_pool', 'in_progress'] as const)(
+    'offers nothing on a verified %s report',
+    (status) => {
+      const { container } = render(
+        <IncidentCardActions
+          incident={incident({ status, is_verified: true, resolved_at: null })}
+          config={config}
+          onChanged={vi.fn()}
+        />,
+      );
+      expect(container).toBeEmptyDOMElement();
+    },
+  );
 
   it('offers nothing once the report is closed', () => {
     const { container } = render(

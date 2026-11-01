@@ -26,6 +26,7 @@ export function AccountFormFields({
   errors,
   onChange,
   emailReadOnly = false,
+  roleLocked = false,
 }: {
   value: AccountFormValue;
   errors: FieldErrors;
@@ -37,6 +38,12 @@ export function AccountFormFields({
    * link at a mailbox they control. Showing it as editable would be a lie.
    */
   emailReadOnly?: boolean;
+  /**
+   * Set when the account on screen is the signed-in one.
+   * update_staff_account refuses a change to one's own role anyway; this only
+   * stops the form offering a change it can never save.
+   */
+  roleLocked?: boolean;
 }) {
   const set = (patch: Partial<AccountFormValue>) =>
     onChange({ ...value, ...patch });
@@ -117,6 +124,7 @@ export function AccountFormFields({
         <Select
           id="role"
           value={value.role}
+          disabled={roleLocked}
           onChange={(e) =>
             set(
               e.target.value === "Staff"
@@ -146,6 +154,11 @@ export function AccountFormFields({
             </option>
           ))}
         </Select>
+        {roleLocked && (
+          <p className="text-xs text-gray-500">
+            You can&apos;t change your own role.
+          </p>
+        )}
       </div>
 
       {value.role === "Staff" && (

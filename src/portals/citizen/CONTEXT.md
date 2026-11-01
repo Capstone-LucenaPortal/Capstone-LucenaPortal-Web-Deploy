@@ -68,7 +68,9 @@ _Avoid_: Digital ID, E-card, Virtual card, QR card
 **Verification**:
 A Verifier's check, made by pointing their phone's camera at a Digital Card's code, of whether a
 Yellow Card is genuine and still valid. It answers with the card's status and the holder's name
-only — the name is what the Verifier compares against the card in front of them.
+only — the name is what the Verifier compares against the card in front of them, so it comes back
+in the card's printed form (`LAST, FIRST MIDDLE SUFFIX`, in capitals) and is shown exactly as
+returned.
 _Avoid_: Validation, Lookup, Scan
 
 **Yellow Card Application**:

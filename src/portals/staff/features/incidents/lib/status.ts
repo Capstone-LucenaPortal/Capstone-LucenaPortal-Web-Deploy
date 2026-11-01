@@ -221,7 +221,8 @@ const HAS_WORK_OUTSTANDING: Record<IncidentStatus, boolean> = {
  * (see ROUTABLE_STATUSES above, which is deliberately not the arrival set).
  * The difference here is that both sentences are the same question asked
  * twice. `deriveSlaState` leaves the at-risk branch for `resolved` and
- * `closed` and for nothing else, so the statuses that can be at risk are
+ * `closed` and for nothing else (its closure-reason exit fires only on
+ * `closed` rows, which carry a reason), so the statuses that can be at risk are
  * exactly the statuses that are not finished — the same predicate this map
  * writes down, reached from the other side.
  *

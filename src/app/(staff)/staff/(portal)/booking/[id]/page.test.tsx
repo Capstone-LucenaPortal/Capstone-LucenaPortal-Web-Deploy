@@ -4,6 +4,7 @@ import BookingDetailPage from "./page";
 import * as dossier from "@/portals/staff/features/booking/lib/booking-dossier";
 import * as config from "@/portals/staff/features/booking/lib/config";
 import * as session from "@/portals/staff/features/auth/lib/session";
+import { stubProfileRow } from "@/portals/staff/features/auth/lib/stub-profile-row";
 import { DEFAULT_BOOKING_CONFIG } from "@/portals/staff/features/booking/lib/config";
 import type { BookingDossier } from "@/portals/staff/features/booking/lib/booking-dossier";
 import type { Booking } from "@/portals/staff/features/booking/types";
@@ -86,6 +87,7 @@ type Labels = Partial<
  * here is what the route does with the answer.
  */
 function stubReads(over: Partial<Booking> | null = {}, labels: Labels = {}) {
+  stubProfileRow(["booking"]);
   vi.spyOn(dossier, "getBookingDossier").mockResolvedValue(
     over === null
       ? null
@@ -139,6 +141,24 @@ const render1 = async (over: Partial<Booking> = {}, labels: Labels = {}) => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe("BookingDetailPage — an account without Booking", () => {
+  it("is told the page is not theirs, and nothing of Booking is read", async () => {
+    stubReads();
+    stubProfileRow(["yellow_card"]);
+
+    render(await BookingDetailPage({ params: Promise.resolve({ id: "bk-1" }) }));
+
+    expect(
+      screen.getByRole("heading", { name: "This page belongs to the Booking desk" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Dela Cruz Family 50th Wedding Anniversary"),
+    ).not.toBeInTheDocument();
+    expect(dossier.getBookingDossier).not.toHaveBeenCalled();
+    expect(config.getBookingConfig).not.toHaveBeenCalled();
+  });
 });
 
 describe("BookingDetailPage", () => {

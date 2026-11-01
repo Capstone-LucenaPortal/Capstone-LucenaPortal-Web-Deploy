@@ -106,15 +106,52 @@ describe("RefuseIncidentAction", () => {
     expect(confirmButton()).toBeEnabled();
   });
 
-  it("caps the reason at 500 characters", async () => {
+  it("keeps a reason over 500 characters whole and refuses to send it", async () => {
+    // refuse_incident refuses a longer reason rather than clipping it; the
+    // form must not clip it either, or the end of the notice is lost unseen.
     const user = await openModal();
     const reason = screen.getByLabelText(/Reason/);
 
-    expect(reason).toHaveAttribute("maxLength", "500");
     await user.click(reason);
     await user.paste("x".repeat(520));
-    expect(reason).toHaveValue("x".repeat(500));
+    expect(reason).toHaveValue("x".repeat(520));
+    expect(screen.getByText("520 / 500")).toBeInTheDocument();
+    expect(screen.getByText(/longer than 500 characters/)).toBeInTheDocument();
+    expect(confirmButton()).toBeDisabled();
+  });
+
+  it("lets an over-long reason through once it is shortened to 500", async () => {
+    const user = await openModal();
+    const reason = screen.getByLabelText(/Reason/);
+
+    await user.click(reason);
+    await user.paste("x".repeat(501));
+    expect(confirmButton()).toBeDisabled();
+    await user.type(reason, "{Backspace}");
     expect(screen.getByText("500 / 500")).toBeInTheDocument();
+    expect(screen.queryByText(/longer than 500 characters/)).not.toBeInTheDocument();
+    expect(confirmButton()).toBeEnabled();
+  });
+
+  it("does not count whitespace around the reason, as refuse_incident trims it", async () => {
+    const user = await openModal();
+    const reason = screen.getByLabelText(/Reason/);
+
+    await user.click(reason);
+    await user.paste(`${"x".repeat(500)} \t\r\n `);
+    expect(screen.getByText("500 / 500")).toBeInTheDocument();
+    expect(screen.queryByText(/longer than 500 characters/)).not.toBeInTheDocument();
+    expect(confirmButton()).toBeEnabled();
+  });
+
+  it("counts characters as refuse_incident does, not UTF-16 units", async () => {
+    // char_length counts an emoji once; String.length counts it twice.
+    const user = await openModal();
+
+    await user.click(screen.getByLabelText(/Reason/));
+    await user.paste("🙂".repeat(300));
+    expect(screen.getByText("300 / 500")).toBeInTheDocument();
+    expect(confirmButton()).toBeEnabled();
   });
 
   it("refuses as Invalid with no Original reference", async () => {

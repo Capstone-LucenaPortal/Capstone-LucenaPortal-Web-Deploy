@@ -13,7 +13,8 @@ export interface DigitalCardFace {
   /** The card number as issued, e.g. `LC-2026-000123`. How it is printed is
    * the card art's business. */
   cardNumber: string;
-  /** Street address, then barangay, in capitals. */
+  /** Street address, then barangay, in capitals — the street address alone
+   * when it already ends with the barangay's name. */
   addressLines: string[];
 }
 
@@ -22,6 +23,17 @@ function joinWords(...parts: (string | null | undefined)[]): string {
     .map((p) => (p ?? '').trim())
     .filter(Boolean)
     .join(' ');
+}
+
+/** Whether `address` already ends with the barangay's name as whole words,
+ * ignoring case, runs of whitespace and a trailing comma or period. */
+function endsWithBarangay(address: string, barangay: string): boolean {
+  const normalize = (text: string) => text.toUpperCase().replace(/\s+/g, ' ').trim();
+  const trimmed = normalize(address).replace(/[\s,.]+$/, '');
+  const name = normalize(barangay);
+  if (!trimmed.endsWith(name)) return false;
+  const prefix = trimmed.slice(0, trimmed.length - name.length);
+  return prefix === '' || /[ ,]$/.test(prefix);
 }
 
 /**
@@ -46,6 +58,7 @@ export function digitalCardFace(
   )
     .map((line) => joinWords(line).toUpperCase())
     .filter(Boolean);
+  if (addressLines.length === 2 && endsWithBarangay(addressLines[0], addressLines[1])) addressLines.pop();
   return {
     name: name.toUpperCase(),
     cardNumber: card.card_number,

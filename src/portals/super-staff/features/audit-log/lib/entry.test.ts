@@ -17,6 +17,7 @@ const row = (patch: Partial<AuditRow> = {}): AuditRow => ({
   session_id: null,
   ip_address: null,
   user_agent: null,
+  changes: null,
   ...patch,
 });
 
@@ -34,6 +35,7 @@ describe("toEntry", () => {
       sessionId: null,
       ipAddress: null,
       userAgent: null,
+      references: [],
     });
   });
 
@@ -71,6 +73,47 @@ describe("toEntry", () => {
   it("reads an IP that is not a string as absent", () => {
     // PostgREST types the inet column `unknown`; never render an object.
     expect(toEntry(row({ ip_address: { addr: "x" } }))?.ipAddress).toBeNull();
+  });
+
+  it("carries an export's references through in the order stored", () => {
+    // export_yellow_card_applications writes the exported reference numbers
+    // into changes.refs; the auditor needs to see which applicants left.
+    const e = toEntry(
+      row({
+        area: "pii_access",
+        change: "Exported applicant list",
+        changes: {
+          filter: { status: "rejected", from: null, to: null },
+          count: 2,
+          refs: ["YC-2026-000061", "YC-2026-000007"],
+        },
+      }),
+    );
+    expect(e?.references).toEqual(["YC-2026-000061", "YC-2026-000007"]);
+  });
+
+  it("reads changes without usable refs as no references, without throwing", () => {
+    expect(toEntry(row({ changes: null }))?.references).toEqual([]);
+    expect(toEntry(row({ changes: { from: 50, to: 30 } }))?.references).toEqual([]);
+    expect(toEntry(row({ changes: { count: 0, refs: [] } }))?.references).toEqual([]);
+    expect(toEntry(row({ changes: { refs: ["YC-1", 2] } }))?.references).toEqual([]);
+    expect(toEntry(row({ changes: { refs: "YC-1" } }))?.references).toEqual([]);
+    expect(toEntry(row({ changes: ["YC-1"] }))?.references).toEqual([]);
+  });
+
+  it("reads a Created account row's field refs as no references", () => {
+    // create_staff_account_profile (DB l49) also writes `refs`, but as field
+    // diffs — those are not Reference Numbers and must not be listed as such.
+    const e = toEntry(
+      row({
+        area: "accounts",
+        change: "Created account",
+        changes: {
+          refs: [{ field: "role", label: "Role", before: null, after: "staff" }],
+        },
+      }),
+    );
+    expect(e?.references).toEqual([]);
   });
 
   it("drops a row missing any of id, occurred_at or area", () => {

@@ -4,16 +4,29 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/portals/staff/components/ui/modal";
 import { Button } from "@/portals/staff/components/ui/button";
+import { cn } from "@/portals/staff/lib/utils";
 import { refuseIncident } from "../lib/actions";
+import { REASON_TOO_LONG } from "../lib/refusal-errors";
 import { isRefusable } from "../lib/status";
 import type { Incident, RefusalReason } from "../types";
 
 /**
  * refuse_incident refuses a longer reason rather than clipping it, because the
- * reason ends the Citizen's notice. The form stops the typing at the same
- * figure so the refusal is never the first the officer hears of the limit.
+ * reason ends the Citizen's notice. The form does not clip it either: a native
+ * maxLength would cut a paste short without a word. It keeps every character,
+ * says the reason is too long and holds Confirm back until it is shortened, so
+ * the refusal is never the first the officer hears of the limit.
  */
 const REASON_MAX = 500;
+
+/**
+ * The reason's length as refuse_incident measures it — `char_length` after
+ * `btrim(p_reason, E' \t\r\n')` — so the counter and the gate agree with the
+ * RPC: whitespace at either end is free, and an emoji is one character.
+ */
+function reasonLength(reason: string): number {
+  return Array.from(reason.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, "")).length;
+}
 
 const FIELD_LABEL =
   "mt-4 block text-xs font-medium uppercase tracking-wide text-gray-500";
@@ -38,7 +51,12 @@ export function RefuseIncidentAction({ incident }: { incident: Incident }) {
   if (!isRefusable(incident.status)) return null;
 
   const isDuplicate = refusal === "duplicate";
-  const ready = reason.trim() !== "" && (!isDuplicate || originalReference.trim() !== "");
+  const reasonChars = reasonLength(reason);
+  const reasonTooLong = reasonChars > REASON_MAX;
+  const ready =
+    reason.trim() !== "" &&
+    !reasonTooLong &&
+    (!isDuplicate || originalReference.trim() !== "");
 
   function handleConfirm() {
     if (!ready) return;
@@ -133,15 +151,26 @@ export function RefuseIncidentAction({ incident }: { incident: Incident }) {
         <textarea
           id="refuse-reason"
           value={reason}
-          maxLength={REASON_MAX}
           onChange={(event) => setReason(event.target.value)}
           placeholder="Sent to the citizen as the last line of the notice..."
           className={FIELD_INPUT}
           rows={3}
+          aria-invalid={reasonTooLong ? true : undefined}
+          aria-describedby={reasonTooLong ? "refuse-reason-too-long" : undefined}
         />
-        <p className="mt-1 text-right text-xs text-gray-500">
-          {reason.length} / {REASON_MAX}
+        <p
+          className={cn(
+            "mt-1 text-right text-xs",
+            reasonTooLong ? "text-red-700" : "text-gray-500",
+          )}
+        >
+          {reasonChars} / {REASON_MAX}
         </p>
+        {reasonTooLong && (
+          <p id="refuse-reason-too-long" className="mt-1 text-sm text-red-700">
+            {REASON_TOO_LONG}
+          </p>
+        )}
 
         {error && (
           <p role="alert" className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">

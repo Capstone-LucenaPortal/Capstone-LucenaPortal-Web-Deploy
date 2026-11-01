@@ -178,9 +178,9 @@ describe("getIncidentQueue", () => {
       queueRow("done", "resolved"),
     ]);
 
-    const queue = await getIncidentQueue({}, createTestClient(fetch));
+    const { items } = await getIncidentQueue({}, createTestClient(fetch));
 
-    expect(queue.map((item) => item.id)).toEqual([
+    expect(items.map((item) => item.id)).toEqual([
       "rejected-back",
       "new-report",
       "breached-1",
@@ -259,7 +259,7 @@ describe("getIncidentQueue", () => {
     const { fetch } = createRecordingFetch([CANNED_QUEUE_ROW]);
     const db = createTestClient(fetch);
 
-    expect(await getIncidentQueue({}, db)).toEqual([
+    expect((await getIncidentQueue({}, db)).items).toEqual([
       {
         id: "inc-1",
         reference_number: "INC-2026-000123",
@@ -278,6 +278,28 @@ describe("getIncidentQueue", () => {
         original_reference: null,
       },
     ]);
+  });
+
+  /**
+   * The footer's denominator: how many rows match the tab and the search, not
+   * how many came back. Asked for on the same request as the rows, so the
+   * count and the rows cannot be filtered two different ways. The Awaiting
+   * Triage reorder moves rows within the page and leaves the count alone.
+   */
+  it("asks for an exact count of the matching rows on the same request", async () => {
+    const { fetch, requests } = createRecordingFetch([CANNED_QUEUE_ROW], {
+      rowCount: 140,
+    });
+    const db = createTestClient(fetch);
+
+    const { matchCount } = await getIncidentQueue(
+      { status: "in_progress", search: "dupay" },
+      db,
+    );
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].headers["prefer"]).toContain("count=exact");
+    expect(matchCount).toBe(140);
   });
 
   /**
@@ -371,8 +393,8 @@ describe("getIncidentStatusCounts", () => {
 
   /**
    * The counts are whole-view, and that is what makes them a workload summary
-   * rather than a restatement of the table below them. Every figure a queue
-   * shows is whole-view — see CONTEXT.md, "Queue".
+   * rather than a restatement of the table below them. Every figure above a
+   * queue's table is whole-view — see CONTEXT.md, "Queue".
    *
    * Asserted as an equality over the whole filter set, and over the absence of
    * a limit, so a search term or a status tab reaching this read fails here
@@ -452,6 +474,7 @@ function atRiskRow(over: Record<string, unknown> = {}) {
   return {
     is_verified: true,
     status: "in_progress",
+    closure_reason: null,
     sla_armed_at: "2026-08-07T00:00:00.000Z",
     sla_due_at: "2026-08-07T10:00:00.000Z",
     resolved_at: null,
@@ -490,6 +513,7 @@ describe("getAtRiskCount", () => {
     expect(columns).toEqual([
       "is_verified",
       "status",
+      "closure_reason",
       "sla_armed_at",
       "sla_due_at",
       "resolved_at",

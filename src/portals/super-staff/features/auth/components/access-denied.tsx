@@ -69,6 +69,7 @@ export function AccessDenied({ decision }: { decision: Refusal }) {
               <Button variant="primary">{link.label}</Button>
             </a>
           )}
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- a full page load, so nothing the router cached or prefetched under the refused session is reused, and none of its client state survives */}
           <a href="/super-staff/login">
             <Button variant="secondary">Back to sign in</Button>
           </a>

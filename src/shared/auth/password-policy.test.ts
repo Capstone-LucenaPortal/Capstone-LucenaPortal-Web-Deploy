@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validatePassword, PASSWORD_RULES_TEXT } from '@/portals/citizen/features/auth/lib/password-policy';
+import { validatePassword, PASSWORD_RULES_TEXT } from '@/shared/auth/password-policy';
 
 describe('validatePassword', () => {
   it('accepts a compliant password', () => {

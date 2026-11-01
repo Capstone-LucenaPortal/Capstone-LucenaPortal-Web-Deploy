@@ -128,6 +128,23 @@ describe('LCCStepOrgDocument, claiming the discount', () => {
     expect(await screen.findByRole('button', { name: /retry upload/i })).toBeInTheDocument();
   });
 
+  it('drops the earlier document when a later file is refused (#21)', async () => {
+    // A PNG renamed .jpg: validateUploadFile refuses it on the magic bytes.
+    const PNG_MAGIC = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const spoofed = new File([PNG_MAGIC], 'renamed.jpg', { type: 'image/jpeg' });
+    const user = userEvent.setup();
+    renderClaim();
+
+    await user.upload(screen.getByLabelText('Organisation Document'), pdf());
+    expect(await screen.findByText('Selected: sec-registration.pdf')).toBeInTheDocument();
+
+    await user.upload(screen.getByLabelText('Organisation Document'), spoofed);
+
+    expect(await screen.findByText(/does not match its file type/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^Selected:/)).toBeNull();
+    expect(screen.getByRole('button', { name: /upload and send for review/i })).toBeDisabled();
+  });
+
   it('no longer warns that review can reprice after payment', () => {
     // The l71 copy said staff "may re-price your booking"; since l77b nothing
     // is paid until the claim is decided.

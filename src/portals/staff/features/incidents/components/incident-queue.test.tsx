@@ -109,6 +109,7 @@ function renderQueue(props: Partial<Parameters<typeof IncidentQueue>[0]> = {}) {
   return render(
     <IncidentQueue
       incidents={[item()]}
+      matchCount={1}
       statusCounts={counts({ in_pool: 1 })}
       atRiskCount={0}
       activeStatus="all"
@@ -223,8 +224,35 @@ describe("IncidentQueue", () => {
   });
 
   it("renders the empty state when the filter matched nothing", () => {
-    renderQueue({ incidents: [], statusCounts: counts() });
+    renderQueue({ incidents: [], matchCount: 0, statusCounts: counts() });
     expect(screen.getByText("No incidents match this filter.")).toBeInTheDocument();
+    expect(screen.getByText("Showing 0 of 0 incidents")).toBeInTheDocument();
+  });
+
+  /**
+   * The footer counts the table — the rows matching the tab and the search —
+   * not the queue. Against the whole-view total, Awaiting Triage read
+   * "Showing 2 of 54", as if 52 reports had been cut off. Issue #1.
+   */
+  it("reports the rows shown against the rows that match, not the whole view", () => {
+    renderQueue({
+      incidents: [item({ status: "open" }), item({ id: "b", status: "open" })],
+      matchCount: 2,
+      activeStatus: "open",
+      statusCounts: DISTINCT_TALLIES,
+    });
+
+    expect(screen.getByText("Showing 2 of 2 incidents")).toBeInTheDocument();
+  });
+
+  /**
+   * More matches than one screenful: the gap between the two figures is the
+   * truncation signal, so no separate note is needed.
+   */
+  it("shows the true match count when the matches run past one screenful", () => {
+    renderQueue({ matchCount: 140 });
+
+    expect(screen.getByText("Showing 1 of 140 incidents")).toBeInTheDocument();
   });
 
   it("links each row to its detail page", () => {
@@ -245,6 +273,7 @@ describe("IncidentQueue", () => {
     rerender(
       <IncidentQueue
         incidents={[item({ status: "resolved" })]}
+        matchCount={1}
         statusCounts={counts({ resolved: 1 })}
         atRiskCount={0}
         activeStatus="all"
@@ -334,5 +363,21 @@ describe("IncidentQueue", () => {
 
     renderQueue({ threshold: 0.75 });
     expect(screen.getAllByText("On track").length).toBeGreaterThan(0);
+  });
+
+  it("gives a routed report refused as Invalid no SLA verdict", () => {
+    // INC-2026-000124: routed, refused minutes later, and read a green Met.
+    renderQueue({
+      incidents: [
+        item({
+          status: "closed",
+          closure_reason: "invalid",
+          closed_at: "2026-08-07T09:00:00+08:00",
+        }),
+      ],
+      statusCounts: counts({ closed: 1 }),
+    });
+    expect(screen.getByText("Not scored")).toBeInTheDocument();
+    expect(screen.queryByText("Met")).not.toBeInTheDocument();
   });
 });

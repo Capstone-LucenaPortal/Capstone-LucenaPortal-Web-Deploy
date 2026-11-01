@@ -1,14 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/portals/super-staff/components/ui/button";
 import { Card } from "@/portals/super-staff/components/ui/card";
 import { Input } from "@/portals/super-staff/components/ui/input";
+import { PASSWORD_RULES_TEXT, validatePassword } from "@/shared/auth/password-policy";
 import { createClient } from "@/shared/supabase/client";
 import { restartIdleClock } from "@/portals/super-staff/lib/supabase/idle-timeout";
-
-const MIN_PASSWORD = 8;
 
 // "invalid" means the link itself is spent or expired — a fact we learned from
 // GoTrue. "failed" means we never got an answer, which is a different problem
@@ -100,8 +100,9 @@ export default function AcceptInvitePage() {
     event.preventDefault();
     setError(null);
 
-    if (password.length < MIN_PASSWORD) {
-      setError(`Use at least ${MIN_PASSWORD} characters.`);
+    const policyError = validatePassword(password);
+    if (policyError) {
+      setError(policyError);
       return;
     }
     if (password !== confirm) {
@@ -156,9 +157,9 @@ export default function AcceptInvitePage() {
           If it still fails, ask your Super Staff to send a new one.
         </p>
         <div className="mt-6">
-          <a href="/super-staff/login">
+          <Link href="/super-staff/login">
             <Button variant="secondary">Back to sign in</Button>
-          </a>
+          </Link>
         </div>
       </Card>
     );
@@ -182,9 +183,9 @@ export default function AcceptInvitePage() {
           instead.
         </p>
         <div className="mt-6">
-          <a href="/super-staff/login">
+          <Link href="/super-staff/login">
             <Button variant="secondary">Back to sign in</Button>
-          </a>
+          </Link>
         </div>
       </Card>
     );
@@ -198,15 +199,21 @@ export default function AcceptInvitePage() {
         it.
       </p>
       <form className="mt-4 flex flex-col gap-3" onSubmit={handleSubmit}>
-        <Input
-          type="password"
-          aria-label="New password"
-          placeholder="New password"
-          autoComplete="new-password"
-          required
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
+        <div className="flex flex-col gap-1">
+          <Input
+            type="password"
+            aria-label="New password"
+            aria-describedby="password-rules"
+            placeholder="New password"
+            autoComplete="new-password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <p id="password-rules" className="text-xs text-gray-500">
+            {PASSWORD_RULES_TEXT}
+          </p>
+        </div>
         <Input
           type="password"
           aria-label="Confirm password"

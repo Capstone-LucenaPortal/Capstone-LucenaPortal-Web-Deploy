@@ -17,7 +17,7 @@ the system, `Capstone-LucenaPortal-DB` and `Central-System-Documents`.
 | --- | --- | --- | --- | --- | --- |
 | **Citizen** | `/` | `src/portals/citizen/` | [`CONTEXT.md`](src/portals/citizen/CONTEXT.md) | _none yet_ | What a resident can do: hold a Yellow Card, report an incident, book the convention center, browse city content. |
 | **Staff** | `/staff` | `src/portals/staff/` | [`CONTEXT.md`](src/portals/staff/CONTEXT.md) | [`docs/adr/`](src/portals/staff/docs/adr/) | The three municipal-staff queues: Yellow Card applications, Incident reports, LCC Booking requests. |
-| **Super-staff** | `/super-staff` | `src/portals/super-staff/` | [`CONTEXT.md`](src/portals/super-staff/CONTEXT.md) | _none yet_ | Posts, announcements and news; staff account administration. |
+| **Super-staff** | `/super-staff` | `src/portals/super-staff/` | [`CONTEXT.md`](src/portals/super-staff/CONTEXT.md) | _none yet_ | Posts, announcements and news; staff account administration; **System health**, whether the software itself is working. |
 | **Responder** | `/responder` | `src/portals/responder/` | [`CONTEXT.md`](src/portals/responder/CONTEXT.md) | [`docs/adr/`](src/portals/responder/docs/adr/) | Field units claiming incidents from a department pool, working fixed status stages, resolving with photo evidence. |
 | **Admin** | `/admin` | `src/portals/admin/` | _not written yet_ | _none yet_ | Administrator / Mayor review surface and SLA compliance reporting, read from the database's views and RPCs. |
 
@@ -39,6 +39,19 @@ in each Portal and, where relevant, which spelling the database uses.
 **Portal**:
 One audience's section of the single Lucena web app — Citizen, Staff, Super-staff, Responder or Admin — reached by its path prefix (Citizen owns the root). Since the 2026-10 merge (ADR 0003) a Portal is no longer a repo or a separately deployed app.
 _Avoid_: app, frontend, repo (when meaning an audience's section)
+
+### City employee
+
+**City employee**:
+Anyone who holds a staff role — Staff, Super-staff, Responder or Admin — and so signs in to one of the four staff-side Portals. Each City employee belongs to exactly one of them. Residents are **Citizens**, never City employees.
+_Avoid_: staff (when meaning all four roles — **Staff** is only the Staff Portal's people), worker, user
+
+### Monitoring
+
+**Monitoring** means two different things depending on the Portal. Since #72 (ADR 0008) Super-staff's old Monitoring screen is **System Health**:
+- **Admin**: *service performance* — SLA compliance, backlog, at-risk, bookings, read from Admin's own views and RPCs. Admin owns these numbers and is measured against them.
+- **Super-staff**: *system health* — background jobs, notification delivery, capacity and response time, read from `super_system_health()` and its two views, at `/super-staff/system-health`. Super-staff shows four service-performance tiles there (from `super_metrics`) as **Service impact**, to judge a configuration change, but does not own them.
+_Avoid_: monitoring (say service performance or system health)
 
 ## System-wide decisions
 

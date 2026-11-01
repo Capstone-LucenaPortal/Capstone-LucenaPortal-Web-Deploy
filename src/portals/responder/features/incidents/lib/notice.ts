@@ -41,6 +41,9 @@ export const NOTICES = {
   reason_required: "A reason is required.",
   upload_failed:
     "The photo did not finish uploading. Nothing was attached — try again.",
+  // Issue #66: refused by the uploader before reserving, never by the database,
+  // so noticeFor has no pattern for it. The figure is MAX_PHOTO_BYTES.
+  photo_too_large: "That photo is over 5 MB. Choose a smaller one.",
 } as const;
 
 export type NoticeCode = keyof typeof NOTICES;

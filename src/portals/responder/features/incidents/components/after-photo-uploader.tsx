@@ -41,6 +41,17 @@ import { createClient } from "@/shared/supabase/client";
 const ACCEPTED = ".jpg,.jpeg,.png,image/jpeg,image/png";
 const ACCEPTED_EXT = ["jpg", "jpeg", "png"];
 
+/**
+ * The `incident-photos` bucket's own file_size_limit (5,242,880 bytes), the
+ * same figure as the Citizen Portal's MAX_UPLOAD_BYTES. The only copy in this
+ * Portal: the `photo_too_large` sentence in notice.ts says it in words.
+ *
+ * ⚠️ CHECKED BEFORE RESERVING, NOT LEFT TO THE BUCKET (issue #66). The bucket
+ * refuses an oversized file only after the whole of it has gone up, and by then
+ * the reservation is made and counts against the 3-per-cycle cap.
+ */
+export const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+
 export function AfterPhotoUploader({ incidentId }: { incidentId: string }) {
   const router = useRouter();
   // A connection lost mid-upload holds the notice rather than turning it
@@ -65,8 +76,12 @@ export function AfterPhotoUploader({ incidentId }: { incidentId: string }) {
   async function steps(file: File) {
     const ext = (file.name.split(".").pop() ?? "").toLowerCase();
 
-    if (!ACCEPTED_EXT.includes(ext)) {
+    // An empty file is as unusable as a wrong type, and is refused the same way.
+    if (!ACCEPTED_EXT.includes(ext) || file.size === 0) {
       return push("/responder/my-ticket?sheet=photo&notice=upload_failed");
+    }
+    if (file.size > MAX_PHOTO_BYTES) {
+      return push("/responder/my-ticket?sheet=photo&notice=photo_too_large");
     }
 
     // 1. Reserve.
@@ -85,9 +100,11 @@ export function AfterPhotoUploader({ incidentId }: { incidentId: string }) {
     // ⚠️ Story 35: an upload that fails partway must SAY it failed, so a
     //    responder does not resolve a ticket believing evidence was attached.
     //    The orphaned reservation stays unconfirmed and is therefore invisible
-    //    to every count and every list — which is exactly what the
-    //    `uploaded_at is not null` filters are for. Do not try to clean it up:
-    //    no bucket exposes delete.
+    //    to the read views and their lists — which is exactly what the
+    //    `uploaded_at is not null` filters are for. It is NOT invisible to
+    //    request_incident_photo_upload, which counts every reservation against
+    //    the 3-per-cycle cap until stale ones expire (Capstone-LucenaPortal-DB#21).
+    //    Do not try to clean it up: no bucket exposes delete.
     if (error) {
       return push("/responder/my-ticket?notice=upload_failed");
     }

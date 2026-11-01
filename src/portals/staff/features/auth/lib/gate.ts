@@ -51,6 +51,10 @@ export function toStaffProfile(
  * is_active_staff('staff') independently. It exists so a person who lands in
  * the wrong portal is told why, instead of meeting a working page where every
  * gated query returns 200 and an empty array.
+ *
+ * It admits staff, not modules. The same reasoning one level down — a staff
+ * account typing another module's address — is isAssigned's, in
+ * module-gate.ts, which each module page asks before its own reads.
  */
 export function decideAccess(
   profile: StaffProfile | null,

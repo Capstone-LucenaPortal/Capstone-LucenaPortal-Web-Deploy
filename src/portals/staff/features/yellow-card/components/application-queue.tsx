@@ -12,6 +12,8 @@ import type { YellowCardQueueItem, YellowCardStatus } from "../types";
 
 interface ApplicationQueueProps {
   applications: YellowCardQueueItem[];
+  /** How many rows match the tab and the search: the footer's denominator. */
+  matchCount: number;
   counts: Record<YellowCardStatus, number>;
   status: StatusFilter;
   search: string;
@@ -19,6 +21,7 @@ interface ApplicationQueueProps {
 
 export function ApplicationQueue({
   applications,
+  matchCount,
   counts,
   status,
   search,
@@ -142,8 +145,12 @@ export function ApplicationQueue({
         )}
       </div>
 
+      {/*
+        The one figure on this screen that is not whole-view: it counts the
+        table, so it narrows with the tab and the search. See CONTEXT.md, "Queue".
+      */}
       <p className="mt-3 text-sm text-gray-500">
-        Showing {applications.length} of {total} results
+        Showing {applications.length} of {matchCount} results
       </p>
     </div>
   );

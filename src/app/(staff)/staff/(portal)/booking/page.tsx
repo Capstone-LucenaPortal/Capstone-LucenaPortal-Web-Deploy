@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { cn } from "@/portals/staff/lib/utils";
+import { isAssigned } from "@/portals/staff/features/auth/lib/module-gate";
+import { NotYourModule } from "@/portals/staff/features/auth/components/not-your-module";
 import { BookingQueue } from "@/portals/staff/features/booking/components/booking-queue";
 import { BookingCalendar } from "@/portals/staff/features/booking/components/booking-calendar";
 import {
@@ -36,6 +38,9 @@ export default async function BookingQueuePage({
     month?: string;
   }>;
 }) {
+  // Before anything else, so a refused account fires no Booking read.
+  if (!(await isAssigned("booking"))) return <NotYourModule module="booking" />;
+
   const params = await searchParams;
   const view = parseView(params.view);
   // The only `new Date()` on this screen. Every calendar function below takes
@@ -97,7 +102,7 @@ async function renderList(
 ) {
   const filter = parseStatusFilter(status);
 
-  const [bookings, counts, balanceOutstanding] = await Promise.all([
+  const [queue, counts, balanceOutstanding] = await Promise.all([
     getBookingQueue({ status: filter, search }),
     getBookingStatusCounts(),
     getBalanceOutstanding(),
@@ -107,7 +112,8 @@ async function renderList(
 
   return (
     <BookingQueue
-      bookings={bookings}
+      bookings={queue.items}
+      matchCount={queue.matchCount}
       counts={counts}
       // Folded from the counts above rather than read again. Two reads of one
       // set can disagree; a fold of the set the tabs already show cannot.

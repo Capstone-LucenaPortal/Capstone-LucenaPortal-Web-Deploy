@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ToastProvider } from "@/portals/super-staff/components/providers/toast-provider";
+import { UnsavedChangesProvider } from "@/portals/super-staff/components/providers/unsaved-changes-provider";
 import { toRpcError } from "@/portals/super-staff/lib/supabase/errors";
 import type { Holiday, OfficeHours } from "../lib/calendar-types";
 import { CalendarView } from "./calendar-view";
@@ -68,7 +69,9 @@ const week: OfficeHours[] = [
 async function renderView() {
   render(
     <ToastProvider>
-      <CalendarView />
+      <UnsavedChangesProvider>
+        <CalendarView />
+      </UnsavedChangesProvider>
     </ToastProvider>,
   );
   await screen.findByDisplayValue("Christmas Day");
@@ -265,7 +268,9 @@ describe("CalendarView — a refused gate", () => {
   it("reads empty views as not permitted, not as an empty calendar", async () => {
     render(
       <ToastProvider>
-        <CalendarView />
+        <UnsavedChangesProvider>
+          <CalendarView />
+        </UnsavedChangesProvider>
       </ToastProvider>,
     );
 

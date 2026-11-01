@@ -3,8 +3,7 @@
 import { useId, useState } from "react";
 import { BottomSheet } from "@/portals/responder/components/ui/bottom-sheet";
 import { cn } from "@/portals/responder/lib/utils";
-
-const MIN_LENGTH = 8;
+import { PASSWORD_RULES_TEXT, validatePassword } from "@/shared/auth/password-policy";
 
 // Deliberately does not claim to sign you out of every other device: whether
 // GoTrue revokes other refresh tokens on a password change is a project
@@ -37,9 +36,9 @@ export function PasswordSheet({
   const [serverError, setServerError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const longEnough = next.length >= MIN_LENGTH;
+  const policyError = validatePassword(next);
   const mismatch = confirm.length > 0 && confirm !== next;
-  const valid = current.length > 0 && longEnough && confirm === next;
+  const valid = current.length > 0 && !policyError && confirm === next;
 
   const close = () => {
     setCurrent("");
@@ -86,23 +85,17 @@ export function PasswordSheet({
           label="New password"
           value={next}
           onChange={setNext}
-          // The hint below owns the length rule and never leaves the layout,
+          // The hint below owns the password rule and never leaves the layout,
           // so repeating it here would just say the same thing twice.
           placeholder="Type a new one"
-          invalid={next.length > 0 && !longEnough}
+          invalid={next.length > 0 && Boolean(policyError)}
           hint={
             next.length === 0
-              ? `At least ${MIN_LENGTH} characters`
-              : longEnough
-                ? "Long enough."
-                : `At least ${MIN_LENGTH} characters`
+              ? PASSWORD_RULES_TEXT
+              : (policyError ?? "Meets every rule.")
           }
           hintTone={
-            next.length === 0
-              ? "muted"
-              : longEnough
-                ? "positive"
-                : "negative"
+            next.length === 0 ? "muted" : policyError ? "negative" : "positive"
           }
         />
 

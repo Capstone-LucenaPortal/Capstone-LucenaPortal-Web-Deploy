@@ -10,7 +10,7 @@ import {
   getSlaTrend,
   SLA_TARGET_PCT,
 } from "@/portals/admin/features/sla/lib/sla";
-import { formatRate } from "@/portals/admin/lib/aggregate";
+import { formatDuration, formatRate } from "@/portals/admin/lib/aggregate";
 import { formatManilaTimestamp, presetDateRange } from "@/portals/admin/lib/dates";
 import type { PortalError } from "@/portals/admin/lib/supabase/errors";
 import { SlaDateBasis, SlaDepartmentRow, SlaDepartmentStatus, SlaTrendRow } from "@/portals/admin/features/sla/types";
@@ -330,7 +330,7 @@ export function SLAReportsPage() {
           label="Avg Response"
           value={
             status === "ready" && stats
-              ? `${stats.avgResponseDays}d`
+              ? formatDuration(stats.avgResponseDays)
               : status === "loading"
                 ? <Skeleton className="h-7 w-16" />
                 : "—"
@@ -531,7 +531,7 @@ export function SLAReportsPage() {
                   header: "Avg Response",
                   headerClassName: "text-right",
                   className: "text-right tabular-nums",
-                  render: (row: SlaTrendRow) => `${row.avgResponseDays} days`,
+                  render: (row: SlaTrendRow) => formatDuration(row.avgResponseDays),
                 },
               ]}
               rows={monthlyHistory}

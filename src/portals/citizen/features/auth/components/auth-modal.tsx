@@ -7,13 +7,32 @@ import ModalShell, { ModalCloseButton } from '@/portals/citizen/components/ui/mo
 import { PhoneInput } from '@/portals/citizen/components/ui/phone-input';
 import { catalogService, type CatalogOption } from '@/portals/citizen/lib/supabase/catalogs';
 import { authService, MIN_ACCOUNT_AGE_YEARS } from '@/portals/citizen/features/auth/lib/auth';
-import { validatePassword, PASSWORD_RULES_TEXT } from '@/portals/citizen/features/auth/lib/password-policy';
+import { validatePassword, PASSWORD_RULES_TEXT } from '@/shared/auth/password-policy';
 import { LIMITS, birthDateError } from '@/portals/citizen/lib/validation';
 
+/**
+ * The layout mounts this for the life of the page, so it holds only what
+ * should outlive a single open: the barangay catalog, fetched once. The form
+ * itself mounts only while the modal is open, keyed by mode, so every open and
+ * every switch between Sign In, Sign Up and Forgot Password starts empty. A
+ * password typed and abandoned on a shared computer must not greet the next
+ * person who clicks "Sign In" (issue #22). It also means Forgot Password asks
+ * for the address fresh: a stale Sign In email once sent a reset request nowhere.
+ */
 export default function AuthModal() {
-  const { login, signup, closeAuthModal, showAuthModal, authMode: mode, setAuthMode: setMode } = useAuth();
+  const { showAuthModal, authMode } = useAuth();
 
-  // One stable prefix per mounted modal. Every label/input pair below derives
+  const [barangays, setBarangays] = useState<CatalogOption[]>([]);
+  useEffect(() => { catalogService.getBarangays().then(setBarangays).catch(() => setBarangays([])); }, []);
+
+  if (!showAuthModal) return null;
+  return <AuthForm key={authMode} barangays={barangays} />;
+}
+
+function AuthForm({ barangays }: { barangays: CatalogOption[] }) {
+  const { login, signup, closeAuthModal, authMode: mode, setAuthMode: setMode } = useAuth();
+
+  // One stable prefix per mounted form. Every label/input pair below derives
   // its id from it, so screen readers announce a field name instead of the bare
   // "edit text" they got when no <label> carried an htmlFor.
   const uid = useId();
@@ -29,6 +48,9 @@ export default function AuthModal() {
   const [showPassword, setShowPassword] = useState(false);
   const [formError, setFormError] = useState('');
   const [resetSending, setResetSending] = useState(false);
+  // Set once a sign-up succeeds but awaits email confirmation: the address the
+  // link went to. The form gives way to a "Check Your Email" panel (#65).
+  const [signupSentTo, setSignupSentTo] = useState<string | null>(null);
 
   // Sign-up fields
   const [firstName, setFirstName] = useState('');
@@ -48,23 +70,6 @@ export default function AuthModal() {
   const [occupation, setOccupation] = useState('');
   const [agreeTerms, setAgreeTerms] = useState(false);
 
-  const [barangays, setBarangays] = useState<CatalogOption[]>([]);
-  useEffect(() => { catalogService.getBarangays().then(setBarangays).catch(() => setBarangays([])); }, []);
-
-  if (!showAuthModal) return null;
-
-  const switchMode = (next: typeof mode) => {
-    setFormError('');
-    if (next === 'forgot') {
-      // Require the citizen to type the address fresh rather than silently
-      // reusing whatever is sitting in the Sign In email field — those two
-      // fields have no reason to agree, and a stale/mistyped login email
-      // was exactly what caused a prior reset request to go nowhere.
-      setEmail('');
-      setForgotStep('email');
-    }
-    setMode(next);
-  };
 
   const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const currentYear = new Date().getFullYear();
@@ -95,7 +100,7 @@ export default function AuthModal() {
           (roundTripsClean ? null : 'Please enter a valid date of birth.');
         if (dateProblem) { setFormError(dateProblem); return; }
         const fullName = [firstName, middleName, lastName, suffix].filter(Boolean).join(' ');
-        await signup({
+        const outcome = await signup({
           fullName, email, password,
           firstName, lastName, middleName, suffix,
           birthDate,
@@ -107,6 +112,7 @@ export default function AuthModal() {
           worksInLucena: workingInLucena === 'yes',
           agreedToTerms: agreeTerms,
         });
+        if (outcome === 'confirm-email') setSignupSentTo(email);
       }
       setEmail(''); setPassword('');
     } catch (err) {
@@ -176,7 +182,7 @@ export default function AuthModal() {
             </div>
             {formError && <p id={errorId} role="alert" style={{ fontSize: 13, color: '#C62828', marginBottom: 12 }}>{formError}</p>}
             <Button type="submit" variant="primary" loading={resetSending} disabled={resetSending} className="w-full" style={{ marginBottom: 12 }}>Send Reset Link</Button>
-            <Button type="button" variant="ghost" onClick={() => switchMode('login')} className="w-full text-lucena-blue">Back to Sign In</Button>
+            <Button type="button" variant="ghost" onClick={() => setMode('login')} className="w-full text-lucena-blue">Back to Sign In</Button>
           </form>
         )}
 
@@ -186,7 +192,7 @@ export default function AuthModal() {
               If an account exists for <strong>{email}</strong>, a password-reset link is on its way.
               Open it to choose a new password. Open the link on this same device and browser.
             </p>
-            <Button type="button" variant="ghost" onClick={() => switchMode('login')} className="w-full text-lucena-blue">Back to Sign In</Button>
+            <Button type="button" variant="ghost" onClick={() => setMode('login')} className="w-full text-lucena-blue">Back to Sign In</Button>
           </>
         )}
       </ModalShell>
@@ -238,11 +244,28 @@ export default function AuthModal() {
               placeholder="••••••••"
             />
           </div>
-          <Button type="button" variant="ghost" onClick={() => switchMode('forgot')} className="w-full text-lucena-blue text-sm" style={{ paddingTop: 8, paddingBottom: 8, marginBottom: 12 }}>Forgot Password?</Button>
+          <Button type="button" variant="ghost" onClick={() => setMode('forgot')} className="w-full text-lucena-blue text-sm" style={{ paddingTop: 8, paddingBottom: 8, marginBottom: 12 }}>Forgot Password?</Button>
           {formError && <p id={errorId} role="alert" style={{ fontSize: 13, color: '#C62828', marginBottom: 12 }}>{formError}</p>}
           <Button type="submit" variant="primary" loading={isSubmitting} className="w-full" style={{ marginBottom: 16 }}>Sign In</Button>
-          <Button type="button" variant="ghost" onClick={() => switchMode('signup')} className="w-full text-lucena-blue">Don&apos;t have an account? Sign up</Button>
+          <Button type="button" variant="ghost" onClick={() => setMode('signup')} className="w-full text-lucena-blue">Don&apos;t have an account? Sign up</Button>
         </form>
+      </ModalShell>
+    );
+  }
+
+  // Sign Up, done but awaiting email confirmation. A success, so plain text and
+  // no Create Account button. When it showed as an error under the filled
+  // form, citizens submitted again.
+  if (signupSentTo !== null) {
+    return (
+      <ModalShell labelledBy={headingId} onClose={closeAuthModal} panelClassName={modalClass} panelStyle={{ padding: 40, position: 'relative' }}>
+        <ModalCloseButton onClose={closeAuthModal} />
+        <h2 id={headingId} className="text-[28px] font-bold text-lucena-blue" style={{ marginBottom: 24 }}>Check Your Email</h2>
+        <p className="text-sm text-dark-gray leading-relaxed" style={{ marginBottom: 24 }}>
+          Your account was created. We sent a confirmation link to <strong>{signupSentTo}</strong>.
+          Open it to confirm your email address, then sign in.
+        </p>
+        <Button type="button" variant="ghost" onClick={() => setMode('login')} className="w-full text-lucena-blue">Back to Sign In</Button>
       </ModalShell>
     );
   }
@@ -439,7 +462,7 @@ export default function AuthModal() {
           </label>
           {formError && <p id={errorId} role="alert" style={{ fontSize: 13, color: '#C62828', marginBottom: 12 }}>{formError}</p>}
           <Button type="submit" variant="primary" loading={isSubmitting} className="w-full text-[15px]" style={{ paddingTop: 14, paddingBottom: 14 }}>Create Account</Button>
-          <Button type="button" variant="ghost" onClick={() => switchMode('login')} className="w-full text-lucena-blue text-sm">Already have an account? Sign In</Button>
+          <Button type="button" variant="ghost" onClick={() => setMode('login')} className="w-full text-lucena-blue text-sm">Already have an account? Sign In</Button>
         </div>
       </form>
     </ModalShell>

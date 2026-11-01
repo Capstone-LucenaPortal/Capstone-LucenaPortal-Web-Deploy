@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { historyStats } from "@/portals/responder/features/incidents/lib/history-stats";
+import {
+  historyStats,
+  historyToShow,
+} from "@/portals/responder/features/incidents/lib/history-stats";
 import { aHistoryRow } from "@/portals/responder/features/incidents/lib/fixtures";
 
 const NOW = new Date("2026-08-12T12:00:00.000Z");
@@ -72,5 +75,57 @@ describe("historyStats", () => {
     expect(historyStats([onTime, reopened, alsoReopened], NOW).reopenedCount).toBe(
       3,
     );
+  });
+});
+
+describe("historyToShow", () => {
+  const held = aHistoryRow({
+    id: "held",
+    status: "in_progress",
+    my_last_outcome: null,
+    resolved_at: null,
+  });
+
+  it("leaves out the ticket the responder holds now, and keeps the rest", () => {
+    // Issue #36: claiming writes a `claimed` event, so the held ticket is always in
+    // responder_history. It belongs on My ticket, not here.
+    expect(historyToShow([onTime, held, late], "held")).toEqual([onTime, late]);
+  });
+
+  it("leaves out a held ticket even when it carries an old outcome", () => {
+    // Released (or resolved, then reopened) and claimed again: the view still
+    // reports the earlier outcome while the responder is working it.
+    const claimedAgain = aHistoryRow({
+      id: "claimed-again",
+      status: "in_progress",
+      my_last_outcome: "released",
+      resolved_at: null,
+    });
+    expect(historyToShow([onTime, claimedAgain], "claimed-again")).toEqual([
+      onTime,
+    ]);
+  });
+
+  it("keeps a null-outcome row that is not the held ticket", () => {
+    // A supervisor's take-back: the work done on it still counts (story 48).
+    const takenBack = { ...held, id: "taken-back" };
+    expect(historyToShow([takenBack, onTime], null)).toEqual([takenBack, onTime]);
+  });
+
+  it("lists every row when nothing is held, even one the view gave no id", () => {
+    // The generated row type allows a null id; null must not match null.
+    const noId = aHistoryRow({ id: null });
+    expect(historyToShow([noId, onTime], null)).toEqual([noId, onTime]);
+  });
+
+  it("keeps a colleague's in-progress ticket this responder once released", () => {
+    // In progress, but not held by me -- `status` alone must not hide it.
+    const colleagues = aHistoryRow({
+      id: "colleagues",
+      status: "in_progress",
+      my_last_outcome: "released",
+      resolved_at: null,
+    });
+    expect(historyToShow([colleagues], "held")).toEqual([colleagues]);
   });
 });

@@ -1,3 +1,4 @@
+import { formatDate } from "@/portals/super-staff/lib/utils";
 import type { Announcement, AnnouncementStatus } from "../types";
 
 export type StatusCounts = Record<AnnouncementStatus, number> & { all: number };
@@ -23,8 +24,9 @@ export function computeStatusCounts(
   return { ...counts, all: announcements.length };
 }
 
-/** What publishing will produce, for confirm-modal copy only — never sent to
- *  the database. Mirrors `post_status()` for the already-published branches. */
+/** What publishing will produce, for the confirm modal and the toast after it —
+ *  never sent to the database. Mirrors `post_status()` for the already-published
+ *  branches. */
 export function previewPublishedStatus(
   startAt: string | null,
   endAt: string | null,
@@ -33,4 +35,18 @@ export function previewPublishedStatus(
   if (startAt && new Date(startAt).getTime() > now.getTime()) return "Scheduled";
   if (endAt && new Date(endAt).getTime() < now.getTime()) return "Expired";
   return "Published";
+}
+
+/** The success toast after Publish, matching the confirm modal's preview. */
+export function publishedToastMessage(
+  status: AnnouncementStatus,
+  startAt: string | null,
+): string {
+  if (status === "Scheduled") {
+    return `Announcement scheduled for ${formatDate(startAt)}.`;
+  }
+  if (status === "Expired") {
+    return "Announcement published as Expired. It stays off the portal until you extend or clear the end date.";
+  }
+  return "Announcement published.";
 }

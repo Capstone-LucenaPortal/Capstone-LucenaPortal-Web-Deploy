@@ -21,7 +21,7 @@ import {
   getTimeline,
 } from "@/portals/responder/features/incidents/lib/data";
 import { slaProgress } from "@/portals/responder/features/incidents/lib/sla";
-import { buildTimeline } from "@/portals/responder/features/incidents/lib/work";
+import { buildTimeline, inCycle } from "@/portals/responder/features/incidents/lib/work";
 
 export const metadata = { title: "My ticket · LucenaPortal Responder" };
 
@@ -87,10 +87,15 @@ export default async function MyTicketPage({
     getIncidentConfig(),
   ]);
 
+  // The stages and photos of THIS cycle only; the timeline keeps them all.
+  // Earlier cycles' photos are hidden, not greyed — issue #67.
+  const cycleEvents = inCycle(events, incident.cycle_number);
+  const cyclePhotoRows = inCycle(photoRows, incident.cycle_number);
+
   // Signed here, not in the component — Seam 2. 60-second URLs, so there is
   // nothing worth caching.
   const photos: GridPhoto[] = await Promise.all(
-    photoRows.map(async (row) => ({
+    cyclePhotoRows.map(async (row) => ({
       id: row.id ?? "",
       url: row.id ? await getPhotoUrl(row.id) : null,
     })),
@@ -113,7 +118,7 @@ export default async function MyTicketPage({
             <h2 className="mb-2.75 text-[11px] font-bold tracking-[0.07em] uppercase text-gray-500">
               Progress · tap as you go
             </h2>
-            <StageTracker events={events} incidentId={incident.id} />
+            <StageTracker events={cycleEvents} incidentId={incident.id} />
             <NoteForm incidentId={incident.id} />
           </section>
 

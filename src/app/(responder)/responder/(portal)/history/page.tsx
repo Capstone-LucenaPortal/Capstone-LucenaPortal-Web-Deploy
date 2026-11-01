@@ -1,8 +1,14 @@
 import { Clock } from "lucide-react";
 import { EmptyState } from "@/portals/responder/components/ui/empty-state";
 import { HistoryRow } from "@/portals/responder/features/incidents/components/history-row";
-import { getHistory } from "@/portals/responder/features/incidents/lib/data";
-import { historyStats } from "@/portals/responder/features/incidents/lib/history-stats";
+import {
+  getHeldTicket,
+  getHistory,
+} from "@/portals/responder/features/incidents/lib/data";
+import {
+  historyStats,
+  historyToShow,
+} from "@/portals/responder/features/incidents/lib/history-stats";
 
 export const metadata = { title: "History · LucenaPortal Responder" };
 
@@ -15,12 +21,19 @@ export const metadata = { title: "History · LucenaPortal Responder" };
  * measured yet, which is not the same as having failed every ticket, and a new
  * account greeted by "0%" reads as a failing responder.
  *
- * Released and rejected tickets are listed too (story 48) — `responder_history`
- * is scoped to "incidents I have an event on", so handing a ticket back does
- * not erase the work done on it.
+ * Released, rejected and taken-back tickets are listed too (story 48) —
+ * `responder_history` is scoped to "incidents I have an event on", so handing a
+ * ticket back does not erase the work done on it.
+ *
+ * The ticket held right now is NOT listed (issue #36): claiming is an event too, so
+ * the view always carries it, but it is unfinished and lives on My ticket.
+ * Both tiles and the empty state are computed from what is listed, so a held
+ * ticket's reopens are not counted here either. getHeldTicket is cache()d and
+ * the portal layout already read it this pass.
  */
 export default async function HistoryPage() {
-  const rows = await getHistory();
+  const [history, held] = await Promise.all([getHistory(), getHeldTicket()]);
+  const rows = historyToShow(history, held?.id ?? null);
   const stats = historyStats(rows, new Date());
 
   return (

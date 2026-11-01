@@ -14,10 +14,10 @@
 // the caller. The three pages pass their tab+date `filtered` rows to
 // barangayCoverage/categoryMix/eventTypeMix/barangayIncidentRows, so those
 // panels agree with the table and CSV export beneath them, but pass the raw
-// unfiltered `rows` to monthlyCounts, since a multi-month trend chart fed an
-// already date-narrowed array would collapse to ~1 bucket. See the comment
-// at each page's monthlyCounts call site for the same rule spelled out
-// in-context.
+// unfiltered `rows` to recentMonthlyCounts, since a multi-month trend chart
+// fed an already date-narrowed array would collapse to ~1 bucket. See the
+// comment at each page's recentMonthlyCounts call site for the same rule
+// spelled out in-context.
 import { MANILA_TIME_ZONE } from "@/shared/dates/manila";
 import { filterByDateRange } from "@/portals/admin/lib/dates";
 import type { BookingRow } from "@/portals/admin/features/booking/lib/bookings";
@@ -25,9 +25,23 @@ import type { IncidentRow } from "@/portals/admin/features/incidents/lib/inciden
 import type { IncidentConfigRow, VenueRow } from "@/portals/admin/lib/supabase/catalogs";
 import type { ClosureReasonValue } from "@/portals/admin/lib/status-labels";
 import type { YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yellow-card";
-import type { ConventionRangeStats, EventTypeSlice, VenueBooking } from "@/portals/admin/features/booking/types";
-import type { BarangayIssueRow, IssueCategorySlice, IssueRangeStats } from "@/portals/admin/features/incidents/types";
-import type { BarangayCoverage, YellowCardRangeStats } from "@/portals/admin/features/yellow-card/types";
+import type {
+  ConventionDateBasis,
+  ConventionRangeStats,
+  EventTypeSlice,
+  VenueBooking,
+} from "@/portals/admin/features/booking/types";
+import type {
+  BarangayIssueRow,
+  IssueCategorySlice,
+  IssueDateBasis,
+  IssueRangeStats,
+} from "@/portals/admin/features/incidents/types";
+import type {
+  BarangayCoverage,
+  YellowCardDateBasis,
+  YellowCardRangeStats,
+} from "@/portals/admin/features/yellow-card/types";
 
 export interface MonthlyReportCount {
   month: string;
@@ -66,6 +80,38 @@ function manilaMonthKey(date: Date): string {
 
 function manilaMonthLabel(date: Date): string {
   return manilaMonthLabelFormatter.format(date);
+}
+
+// The row date each page's date type picks. That one accessor drives the KPI
+// tiles, the date-filtered rows (table, panels, client-side Export) and the
+// monthly chart, so the tiles and the table can't count different rows. A
+// row whose picked date is null (a pending application has no decided_at,
+// an open incident no resolved_at) drops out of all of them. Kept in Records
+// so each date type always returns the same function, which the pages
+// memoise on.
+const YELLOW_CARD_DATE: Record<YellowCardDateBasis, (row: YellowCardRow) => string | null> = {
+  application: (row) => row.submitted_at,
+  completion: (row) => row.decided_at,
+};
+const ISSUE_DATE: Record<IssueDateBasis, (row: IncidentRow) => string | null> = {
+  report: (row) => row.submitted_at,
+  resolution: (row) => row.resolved_at,
+};
+const CONVENTION_DATE: Record<ConventionDateBasis, (row: BookingRow) => string | null> = {
+  booking: (row) => row.submitted_at,
+  event: (row) => row.event_date,
+};
+
+export function yellowCardDateAccessor(basis: YellowCardDateBasis): (row: YellowCardRow) => string | null {
+  return YELLOW_CARD_DATE[basis];
+}
+
+export function issueDateAccessor(basis: IssueDateBasis): (row: IncidentRow) => string | null {
+  return ISSUE_DATE[basis];
+}
+
+export function conventionDateAccessor(basis: ConventionDateBasis): (row: BookingRow) => string | null {
+  return CONVENTION_DATE[basis];
 }
 
 /** Sum of the three status buckets — a pure arithmetic helper components
@@ -155,6 +201,30 @@ export function monthlyCounts<T>(
   return [...buckets.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([, bucket]) => ({ month: bucket.label, count: bucket.count }));
+}
+
+/**
+ * The "… by month · Last 6 months" chart: monthlyCounts over `rows`, capped
+ * at the current Manila month, then the trailing 6 months present.
+ *
+ * The cap matters for a date that can lie ahead, such as Convention Center's
+ * event_date: an upcoming booking would otherwise fill the window with future
+ * months and push the past ones out. It compares Manila month keys, never UTC
+ * or the browser's zone, for the reason given above manilaMonthKeyFormatter.
+ */
+export function recentMonthlyCounts<T>(
+  rows: T[],
+  getDate: (row: T) => string | null,
+  now: Date = new Date()
+): MonthlyReportCount[] {
+  const currentMonth = manilaMonthKey(now);
+  const upToNow = rows.filter((row) => {
+    const value = getDate(row);
+    if (!value) return false;
+    const parsed = new Date(value);
+    return !Number.isNaN(parsed.getTime()) && manilaMonthKey(parsed) <= currentMonth;
+  });
+  return monthlyCounts(upToNow, getDate).slice(-6);
 }
 
 /**
@@ -355,6 +425,27 @@ export function formatRate(value: number | null): string {
   return value === null ? "—" : `${value}%`;
 }
 
+/**
+ * Renders a possibly-null mean duration in days (averageResolutionDays, and
+ * the size of a daysDelta swing) for on-screen display, picking the unit
+ * from the value: days at a day or more ("1.4d", "2d"), hours under a day
+ * ("5.2h"), whole minutes under an hour ("27 min", "<1 min"). Rounding up
+ * into the next unit shows that unit ("1d", not "24h"; "1h", not "60 min").
+ * `null` — nothing in range was resolved — is "—", following formatRate's
+ * rule. Every Avg Response surface must go through this rather than
+ * `${value}d`, so a 27-minute mean can never read as "0d".
+ */
+export function formatDuration(days: number | null): string {
+  if (days === null) return "—";
+  const minutes = days * 1440;
+  if (minutes < 1) return "<1 min";
+  const wholeMinutes = Math.round(minutes);
+  if (wholeMinutes < 60) return `${wholeMinutes} min`;
+  const hours = round1(days * 24);
+  if (hours < 24) return `${hours}h`;
+  return `${round1(days)}d`;
+}
+
 /** Absolute integer change, for KPI tiles reporting a small count (e.g. SLA
  * violations) where a percentage swing would be noisy or undefined at 0. */
 export function countDelta(current: number, previous: number, suffix = "vs previous period"): string {
@@ -363,14 +454,21 @@ export function countDelta(current: number, previous: number, suffix = "vs previ
   return `${sign}${diff} ${suffix}`;
 }
 
-/** Change in a days figure (e.g. average response time), phrased as
- * faster/slower rather than signed, since "-0.2 pts" reads oddly for a
- * duration. */
-export function daysDelta(current: number, previous: number): string {
-  const diff = round1(current - previous);
-  if (diff === 0) return "No change vs previous period";
+/**
+ * Change in a mean duration in days (e.g. average response time), phrased
+ * as faster/slower rather than signed, since "-0.2 pts" reads oddly for a
+ * duration. The swing is worked out from the unrounded means and written
+ * through formatDuration ("16.3h faster", "1.1d slower"); under one minute
+ * reads "No change". A `null` mean on either side (nothing resolved in that
+ * period — see averageResolutionDays) has no swing to report, so it reads
+ * "No comparable data", as ratePointsDelta does for a null rate.
+ */
+export function daysDelta(current: number | null, previous: number | null): string {
+  if (current === null || previous === null) return "No comparable data vs previous period";
+  const diff = current - previous;
+  if (Math.abs(diff) * 1440 < 1) return "No change vs previous period";
   const direction = diff < 0 ? "faster" : "slower";
-  return `${Math.abs(diff)}d ${direction} vs previous period`;
+  return `${formatDuration(Math.abs(diff))} ${direction} vs previous period`;
 }
 
 /**
@@ -379,12 +477,15 @@ export function daysDelta(current: number, previous: number): string {
  * that is date-filtered or not). Incidents with no resolution yet, or a
  * malformed timestamp, are excluded from the average rather than counted as
  * zero days — an unresolved incident has no response time to report.
+ * Returns `null` when nothing qualifies (callers render it as "—" via
+ * formatDuration, never as 0d), and leaves the mean unrounded: rounding
+ * happens only in formatDuration, so a 27-minute mean isn't flattened to 0.
  * Incidents only: Yellow Card's clock pauses while an application sits in
  * revision_requested (see getSlaTrend's doc comment in src/portals/admin/features/sla/lib/sla.ts), so
  * folding its duration in here would not be a faithful reading of either
  * clock.
  */
-export function averageResolutionDays(rows: IncidentRow[]): number {
+export function averageResolutionDays(rows: IncidentRow[]): number | null {
   const durations = rows
     .filter((row) => row.resolved_at && row.submitted_at)
     .map(
@@ -394,8 +495,8 @@ export function averageResolutionDays(rows: IncidentRow[]): number {
     )
     .filter((days) => Number.isFinite(days) && days >= 0);
 
-  if (durations.length === 0) return 0;
-  return round1(durations.reduce((sum, days) => sum + days, 0) / durations.length);
+  if (durations.length === 0) return null;
+  return durations.reduce((sum, days) => sum + days, 0) / durations.length;
 }
 
 // Applications still in flight, per admin_yellow_card_analytics.status —

@@ -13,6 +13,7 @@ import {
   countDelta,
   daysDelta,
   eventTypeMix,
+  formatDuration,
   formatRate,
   incidentSlaHours,
   issueRangeStats,
@@ -20,8 +21,12 @@ import {
   percentDelta,
   pointsDelta,
   previousPeriodRange,
+  recentMonthlyCounts,
   venueUtilisation,
   yellowCardRangeStats,
+  yellowCardDateAccessor,
+  issueDateAccessor,
+  conventionDateAccessor,
 } from "@/portals/admin/lib/aggregate";
 import type { YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yellow-card";
 import type { IncidentRow } from "@/portals/admin/features/incidents/lib/incidents";
@@ -252,6 +257,99 @@ describe("monthlyCounts", () => {
   });
 });
 
+// The date type a page's DateFilterBar holds picks the one row date that the
+// tiles, the table, its panels, the Export and the monthly chart all read.
+describe("date type accessors", () => {
+  it("Yellow Card: Application Date reads submitted_at, Approval/Completion Date reads decided_at", () => {
+    const row = buildYellowCardRow({ submitted_at: "2026-09-01T04:00:00Z", decided_at: "2026-10-02T04:00:00Z" });
+    const pending = buildYellowCardRow({ submitted_at: "2026-09-01T04:00:00Z", decided_at: null });
+
+    expect(yellowCardDateAccessor("application")(row)).toBe("2026-09-01T04:00:00Z");
+    expect(yellowCardDateAccessor("completion")(row)).toBe("2026-10-02T04:00:00Z");
+    expect(yellowCardDateAccessor("completion")(pending)).toBeNull();
+  });
+
+  it("Incident Reports: Report Date reads submitted_at, Resolution Date reads resolved_at", () => {
+    const row = buildIncidentRow({ submitted_at: "2026-09-01T04:00:00Z", resolved_at: "2026-10-02T04:00:00Z" });
+    const open = buildIncidentRow({ submitted_at: "2026-09-01T04:00:00Z", resolved_at: null });
+
+    expect(issueDateAccessor("report")(row)).toBe("2026-09-01T04:00:00Z");
+    expect(issueDateAccessor("resolution")(row)).toBe("2026-10-02T04:00:00Z");
+    expect(issueDateAccessor("resolution")(open)).toBeNull();
+  });
+
+  it("Convention Center: Booking Date reads submitted_at, Event Date reads event_date", () => {
+    const row = buildBookingRow({ submitted_at: "2026-09-01T04:00:00Z", event_date: "2026-12-05" });
+
+    expect(conventionDateAccessor("booking")(row)).toBe("2026-09-01T04:00:00Z");
+    expect(conventionDateAccessor("event")(row)).toBe("2026-12-05");
+  });
+
+  // The pages memoise on the accessor; a fresh function per call would
+  // recompute every derived panel on every render.
+  it("returns the same function for the same date type", () => {
+    expect(yellowCardDateAccessor("completion")).toBe(yellowCardDateAccessor("completion"));
+    expect(issueDateAccessor("resolution")).toBe(issueDateAccessor("resolution"));
+    expect(conventionDateAccessor("event")).toBe(conventionDateAccessor("event"));
+  });
+});
+
+describe("recentMonthlyCounts", () => {
+  // 2026-10-15 12:00 Manila.
+  const now = new Date("2026-10-15T04:00:00Z");
+
+  // Convention Center's "Event Date" counts upcoming bookings too. A booking
+  // for December must not push the past months out of a chart that reads
+  // "Last 6 months".
+  it("never shows a month after the current Manila month, such as a future event_date", () => {
+    const rows = [
+      buildBookingRow({ event_date: "2026-09-10" }),
+      buildBookingRow({ event_date: "2026-10-20" }),
+      buildBookingRow({ event_date: "2026-12-05" }),
+    ];
+
+    const result = recentMonthlyCounts(rows, (row) => row.event_date, now);
+
+    expect(result).toEqual([
+      { month: "Sep", count: 1 },
+      { month: "Oct", count: 1 },
+    ]);
+  });
+
+  // 2026-10-31T16:30:00Z is 00:30 on 1 November in Manila, while UTC is still
+  // in October. The cap is the Manila month, so "now" at that instant already
+  // shows November, and a row at that instant is already outside October.
+  it("caps at the current Manila month, not the UTC one", () => {
+    const rows = [buildYellowCardRow({ decided_at: "2026-10-31T16:30:00Z" })];
+
+    expect(recentMonthlyCounts(rows, (row) => row.decided_at, now)).toEqual([]);
+    expect(recentMonthlyCounts(rows, (row) => row.decided_at, new Date("2026-10-31T16:30:00Z"))).toEqual([
+      { month: "Nov", count: 1 },
+    ]);
+  });
+
+  it("keeps the last 6 months present, oldest first", () => {
+    const rows = ["2026-02", "2026-03", "2026-04", "2026-05", "2026-07", "2026-08", "2026-10"].map((month) =>
+      buildYellowCardRow({ submitted_at: `${month}-10T04:00:00Z` })
+    );
+
+    const result = recentMonthlyCounts(rows, (row) => row.submitted_at, now);
+
+    expect(result.map((bucket) => bucket.month)).toEqual(["Mar", "Apr", "May", "Jul", "Aug", "Oct"]);
+  });
+
+  // A pending application has no decided_at, so under "Approval/Completion
+  // Date" it is in no month at all.
+  it("skips a row whose picked date is null", () => {
+    const rows = [
+      buildYellowCardRow({ submitted_at: "2026-10-01T04:00:00Z", decided_at: null }),
+      buildYellowCardRow({ submitted_at: "2026-09-01T04:00:00Z", decided_at: "2026-10-02T04:00:00Z" }),
+    ];
+
+    expect(recentMonthlyCounts(rows, (row) => row.decided_at, now)).toEqual([{ month: "Oct", count: 1 }]);
+  });
+});
+
 describe("categoryMix", () => {
   it("counts rows per category_code, most-common first", () => {
     const result = categoryMix([
@@ -457,17 +555,67 @@ describe("countDelta", () => {
   });
 });
 
+describe("formatDuration", () => {
+  const MINUTE = 1 / 1440;
+  const HOUR = 1 / 24;
+
+  it("renders no mean as an em dash, never 0d", () => {
+    expect(formatDuration(null)).toBe("—");
+  });
+
+  it("writes a mean of a day or more in days, one decimal, no trailing .0", () => {
+    expect(formatDuration(2)).toBe("2d");
+    expect(formatDuration(1.44)).toBe("1.4d");
+  });
+
+  it("writes a mean under a day in hours, one decimal", () => {
+    expect(formatDuration(5.2 * HOUR)).toBe("5.2h");
+  });
+
+  it("writes a mean under an hour in whole minutes", () => {
+    // The reported case: resolutions 11 and 43 min after filing.
+    expect(formatDuration(27 * MINUTE)).toBe("27 min");
+  });
+
+  it("writes a mean under a minute as <1 min", () => {
+    expect(formatDuration(0.4 * MINUTE)).toBe("<1 min");
+  });
+
+  it("shows the larger unit when rounding reaches it", () => {
+    expect(formatDuration(23.97 * HOUR)).toBe("1d");
+    expect(formatDuration(59.8 * MINUTE)).toBe("1h");
+  });
+});
+
 describe("daysDelta", () => {
   it("reads faster when the duration shrank", () => {
-    expect(daysDelta(1.7, 2.1)).toBe("0.4d faster vs previous period");
+    expect(daysDelta(1.5, 2.6)).toBe("1.1d faster vs previous period");
   });
 
   it("reads slower when the duration grew", () => {
-    expect(daysDelta(2.1, 1.7)).toBe("0.4d slower vs previous period");
+    expect(daysDelta(2.6, 1.5)).toBe("1.1d slower vs previous period");
   });
 
-  it("reads 'No change' when the duration is identical", () => {
+  it("writes the swing in the unit that fits it", () => {
+    expect(daysDelta(0.5, 1)).toBe("12h faster vs previous period");
+    expect(daysDelta(40 / 1440, 10 / 1440)).toBe("30 min slower vs previous period");
+  });
+
+  it("works from the unrounded means, not the rounded ones", () => {
+    // The reported Month: a 0.02d mean against a 0.7d one. Rounded to days
+    // first it read "0.7d faster"; the real swing is 16.3 hours.
+    expect(daysDelta(0.02, 0.7)).toBe("16.3h faster vs previous period");
+  });
+
+  it("reads 'No change' when the swing is under a minute", () => {
     expect(daysDelta(1.8, 1.8)).toBe("No change vs previous period");
+    expect(daysDelta(1.8, 1.8 + 0.5 / 1440)).toBe("No change vs previous period");
+  });
+
+  it("reads 'No comparable data' when either side has no mean", () => {
+    expect(daysDelta(null, 1.8)).toBe("No comparable data vs previous period");
+    expect(daysDelta(1.8, null)).toBe("No comparable data vs previous period");
+    expect(daysDelta(null, null)).toBe("No comparable data vs previous period");
   });
 });
 
@@ -490,8 +638,20 @@ describe("averageResolutionDays", () => {
     expect(result).toBe(2);
   });
 
-  it("returns 0 when no incident in the set has resolved", () => {
-    expect(averageResolutionDays([buildIncidentRow({ resolved_at: null })])).toBe(0);
+  it("returns null, not 0, when no incident in the set has resolved", () => {
+    expect(averageResolutionDays([buildIncidentRow({ resolved_at: null })])).toBeNull();
+    expect(averageResolutionDays([])).toBeNull();
+  });
+
+  it("leaves the mean unrounded, so a sub-day mean survives to the formatter", () => {
+    // Resolved 11 and 43 minutes after filing: a 27-minute mean (0.01875d),
+    // which rounding to one decimal in days used to flatten to 0.
+    const result = averageResolutionDays([
+      buildIncidentRow({ submitted_at: "2026-05-01T08:00:00Z", resolved_at: "2026-05-01T08:11:00Z" }),
+      buildIncidentRow({ submitted_at: "2026-05-01T09:00:00Z", resolved_at: "2026-05-01T09:43:00Z" }),
+    ]);
+
+    expect(result).toBeCloseTo(27 / 1440, 10);
   });
 });
 

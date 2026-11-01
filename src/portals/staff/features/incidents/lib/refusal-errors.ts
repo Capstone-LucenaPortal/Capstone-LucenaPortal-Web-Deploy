@@ -26,6 +26,10 @@ import type {
 
 const FALLBACK = "The refusal could not be saved. Please try again.";
 
+/** Shown inline by the dialog as well, before the RPC is ever called. */
+export const REASON_TOO_LONG =
+  "The reason is longer than 500 characters. Shorten it — it is never cut off, because it ends the citizen's notice.";
+
 const STALE_STATUS =
   "This report can no longer be refused — a responder may have claimed it, or a colleague may have closed it. The page has been refreshed.";
 
@@ -44,10 +48,7 @@ const ARGUMENT_REFUSALS: [fragment: string, message: string][] = [
     "Other reports are already marked as Duplicates of this one, so it cannot become a Duplicate itself. Refuse it as Invalid, or leave it in the queue.",
   ],
   ["a reason is required", "Type a reason. It is sent to the citizen."],
-  [
-    "the limit is 500",
-    "The reason is longer than 500 characters. Shorten it — it is never cut off, because it ends the citizen's notice.",
-  ],
+  ["the limit is 500", REASON_TOO_LONG],
   [
     "needs the Original's reference number",
     "Enter the Original's reference number.",

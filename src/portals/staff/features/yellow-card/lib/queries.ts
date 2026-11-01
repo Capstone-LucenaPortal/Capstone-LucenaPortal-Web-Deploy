@@ -53,19 +53,32 @@ export interface QueueOptions {
 }
 
 /**
+ * The rows one screen shows, and how many rows match the tab and the search.
+ * The two differ only when the match runs past QUEUE_LIMIT — which is the
+ * footer's truncation signal.
+ */
+export interface QueueResult {
+  items: YellowCardQueueItem[];
+  matchCount: number;
+}
+
+/**
  * Ordering: soonest SLA deadline first. due_at is NULL while the clock is
  * paused (the ball is with the citizen), so those sort last and then by most
  * recently submitted.
+ *
+ * The match count rides on the same request as the rows, so it is filtered
+ * exactly as they are. A second count query repeating the filters would drift.
  */
 export async function getYellowCardQueue(
   options: QueueOptions = {},
   db?: Db,
-): Promise<YellowCardQueueItem[]> {
+): Promise<QueueResult> {
   const supabase = db ?? await createClient();
 
   let query = supabase
     .from("staff_yellow_card_queue")
-    .select(QUEUE_COLUMNS)
+    .select(QUEUE_COLUMNS, { count: "exact" })
     .order("due_at", { ascending: true, nullsFirst: false })
     .order("submitted_at", { ascending: false })
     .limit(QUEUE_LIMIT);
@@ -77,12 +90,15 @@ export async function getYellowCardQueue(
   const searchFilter = buildSearchFilter(SEARCH_COLUMNS, options.search);
   if (searchFilter) query = query.or(searchFilter);
 
-  const { data, error } = await query;
+  const { data, count, error } = await query;
   if (error) {
     throw new Error(`staff_yellow_card_queue read failed: ${error.message}`);
   }
 
-  return ((data as StaffYellowCardQueueRow[] | null) ?? []).map(toQueueItem);
+  const items = ((data as StaffYellowCardQueueRow[] | null) ?? []).map(toQueueItem);
+  // count is null only if PostgREST drops the Content-Range it was asked for.
+  // The rows on hand are then the best figure there is, though it hides a cut.
+  return { items, matchCount: count ?? items.length };
 }
 
 /**

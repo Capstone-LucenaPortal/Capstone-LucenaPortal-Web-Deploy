@@ -23,6 +23,8 @@ import { RecordBalanceAction } from "@/portals/staff/features/booking/components
 import { RejectBookingAction } from "@/portals/staff/features/booking/components/reject-booking-action";
 import { CompleteBookingAction } from "@/portals/staff/features/booking/components/complete-booking-action";
 import { getCurrentStaffUser } from "@/portals/staff/features/auth/lib/session";
+import { isAssigned } from "@/portals/staff/features/auth/lib/module-gate";
+import { NotYourModule } from "@/portals/staff/features/auth/components/not-your-module";
 import { deskMoves } from "@/portals/staff/features/booking/lib/desk-moves";
 
 function Field({ label, value }: { label: string; value: string }) {
@@ -53,6 +55,9 @@ export default async function BookingDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  // Before the dossier, so a refused account fires no Booking read.
+  if (!(await isAssigned("booking"))) return <NotYourModule module="booking" />;
+
   const { id } = await params;
 
   // The only clock on this screen. Both date rules below are measured against

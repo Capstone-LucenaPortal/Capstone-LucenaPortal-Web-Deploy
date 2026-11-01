@@ -136,6 +136,10 @@ export interface SubmittedApplication {
  * would hand an attacker a token-enumeration signal.
  */
 export interface VerifiedCard {
+  /**
+   * As the Digital Card prints it — `LAST, FIRST MIDDLE SUFFIX`, in capitals —
+   * built by the RPC (DB#26). Render it verbatim; never re-case or reorder it.
+   */
   holder_name: string;
   /** 'active' | 'revoked' | 'superseded' — a row can come back non-active. */
   status: string;

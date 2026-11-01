@@ -31,3 +31,10 @@ export interface SignupData extends CitizenProfileFields {
   email: string;
   password: string;
 }
+
+/** The two ways a sign-up succeeds. `confirm-email`: email confirmation is on,
+ * so there is no session yet and the citizen is not signed in; the profile is
+ * created from user_metadata once the email link lands on /complete-signup. */
+export type SignupResult =
+  | { status: 'signed-in'; user: User }
+  | { status: 'confirm-email' };

@@ -5,7 +5,8 @@ import { validateUploadFile, MAX_UPLOAD_BYTES } from '@/portals/citizen/lib/stor
 
 interface VoterIdUploadProps {
   file: File | null;
-  onFile: (file: File) => void;
+  /** `null` when a picked file is refused: the earlier one is dropped too (#21). */
+  onFile: (file: File | null) => void;
   /** Bold call to action, e.g. "Upload Voter's ID" or "Replace Voter's ID". */
   title: string;
   /** Small line under the title, e.g. "Click to select file". */
@@ -21,6 +22,7 @@ export function VoterIdUpload({ file, onFile, title, hint, inputId = 'idFileInpu
     const problem = await validateUploadFile(candidate, 'imageOrPdf');
     if (problem) {
       setFileError(problem);
+      onFile(null);
       return;
     }
     setFileError('');
