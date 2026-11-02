@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/portals/admin/features/auth/hooks/use-auth";
 import { AccessRefusal, type AccessRefusalDecision } from "@/portals/admin/features/auth/components/access-refusal";
 import { decideRoleAccess } from "@/portals/admin/lib/supabase/access";
+import { EMPLOYEE_SIGN_IN_PATH } from "@/shared/guard/portals";
 
 export default function ForbiddenPage() {
   const { session, isLoading, isAdmin, profile } = useAuth();
@@ -24,7 +25,7 @@ export default function ForbiddenPage() {
   // SIGNED_OUT event back into the same AuthProvider this page reads from,
   // dropping `session` to null a moment later. Once a refusal has been decided, it is
   // pinned here so that later drop doesn't fall through to the "no session"
-  // branch below and swap the screen for a /login redirect before the user
+  // branch below and swap the screen for a /employee redirect before the user
   // can read it (or recompute against a now-null profile and show a
   // different message).
   const [pinnedDecision, setPinnedDecision] = useState<AccessRefusalDecision | null>(null);
@@ -48,11 +49,11 @@ export default function ForbiddenPage() {
 
   useEffect(() => {
     if (isLoading || pinnedDecision) return;
-    // No session: the proxy would bounce the next navigation to /login
+    // No session: the proxy would bounce the next navigation to /employee
     // anyway; do it directly. An active admin has no business here — likely a
     // stale redirect or a role restored mid-session — send them home.
     if (!session) {
-      router.push("/admin/login");
+      router.push(EMPLOYEE_SIGN_IN_PATH);
     } else if (isAdmin) {
       router.push("/admin/dashboard");
     }

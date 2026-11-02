@@ -18,10 +18,18 @@ const NOW_S = 1_800_000_000;
 
 const USER = { id: "staff-1", aud: "authenticated", role: "authenticated", email: "staff@lucena.gov" };
 
-function session(expiresAt: number, accessToken: string) {
+// An unsigned JWT: the client only decodes it, for the `aal` claim the guard
+// reads (ADR 0009). Signature checks are the auth server's, stubbed here.
+function jwt(payload: Record<string, unknown>) {
+  const part = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  return `${part({ alg: "HS256", typ: "JWT" })}.${part(payload)}.c2lnbmF0dXJl`;
+}
+
+// A code-verified (aal2) session unless the test says otherwise.
+function session(expiresAt: number, name: string, aal: "aal1" | "aal2" = "aal2") {
   return {
-    access_token: accessToken,
-    refresh_token: `refresh-${accessToken}`,
+    access_token: jwt({ sub: USER.id, aud: "authenticated", role: "authenticated", exp: expiresAt, aal, session_id: name }),
+    refresh_token: `refresh-${name}`,
     token_type: "bearer",
     expires_in: 3600,
     expires_at: expiresAt,
@@ -138,6 +146,17 @@ describe("middleware with the real Supabase client", () => {
     expect(new URL(refused.headers.get("location")!).pathname).toBe("/responder/forbidden");
   });
 
+  // ADR 0009, #81: the level comes from the real client decoding the token.
+  it("sends a password-only (aal1) session to /employee without reading its role", async () => {
+    const request = new NextRequest("http://localhost:3000/staff/dashboard");
+    request.cookies.set(AUTH_COOKIE, JSON.stringify(session(NOW_S + 3600, "live", "aal1")));
+
+    const response = await middleware(request);
+
+    expect(new URL(response.headers.get("location")!).pathname).toBe("/employee");
+    expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("/rest/v1/my_staff_profile"), expect.anything());
+  });
+
   // ADR 0007: the citizen session lives in its own cookie, and the guard reads
   // only the default staff one. A citizen signed in on a shared browser is
   // nobody to a staff-side Portal — signed out, not merely forbidden.
@@ -151,7 +170,7 @@ describe("middleware with the real Supabase client", () => {
 
       const location = response.headers.get("location");
       expect(location).not.toBeNull();
-      expect(new URL(location!).pathname).toBe(`/${path.split("/")[1]}/login`);
+      expect(new URL(location!).pathname).toBe("/employee");
       expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("/rest/v1/my_staff_profile"), expect.anything());
     },
   );

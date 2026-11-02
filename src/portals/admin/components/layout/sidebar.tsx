@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/portals/admin/features/auth/hooks/use-auth";
+import { EMPLOYEE_SIGN_IN_PATH } from "@/shared/guard/portals";
 
 const NAV_ITEMS = [
   { label: "Dashboard", href: "/admin/dashboard" },
@@ -81,7 +82,7 @@ export function Sidebar() {
     if (error) {
       // supabase-js keeps the local session alive when the revoke call
       // fails, so the cookie is still live. Staying put with a visible
-      // error is honest; bouncing to /login would show a sign-in form to
+      // error is honest; bouncing to /employee would show a sign-in form to
       // someone who is in fact still signed in.
       setLogoutError("Could not sign you out. Check your connection and try again.");
       setIsSigningOut(false);
@@ -89,7 +90,7 @@ export function Sidebar() {
     }
     // replace(), not push(): the portal page must not be one Back away.
     // refresh() drops the cached RSC render that still holds the profile.
-    router.replace("/admin/login");
+    router.replace(EMPLOYEE_SIGN_IN_PATH);
     router.refresh();
   }
 

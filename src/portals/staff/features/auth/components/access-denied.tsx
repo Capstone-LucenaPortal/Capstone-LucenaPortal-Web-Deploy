@@ -5,7 +5,7 @@ import { Button } from "@/portals/staff/components/ui/button";
 import { Card } from "@/portals/staff/components/ui/card";
 import { createClient } from "@/shared/supabase/client";
 import { refusalEndsSession } from "@/shared/guard/decide";
-import { CITIZEN_PORTAL_PATH, PORTAL_PREFIX } from "@/shared/guard/portals";
+import { CITIZEN_PORTAL_PATH, EMPLOYEE_SIGN_IN_PATH, PORTAL_PREFIX } from "@/shared/guard/portals";
 import type { GateDecision } from "../lib/gate";
 import { ROLE_ARTICLE, ROLE_LABEL } from "../lib/role-labels";
 
@@ -69,8 +69,8 @@ export function AccessDenied({ decision }: { decision: Refusal }) {
               <Button variant="primary">{link.label}</Button>
             </a>
           )}
-          {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- a full page load, so nothing the router cached or prefetched under the refused session is reused, and none of its client state survives */}
-          <a href="/staff/login">
+          {/* A plain <a>, not <Link>: a full page load, so nothing the router cached or prefetched under the refused session is reused, and none of its client state survives */}
+          <a href={EMPLOYEE_SIGN_IN_PATH}>
             <Button variant="secondary">Back to sign in</Button>
           </a>
         </div>

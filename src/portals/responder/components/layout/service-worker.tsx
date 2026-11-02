@@ -6,7 +6,8 @@ import { useEffect } from "react";
  * Registers public/responder/sw.js (ISO-9, issue #7), which answers a page
  * load that cannot reach the server with an in-app "Try again" page instead
  * of the browser's own error page. Mounted in the Responder root layout, so
- * it is in place from the login page on — before the first drop, not after.
+ * it is in place from the first Responder page on — before the first drop,
+ * not after.
  *
  * Production only: in `next dev` a worker outlives the code it was built from
  * and gets in the way of hot reload.

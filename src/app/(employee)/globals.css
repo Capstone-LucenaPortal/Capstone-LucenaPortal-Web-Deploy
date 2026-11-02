@@ -1,0 +1,8 @@
+@import "tailwindcss";
+
+/* Lucena brand tokens, as the staff-side Portals carry them. */
+@theme {
+  --color-lucena-blue: #003da5;
+  --color-lucena-blue-dark: #002566;
+  --color-lucena-yellow: #fdb913;
+}

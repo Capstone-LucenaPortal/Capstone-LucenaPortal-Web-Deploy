@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/portals/staff/components/ui/button";
 import { createClient } from "@/shared/supabase/client";
+import { EMPLOYEE_SIGN_IN_PATH } from "@/shared/guard/portals";
 
 export function LogoutButton() {
   const router = useRouter();
@@ -15,7 +16,7 @@ export function LogoutButton() {
     setError(null);
 
     // Clear the session BEFORE navigating, and await it. Navigating first only
-    // hides the portal behind /login — the auth cookie survives, so typing
+    // hides the portal behind /employee — the auth cookie survives, so typing
     // /dashboard walks straight back in with no credentials. On a shared
     // workstation that hands the next person the previous operator's session.
     const { error: signOutError } = await createClient().auth.signOut();
@@ -23,7 +24,7 @@ export function LogoutButton() {
     if (signOutError) {
       // supabase-js keeps the local session when the revoke call fails, so the
       // cookie is still live. Staying put with a visible error is the honest
-      // outcome: bouncing to /login would show a sign-in form to someone who is
+      // outcome: bouncing to /employee would show a sign-in form to someone who is
       // in fact still signed in, which is exactly the bug being fixed here.
       setError("Could not sign you out. Check your connection and try again.");
       setBusy(false);
@@ -32,7 +33,7 @@ export function LogoutButton() {
 
     // replace(), not push(): the portal page must not be one Back away.
     // refresh() drops the cached RSC render that still holds the profile.
-    router.replace("/staff/login");
+    router.replace(EMPLOYEE_SIGN_IN_PATH);
     router.refresh();
   }
 

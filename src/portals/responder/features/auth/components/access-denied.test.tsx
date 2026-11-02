@@ -42,7 +42,7 @@ describe("AccessDenied", () => {
 
     expect(screen.getByText(/you are signed in with a Staff account/i)).toBeInTheDocument();
     expect(screen.queryByText(/signed out|signing/i)).not.toBeInTheDocument();
-    expect(backToSignIn()).toHaveAttribute("href", "/responder/login");
+    expect(backToSignIn()).toHaveAttribute("href", "/employee");
     expect(signOut).not.toHaveBeenCalled();
   });
 
@@ -76,7 +76,7 @@ describe("AccessDenied", () => {
     // Clicking before this point would carry a live cookie to /responder/login,
     // where the request guard would read it and send the refused user back to
     // /responder/pool.
-    await waitFor(() => expect(backToSignIn()).toHaveAttribute("href", "/responder/login"));
+    await waitFor(() => expect(backToSignIn()).toHaveAttribute("href", "/employee"));
     expect(
       screen.queryByRole("button", { name: "Signing out…" }),
     ).not.toBeInTheDocument();

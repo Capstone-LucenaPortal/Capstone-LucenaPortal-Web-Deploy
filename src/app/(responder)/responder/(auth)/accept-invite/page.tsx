@@ -3,9 +3,17 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useState, type FormEvent } from "react";
+import {
+  InviteAuthenticatorCode,
+  InviteEnrolment,
+  stepAfterInvitePassword,
+  stepBeforeInvitePassword,
+} from "@/shared/auth/authenticator";
 import { PASSWORD_RULES_TEXT, validatePassword } from "@/shared/auth/password-policy";
 import { createClient } from "@/shared/supabase/client";
+import { newPasswordErrorMessage } from "@/shared/supabase/sign-in-error";
 import { restartIdleClock } from "@/portals/responder/lib/supabase/idle-timeout";
+import { EMPLOYEE_SIGN_IN_PATH } from "@/shared/guard/portals";
 
 const FIELD =
   "h-11 rounded-md border border-gray-300 px-3 text-sm text-gray-900";
@@ -17,7 +25,10 @@ const BACK =
 // GoTrue. "failed" means we never got an answer, which is a different problem
 // and deserves different advice: telling someone their link is dead when their
 // connection dropped sends them to ask for a replacement they do not need.
-type Phase = "verifying" | "ready" | "invalid" | "failed";
+// "code" comes before the password for an account that already has an
+// authenticator (a resent link); "enrol" follows a password set on an account
+// with none.
+type Phase = "verifying" | "code" | "ready" | "enrol" | "invalid" | "failed";
 
 export default function AcceptInvitePage() {
   const router = useRouter();
@@ -95,7 +106,13 @@ export default function AcceptInvitePage() {
     // "verifying" forever. The user then stares at "Checking your invite…"
     // with no message, no recovery, and nothing in the UI to act on.
     void establishSession()
-      .then((ok) => setPhase(ok ? "ready" : "invalid"))
+      .then(async (ok) => {
+        if (!ok) {
+          setPhase("invalid");
+          return;
+        }
+        setPhase((await stepBeforeInvitePassword(supabase)) === "code" ? "code" : "ready");
+      })
       .catch((cause) => {
         console.error("accept-invite: could not check the link", cause);
         setPhase("failed");
@@ -121,19 +138,42 @@ export default function AcceptInvitePage() {
     const { error: updateError } = await supabase.auth.updateUser({ password });
 
     if (updateError) {
-      setError(updateError.message);
+      // Never Supabase's raw message: see newPasswordErrorMessage. An account
+      // with an authenticator whose code is not in yet goes back for it.
+      setError(newPasswordErrorMessage(updateError));
       setBusy(false);
+      if (updateError.code === "insufficient_aal") setPhase("code");
       return;
     }
 
-    // A fresh idle clock: the stale one left by an earlier session in this
-    // browser would otherwise end the new session on its first request.
-    // It also drops the old clock offset, so the request guard measures it
-    // again.
+    // A new account is still password-only (aal1) here and enrols; one whose
+    // code came first is code-verified (aal2) and goes home. The Portal
+    // opens only once an authenticator code is in.
+    const next = await stepAfterInvitePassword(supabase);
+    if (next === "enrol") {
+      setBusy(false);
+      setPhase("enrol");
+    } else if (next === "sign-in") {
+      router.replace(EMPLOYEE_SIGN_IN_PATH);
+    } else {
+      goHome();
+    }
+  }
+
+  function codeVerified() {
+    setError(null);
+    setPhase("ready");
+  }
+
+  function goHome() {
+    // A fresh idle clock, started only now the code is in: the stale one
+    // left by an earlier session in this browser would otherwise end the new
+    // session on its first request. It also drops the old clock offset, so
+    // the request guard measures it again.
     restartIdleClock(Date.now());
 
-    // updateUser leaves them signed in, so they go straight through the portal
-    // gate rather than back to /login.
+    // The code is in, so they go straight through the portal gate rather
+    // than back to /employee.
     router.replace("/responder/pool");
     router.refresh();
   }
@@ -142,6 +182,22 @@ export default function AcceptInvitePage() {
     return (
       <div className={CARD}>
         <p className="text-[13px] text-gray-600">Checking your invite…</p>
+      </div>
+    );
+  }
+
+  if (phase === "code") {
+    return (
+      <div className={CARD}>
+        <InviteAuthenticatorCode notice={error} onVerified={codeVerified} />
+      </div>
+    );
+  }
+
+  if (phase === "enrol") {
+    return (
+      <div className={CARD}>
+        <InviteEnrolment onEnrolled={goHome} />
       </div>
     );
   }
@@ -162,7 +218,7 @@ export default function AcceptInvitePage() {
           If it still fails, ask your Super Staff to send a new one.
         </p>
         <div className="mt-5">
-          <Link href="/responder/login" className={BACK}>
+          <Link href={EMPLOYEE_SIGN_IN_PATH} className={BACK}>
             Back to sign in
           </Link>
         </div>
@@ -187,7 +243,7 @@ export default function AcceptInvitePage() {
           instead.
         </p>
         <div className="mt-5">
-          <Link href="/responder/login" className={BACK}>
+          <Link href={EMPLOYEE_SIGN_IN_PATH} className={BACK}>
             Back to sign in
           </Link>
         </div>

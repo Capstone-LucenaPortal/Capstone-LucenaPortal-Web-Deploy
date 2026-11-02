@@ -27,6 +27,7 @@ const NO_CACHE = {
 
 const getUser = vi.fn();
 const signOut = vi.fn();
+const getAuthenticatorAssuranceLevel = vi.fn();
 let adapter: Adapter;
 let writesOnGetUser: CookieToSet[] = [];
 
@@ -48,7 +49,7 @@ vi.mock("@supabase/ssr", async (importOriginal) => ({
   createServerClient: (_url: string, _key: string, options: { cookies: Adapter }) => {
     adapter = options.cookies;
     return {
-      auth: { getUser, signOut },
+      auth: { getUser, signOut, mfa: { getAuthenticatorAssuranceLevel } },
       from: (view: string) => ({
         select: () => ({
           maybeSingle: async () => {
@@ -89,6 +90,11 @@ beforeEach(() => {
   getUser.mockImplementation(async () => {
     if (writesOnGetUser.length) adapter.setAll(writesOnGetUser, NO_CACHE);
     return { data: { user: USER } };
+  });
+  // A code-verified session unless a test says otherwise.
+  getAuthenticatorAssuranceLevel.mockResolvedValue({
+    data: { currentLevel: "aal2", nextLevel: "aal2", currentAuthenticationMethods: [] },
+    error: null,
   });
   signOut.mockImplementation(async () => {
     adapter.setAll([{ name: "sb-auth-token", value: "", options: { path: "/", maxAge: 0 } }], NO_CACHE);
@@ -143,7 +149,7 @@ describe("middleware idle timeout", () => {
     // Local scope: going idle at one desk must not sign the same person out
     // of the portal on every other device.
     expect(signOut).toHaveBeenCalledWith({ scope: "local" });
-    expect(new URL(response.headers.get("location")!).pathname).toBe("/staff/login");
+    expect(new URL(response.headers.get("location")!).pathname).toBe("/employee");
     expect(new URL(response.headers.get("location")!).search).toBe("?reason=idle");
   });
 
@@ -168,7 +174,7 @@ describe("middleware idle timeout", () => {
 
     const response = await middleware(requestTo("/staff/dashboard", NOW - IDLE_TIMEOUT_MS - 1));
 
-    expect(new URL(response.headers.get("location")!).pathname).toBe("/staff/login");
+    expect(new URL(response.headers.get("location")!).pathname).toBe("/employee");
   });
 
   // Requests are not activity: the queue pages poll a server action, and a
@@ -202,7 +208,7 @@ describe("middleware idle timeout", () => {
     expect(signOut).not.toHaveBeenCalled();
   });
 
-  it("still sends a signed-out request to a plain /login", async () => {
+  it("still sends a signed-out request to a plain /employee", async () => {
     getUser.mockResolvedValue({ data: { user: null } });
 
     const response = await middleware(requestTo("/staff/dashboard", NOW - IDLE_TIMEOUT_MS - 1));
@@ -216,7 +222,7 @@ describe("middleware signed-out redirect", () => {
   // A refresh that fails clears the auth cookie on its way out. The deletion,
   // and the cache headers that came with it, must reach the browser on the
   // redirect, or it keeps sending a dead token on every request.
-  it("carries a failed refresh's cookie deletions and cache headers to /login", async () => {
+  it("carries a failed refresh's cookie deletions and cache headers to /employee", async () => {
     getUser.mockImplementation(async () => {
       adapter.setAll([{ name: "sb-auth-token", value: "", options: { path: "/", maxAge: 0 } }], NO_CACHE);
       return { data: { user: null } };
@@ -224,7 +230,7 @@ describe("middleware signed-out redirect", () => {
 
     const response = await middleware(requestTo("/staff/dashboard", NOW));
 
-    expect(new URL(response.headers.get("location")!).pathname).toBe("/staff/login");
+    expect(new URL(response.headers.get("location")!).pathname).toBe("/employee");
     expect(response.headers.get("set-cookie")).toMatch(/sb-auth-token=;.*Max-Age=0/);
     expect(response.headers.get("cache-control")).toBe(NO_CACHE["Cache-Control"]);
   });
@@ -309,58 +315,91 @@ describe("middleware role gate", () => {
     expect(signOut).not.toHaveBeenCalled();
   });
 
-  it("sends a signed-out request to /login without reading a profile", async () => {
+  it("sends a signed-out request to /employee without reading a profile", async () => {
     getUser.mockResolvedValue({ data: { user: null } });
 
     const response = await middleware(requestTo("/staff/forbidden", NOW));
 
-    expect(new URL(response.headers.get("location")!).pathname).toBe("/staff/login");
+    expect(new URL(response.headers.get("location")!).pathname).toBe("/employee");
     expect(profileReads).not.toHaveBeenCalled();
   });
 });
 
-// Ported from the old Responder middleware's tests: a row that sends a
-// signed-in visit to login on into the Portal. That redirect replaces the
-// response setAll wrote to, so whatever it wrote has to be carried across.
-describe("middleware signed-in login redirect (Responder's row)", () => {
-  const RESPONDER_IDLE_MS = 60 * 60 * 1000;
+// ADR 0009, #81: the session's assurance level is a guard input. A
+// password-only session goes to /employee to finish its code or enrolment.
+describe("middleware assurance level", () => {
+  it("sends a password-only session from a Portal page to /employee, session kept, role unread", async () => {
+    getAuthenticatorAssuranceLevel.mockResolvedValue({
+      data: { currentLevel: "aal1", nextLevel: "aal2", currentAuthenticationMethods: [] },
+      error: null,
+    });
 
-  beforeEach(() => {
-    profileRow = { ...ACTIVE_STAFF, role: "responder" };
+    const response = await middleware(requestTo("/staff/dashboard", NOW));
+
+    expect(response.headers.get("location")).toBe("http://localhost:3000/employee");
+    expect(signOut).not.toHaveBeenCalled();
+    expect(profileReads).not.toHaveBeenCalled();
   });
 
-  it("carries a refreshed token and its cache headers from /responder/login to the pool", async () => {
+  it("treats an assurance level it cannot read as password-only", async () => {
+    getAuthenticatorAssuranceLevel.mockResolvedValue({ data: null, error: new Error("Invalid JWT") });
+
+    const response = await middleware(requestTo("/staff/dashboard", NOW));
+
+    expect(response.headers.get("location")).toBe("http://localhost:3000/employee");
+  });
+
+  it("leaves the invite flow open to a password-only session", async () => {
+    getAuthenticatorAssuranceLevel.mockResolvedValue({
+      data: { currentLevel: "aal1", nextLevel: "aal1", currentAuthenticationMethods: [] },
+      error: null,
+    });
+
+    const response = await middleware(requestTo("/staff/accept-invite", NOW));
+
+    expect(response.headers.get("location")).toBeNull();
+  });
+
+  it("serves a code-verified session", async () => {
+    const response = await middleware(requestTo("/staff/dashboard", NOW));
+
+    expect(response.headers.get("location")).toBeNull();
+  });
+});
+
+// ADR 0009: every Portal's old login address redirects to the one employee
+// sign-in. That redirect replaces the response setAll wrote to, so whatever it
+// wrote has to be carried across, and the idle reason has to survive the hop.
+describe("middleware login redirect", () => {
+  it("carries a refreshed token and its cache headers from /responder/login to /employee", async () => {
     writesOnGetUser = [
       { name: "sb-auth-token", value: "fresh", options: { path: "/", sameSite: "lax", maxAge: SUPABASE_MAX_AGE } },
     ];
 
     const response = await middleware(requestTo("/responder/login", NOW));
 
-    expect(new URL(response.headers.get("location")!).pathname).toBe("/responder/pool");
+    expect(new URL(response.headers.get("location")!).pathname).toBe("/employee");
     expect(response.headers.get("set-cookie")).toContain("sb-auth-token=fresh");
     expect(response.headers.get("cache-control")).toBe(NO_CACHE["Cache-Control"]);
   });
 
-  // Issue #19: sent on into the pool, a Staff session would land on
-  // forbidden, which used to sign it out on every device.
-  it("serves /responder/login to a Staff session and keeps it", async () => {
-    profileRow = ACTIVE_STAFF;
+  it("keeps ?reason=idle on the way to /employee", async () => {
+    getUser.mockResolvedValue({ data: { user: null } });
 
-    const response = await middleware(requestTo("/responder/login", NOW));
+    const response = await middleware(requestTo("/staff/login?reason=idle"));
 
-    expect(response.headers.get("location")).toBeNull();
-    expect(profileReads).toHaveBeenCalledWith("my_staff_profile");
-    expect(signOut).not.toHaveBeenCalled();
+    const location = new URL(response.headers.get("location")!);
+    expect(location.pathname).toBe("/employee");
+    expect(location.search).toBe("?reason=idle");
   });
 
-  // An idle session must be ended there, not bounced into the Portal it timed
-  // out of.
-  it("ends an idle session that arrives at the sign-in screen", async () => {
-    const response = await middleware(requestTo("/responder/login", NOW - RESPONDER_IDLE_MS - 1));
+  // Issue #19: a session of another role arriving at a Portal's old login is
+  // passed on, not ended.
+  it("passes a signed-in session on without reading its role or ending it", async () => {
+    const response = await middleware(requestTo("/responder/login", NOW));
 
-    expect(signOut).toHaveBeenCalledWith({ scope: "local" });
-    const location = new URL(response.headers.get("location")!);
-    expect(location.pathname).toBe("/responder/login");
-    expect(location.search).toBe("?reason=idle");
+    expect(new URL(response.headers.get("location")!).pathname).toBe("/employee");
+    expect(profileReads).not.toHaveBeenCalled();
+    expect(signOut).not.toHaveBeenCalled();
   });
 });

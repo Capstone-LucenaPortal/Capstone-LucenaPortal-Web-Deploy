@@ -52,17 +52,56 @@ export async function resendSignInLink(id: string): Promise<ResendResult> {
   return data;
 }
 
+export type ResetResult =
+  { recorded: true } | { recorded: false; warning: string };
+
+/**
+ * Asks the staff-accounts function to remove this employee's authenticator,
+ * so they set up a new one at their next sign-in (ADR 0009). The function
+ * refuses the caller's own account and records the reset under their name.
+ * A reset that worked but could not be recorded comes back as a 500 with
+ * reset: true, as resend's does; that is not a failure, so it is returned
+ * with the function's message rather than thrown.
+ */
+export async function resetAuthenticator(id: string): Promise<ResetResult> {
+  const supabase = createClient();
+  const { error } = await supabase.functions.invoke("staff-accounts", {
+    body: { action: "reset-authenticator", id },
+  });
+
+  if (!error) return { recorded: true };
+  const body = await readErrorBody(error);
+  if (body?.reset === true) {
+    return {
+      recorded: false,
+      warning:
+        body.error || "The authenticator was reset but could not be recorded.",
+    };
+  }
+  throw new Error(body?.error || GENERIC_ERROR);
+}
+
+// Deliberately not "could not create the account": several actions share this
+// function now, and naming the wrong one sends the reader down a dead end.
+const GENERIC_ERROR =
+  "The staff-accounts function failed. Check its Edge Function logs.";
+
 async function readErrorMessage(error: unknown): Promise<string> {
+  return (await readErrorBody(error))?.error || GENERIC_ERROR;
+}
+
+// The function's JSON body on a non-2xx. reset is set when an authenticator
+// reset went through but its audit row could not be written.
+type ErrorBody = { error?: string; reset?: boolean };
+
+async function readErrorBody(error: unknown): Promise<ErrorBody | null> {
   const context = (error as { context?: unknown }).context;
   if (context instanceof Response) {
     try {
-      const body = (await context.clone().json()) as { error?: string };
-      if (body?.error) return body.error;
+      return (await context.clone().json()) as ErrorBody;
     } catch {
       // Body was not JSON — fall through to the generic message.
     }
   }
-  // Deliberately not "could not create the account": two actions share this
-  // function now, and naming the wrong one sends the reader down a dead end.
-  return "The staff-accounts function failed. Check its Edge Function logs.";
+  return null;
 }

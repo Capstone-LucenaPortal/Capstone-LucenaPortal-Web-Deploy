@@ -13,6 +13,7 @@ import { useToast } from "@/portals/super-staff/components/providers/toast-provi
 import { formatDate } from "@/portals/super-staff/lib/utils";
 import { createClient } from "@/shared/supabase/client";
 import { Input } from "@/portals/super-staff/components/ui/input";
+import { useSignedInId } from "../hooks/use-signed-in-id";
 import { isLastActiveSuperStaff } from "../lib/guards";
 import { resendSignInLink } from "../lib/invite";
 import { plainRpcError } from "../lib/rpc-error";
@@ -50,27 +51,13 @@ export function AccountDetailView({ id }: { id: string }) {
   const [errors, setErrors] = useState<FieldErrors>({});
   const [history, setHistory] = useState<TimelineItem[]>([]);
   const [superStaffCount, setSuperStaffCount] = useState(0);
-  const [resetOpen, setResetOpen] = useState(false);
+  const [resendOpen, setResendOpen] = useState(false);
   const [activeOpen, setActiveOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
-  // Read from the cookie without a round-trip: it only shapes the form, and
-  // update_staff_account still refuses a change to one's own role. Until it
-  // arrives, or if the read fails, the account counts as someone else's.
-  const [signedInId, setSignedInId] = useState<string | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    createClient()
-      .auth.getSession()
-      .then(({ data }) => {
-        if (active) setSignedInId(data.session?.user.id ?? null);
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, []);
+  // Until it arrives, or if the read fails, the account counts as someone
+  // else's: update_staff_account still refuses a change to one's own role.
+  const signedInId = useSignedInId();
 
   const load = useCallback(async () => {
     const found = await getAccount(id);
@@ -159,7 +146,7 @@ export function AccountDetailView({ id }: { id: string }) {
     try {
       const result = await resendSignInLink(account.id);
       toast(`A new sign-in link was sent to ${result.sent_to}.`, "success");
-      setResetOpen(false);
+      setResendOpen(false);
       await load();
     } catch (error) {
       toast(
@@ -312,7 +299,7 @@ export function AccountDetailView({ id }: { id: string }) {
               <Button
                 variant="secondary"
                 className="w-full"
-                onClick={() => setResetOpen(true)}
+                onClick={() => setResendOpen(true)}
               >
                 Send a new sign-in link
               </Button>
@@ -328,7 +315,7 @@ export function AccountDetailView({ id }: { id: string }) {
         </aside>
       </div>
 
-      <Modal open={resetOpen} onClose={() => setResetOpen(false)}>
+      <Modal open={resendOpen} onClose={() => setResendOpen(false)}>
         <h3 className="text-lg font-semibold text-gray-900">
           Send a new sign-in link?
         </h3>
@@ -338,7 +325,7 @@ export function AccountDetailView({ id }: { id: string }) {
           the audit log under your name.
         </p>
         <div className="mt-6 flex justify-end gap-3">
-          <Button variant="secondary" onClick={() => setResetOpen(false)}>
+          <Button variant="secondary" onClick={() => setResendOpen(false)}>
             Cancel
           </Button>
           <Button variant="primary" onClick={handleResend} disabled={busy}>

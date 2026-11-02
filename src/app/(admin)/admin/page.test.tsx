@@ -34,7 +34,7 @@ describe("Home", () => {
 
   it("redirects to /login when not authenticated", () => {
     render(<Home />);
-    expect(pushMock).toHaveBeenCalledWith("/admin/login");
+    expect(pushMock).toHaveBeenCalledWith("/employee");
   });
 
   it("redirects to /dashboard when authenticated", () => {

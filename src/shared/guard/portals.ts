@@ -15,7 +15,7 @@ export type StaffRole = Database["public"]["Enums"]["staff_role"];
 /**
  * Where each staff-side Portal lives. Fixed in code — there are no
  * per-Portal URL settings, since every Portal is served from one origin
- * (ADR 0005). Cross-Portal links are internal: `${PORTAL_PREFIX[role]}/login`.
+ * (ADR 0005). Cross-Portal links are internal: `${PORTAL_PREFIX[role]}`.
  */
 export const PORTAL_PREFIX: Record<StaffRole, string> = {
   staff: "/staff",
@@ -27,6 +27,12 @@ export const PORTAL_PREFIX: Record<StaffRole, string> = {
 /** The Citizen Portal owns the root. */
 export const CITIZEN_PORTAL_PATH = "/";
 
+/**
+ * The one sign-in for every City employee (ADR 0009), outside every Portal's
+ * prefix. The four old `<prefix>/login` addresses redirect here.
+ */
+export const EMPLOYEE_SIGN_IN_PATH = "/employee";
+
 export interface PortalRow {
   prefix: string;
   /** The one staff_role admitted. Exact match — roles are not hierarchical. */
@@ -35,11 +41,8 @@ export interface PortalRow {
   idleTimeoutMs: number | null;
   /** What a failed my_staff_profile read returns: a 503, or the forbidden page. */
   onProfileReadError: "unavailable" | "forbidden";
-  /**
-   * Where a signed-in visit to login by this Portal's own role goes; null to
-   * serve the login page. Any other account is always served the login page.
-   */
-  signedInLoginRedirect: string | null;
+  /** Where the employee sign-in sends an active account of this role. */
+  home: string;
 }
 
 export const PORTALS: readonly PortalRow[] = [
@@ -48,7 +51,7 @@ export const PORTALS: readonly PortalRow[] = [
     role: "admin",
     idleTimeoutMs: null,
     onProfileReadError: "forbidden",
-    signedInLoginRedirect: null,
+    home: `${PORTAL_PREFIX.admin}/dashboard`,
   },
   {
     prefix: PORTAL_PREFIX.staff,
@@ -57,7 +60,7 @@ export const PORTALS: readonly PortalRow[] = [
     // (src/portals/staff/lib/supabase/idle-timeout.ts's IDLE_TIMEOUT_MS).
     idleTimeoutMs: 15 * 60 * 1000,
     onProfileReadError: "unavailable",
-    signedInLoginRedirect: null,
+    home: `${PORTAL_PREFIX.staff}/dashboard`,
   },
   {
     prefix: PORTAL_PREFIX.super_staff,
@@ -66,7 +69,7 @@ export const PORTALS: readonly PortalRow[] = [
     // (src/portals/super-staff/lib/supabase/idle-timeout.ts's IDLE_TIMEOUT_MS).
     idleTimeoutMs: 15 * 60 * 1000,
     onProfileReadError: "unavailable",
-    signedInLoginRedirect: `${PORTAL_PREFIX.super_staff}/accounts`,
+    home: `${PORTAL_PREFIX.super_staff}/accounts`,
   },
   {
     prefix: PORTAL_PREFIX.responder,
@@ -76,6 +79,13 @@ export const PORTALS: readonly PortalRow[] = [
     // a responder at a scene goes quiet on the phone for long stretches.
     idleTimeoutMs: 60 * 60 * 1000,
     onProfileReadError: "unavailable",
-    signedInLoginRedirect: `${PORTAL_PREFIX.responder}/pool`,
+    home: `${PORTAL_PREFIX.responder}/pool`,
   },
 ];
+
+/** The home of a staff role's Portal, from its row. */
+export function portalHome(role: StaffRole): string {
+  const row = PORTALS.find((portal) => portal.role === role);
+  if (!row) throw new Error(`No Portal row for the ${role} role`);
+  return row.home;
+}

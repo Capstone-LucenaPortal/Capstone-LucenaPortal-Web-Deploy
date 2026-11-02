@@ -9,6 +9,7 @@ import {
   resolveTrunkline,
   telHref,
 } from '@/portals/citizen/lib/contact-info';
+import { EMPLOYEE_SIGN_IN_PATH } from '@/shared/guard/portals';
 
 /**
  * The site footer, rendered by the root layout on every route.
@@ -92,6 +93,11 @@ export default function SiteFooter() {
       </div>
       <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', padding: '12px 48px', fontSize: 11, color: 'rgba(255,255,255,0.65)', textAlign: 'center' }}>
         © 2026 Lucena City Portal. All rights reserved.
+        {/* The way in for City employees (ADR 0009): small, and only here. */}
+        <span aria-hidden="true" style={{ margin: '0 8px', color: 'rgba(255,255,255,0.4)' }}>·</span>
+        <Link href={EMPLOYEE_SIGN_IN_PATH} style={{ color: 'rgba(255,255,255,0.65)', textDecoration: 'underline' }}>
+          City employee sign-in
+        </Link>
       </div>
     </footer>
   );

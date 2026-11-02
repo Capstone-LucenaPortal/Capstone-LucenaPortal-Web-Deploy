@@ -1,17 +1,17 @@
 // src/shared/guard/decide.ts
 //
 // The request guard's decision, as one pure function: given the path, whether
-// a session exists, the staff profile (or that reading it failed) and the
-// time of last activity, it says allow, redirect, or 503. The proxy
-// (src/shared/guard/proxy.ts) gathers those inputs and acts on the answer;
-// the per-Portal rules come from src/shared/guard/portals.ts.
+// a session exists and its assurance level, the staff profile (or that
+// reading it failed) and the time of last activity, it says allow, redirect,
+// or 503. The proxy (src/shared/guard/proxy.ts) gathers those inputs and acts
+// on the answer; the per-Portal rules come from src/shared/guard/portals.ts.
 //
 // This is NOT the security boundary — every view and RPC re-checks
 // is_active_staff(<role>) independently. It exists so a person who lands in
 // the wrong Portal, or whose account was never a staff account, is told why
 // instead of meeting a working page where every gated query returns nothing.
 
-import { PORTALS, type PortalRow, type StaffRole } from "@/shared/guard/portals";
+import { EMPLOYEE_SIGN_IN_PATH, PORTALS, type PortalRow, type StaffRole } from "@/shared/guard/portals";
 
 export interface StaffRoleProfile {
   role: string | null;
@@ -23,7 +23,15 @@ export type ProfileRead = { ok: true; profile: StaffRoleProfile | null } | { ok:
 
 export interface GuardInput {
   pathname: string;
+  /** The request's `reason` query parameter, if any. */
+  reason?: string | null;
   hasSession: boolean;
+  /**
+   * The session's assurance level, from its `aal` claim: "aal2" once the
+   * authenticator code is entered. Anything else, a missing claim included,
+   * is password-only, as the database reads it (ADR 0009).
+   */
+  aal?: string | null;
   /** Absent until read — the decision asks for it with "read-profile". */
   profile?: ProfileRead;
   /** Time of the last thing the person did, in server time; absent when unknown. */
@@ -40,8 +48,11 @@ export type GuardDecision =
   /** Refuse this one request with a 503, session intact. */
   | { kind: "unavailable" };
 
-/** `<prefix>/login?reason=idle` tells the sign-in screen why the person is there. */
+/** `/employee?reason=idle` tells the sign-in screen why the person is there. */
 export const IDLE_SIGNOUT_REASON = "idle";
+
+/** Where the idle sign-out lands, browser-side and in this guard alike. */
+export const IDLE_SIGNOUT_PATH = `${EMPLOYEE_SIGN_IN_PATH}?reason=${IDLE_SIGNOUT_REASON}`;
 
 const STAFF_ROLES: readonly StaffRole[] = ["staff", "responder", "admin", "super_staff"];
 
@@ -70,6 +81,22 @@ export function judgeStaffProfile(profile: StaffRoleProfile | null, portalRole: 
     return { kind: "wrong-portal", role };
   }
   return profile?.status === "active" ? { kind: "allow" } : { kind: "deactivated" };
+}
+
+export type EmployeeVerdict =
+  | { kind: "allow"; role: StaffRole }
+  | { kind: "not-an-employee" }
+  | { kind: "deactivated" };
+
+/**
+ * The employee sign-in's verdict (ADR 0009), by the same identity → role →
+ * status rules, with the Portal taken from the account's own role: the page
+ * picks the Portal, so wrong-portal cannot happen there.
+ */
+export function judgeEmployee(profile: StaffRoleProfile | null): EmployeeVerdict {
+  const role = profile?.role ?? null;
+  if (!isStaffRole(role)) return { kind: "not-an-employee" };
+  return judgeStaffProfile(profile, role).kind === "allow" ? { kind: "allow", role } : { kind: "deactivated" };
 }
 
 /**
@@ -105,13 +132,12 @@ function isIdle(portal: PortalRow, lastActivity: number | undefined, now: number
 }
 
 export function decideRequest(input: GuardInput, portals: readonly PortalRow[] = PORTALS): GuardDecision {
-  const { pathname, hasSession, profile, lastActivity, now } = input;
+  const { pathname, reason, hasSession, aal, profile, lastActivity, now } = input;
 
   const portal = portalFor(pathname, portals);
   if (!portal) return { kind: "allow" };
 
   const { prefix } = portal;
-  const loginPath = `${prefix}/login`;
   const forbiddenPath = `${prefix}/forbidden`;
 
   // The invite flow builds its session from an emailed token: gating it would
@@ -119,23 +145,26 @@ export function decideRequest(input: GuardInput, portals: readonly PortalRow[] =
   // account doing so does not have its role confirmed yet.
   if (matchesPath(pathname, `${prefix}/accept-invite`)) return { kind: "allow" };
 
-  const idleSignOut: GuardDecision = {
-    kind: "redirect",
-    to: `${loginPath}?reason=${IDLE_SIGNOUT_REASON}`,
-    signOut: true,
-  };
+  // The old login address of every Portal now redirects to the one employee
+  // sign-in (ADR 0009), for every visitor: that page sends a signed-in City
+  // employee on to their home, and an idle session is ended when it gets
+  // there. Only the idle reason is carried over, never an arbitrary value.
+  if (matchesPath(pathname, `${prefix}/login`)) {
+    return {
+      kind: "redirect",
+      to: reason === IDLE_SIGNOUT_REASON ? IDLE_SIGNOUT_PATH : EMPLOYEE_SIGN_IN_PATH,
+    };
+  }
 
-  const isLogin = matchesPath(pathname, loginPath);
+  const idleSignOut: GuardDecision = { kind: "redirect", to: IDLE_SIGNOUT_PATH, signOut: true };
 
-  // Login is never refused, or a refused account bounced there would bounce
-  // forever. A row that sends a signed-in visit on into the Portal ends an
-  // idle session here instead (below): bounced into the Portal it timed out
-  // of, it would only be sent back. It cannot loop — the sign-out lands on
-  // login with no session, which is served.
-  const loginRedirect = portal.signedInLoginRedirect;
-  if (isLogin && (!hasSession || loginRedirect === null)) return { kind: "allow" };
+  if (!hasSession) return { kind: "redirect", to: EMPLOYEE_SIGN_IN_PATH };
 
-  if (!hasSession) return { kind: "redirect", to: loginPath };
+  // A password-only session finishes its sign-in at /employee: the code, or
+  // enrolment for an account with no authenticator (ADR 0009). Not ended
+  // here, nor its role read: the sign-in page does both. Ahead of the idle
+  // check, since the idle clock only starts once the code is entered.
+  if (aal !== "aal2") return { kind: "redirect", to: EMPLOYEE_SIGN_IN_PATH };
 
   // Every Portal shares one session cookie and one idle clock, so this Portal's
   // timeout ends only a session of its own role: a responder quiet for twenty
@@ -145,18 +174,6 @@ export function decideRequest(input: GuardInput, portals: readonly PortalRow[] =
   if (isIdle(portal, lastActivity, now)) {
     if (!profile) return { kind: "read-profile" };
     if (!profile.ok || profile.profile?.role === portal.role) return idleSignOut;
-  }
-
-  // Only this Portal's own role is sent on in from login — a deactivated one
-  // too, whose forbidden page tells it so; the status is not checked here.
-  // Another role's account (or a citizen's) sent on in would land on
-  // forbidden; it is shown the form instead, its session kept (issue #19). A
-  // failed read is not an answer, and the form is harmless, so it is served.
-  if (isLogin && loginRedirect !== null) {
-    if (!profile) return { kind: "read-profile" };
-    return profile.ok && profile.profile?.role === portal.role
-      ? { kind: "redirect", to: loginRedirect }
-      : { kind: "allow" };
   }
 
   // Forbidden is where refusals land; role-checking it would loop.

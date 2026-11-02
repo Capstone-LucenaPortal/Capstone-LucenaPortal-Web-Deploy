@@ -6,6 +6,7 @@ import { useAuth } from "@/portals/admin/features/auth/hooks/use-auth";
 import { AccessRefusal, type AccessRefusalDecision } from "@/portals/admin/features/auth/components/access-refusal";
 import { Sidebar } from "@/portals/admin/components/layout/sidebar";
 import { decideRoleAccess } from "@/portals/admin/lib/supabase/access";
+import { EMPLOYEE_SIGN_IN_PATH } from "@/shared/guard/portals";
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const { session, isLoading, profile } = useAuth();
@@ -16,7 +17,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   // SIGNED_OUT event back into the same AuthProvider this layout reads from,
   // dropping `session` to null a moment later. Once a refusal has been decided, it is
   // pinned here so that later drop doesn't fall through to the "no session"
-  // branch below and swap the screen for a /login redirect before the user
+  // branch below and swap the screen for a /employee redirect before the user
   // can read it (or recompute against a now-null profile and show a
   // different message).
   const [pinnedDecision, setPinnedDecision] = useState<AccessRefusalDecision | null>(null);
@@ -45,7 +46,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!isLoading && !session && !pinnedDecision) {
-      router.push("/admin/login");
+      router.push(EMPLOYEE_SIGN_IN_PATH);
     }
   }, [isLoading, session, router, pinnedDecision]);
 
@@ -71,8 +72,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           links, so it is the first Tab stop on every admin page. Visually
           hidden until focused (sr-only / focus:not-sr-only), matching the
           conventional skip-link pattern — this codebase has no prior
-          skip-link to match (src/app/(admin)/admin/login/page.tsx renders a bare <main> with
-          no such anchor), so the visual treatment below (blue-900, rounded-
+          skip-link to match, so the visual treatment below (blue-900, rounded-
           none, ring-white) is new but follows the site's existing focus-ring
           and rounded-none conventions (see Modal.tsx / Sidebar.tsx). */}
       <a

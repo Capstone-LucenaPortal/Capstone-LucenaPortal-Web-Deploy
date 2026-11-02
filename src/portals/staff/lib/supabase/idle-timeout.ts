@@ -32,11 +32,11 @@
 
 import { parseCookieHeader, serializeCookieHeader } from "@supabase/ssr";
 
-import { IDLE_SIGNOUT_REASON } from "@/shared/guard/decide";
+import { IDLE_SIGNOUT_PATH, IDLE_SIGNOUT_REASON } from "@/shared/guard/decide";
 import { CLOCK_OFFSET_COOKIE, LAST_ACTIVITY_COOKIE } from "@/shared/guard/idle-clock";
-import { PORTAL_PREFIX } from "@/shared/guard/portals";
 
-export { CLOCK_OFFSET_COOKIE, IDLE_SIGNOUT_REASON, LAST_ACTIVITY_COOKIE };
+// `/employee?reason=idle`: the one employee sign-in says why the person is there.
+export { CLOCK_OFFSET_COOKIE, IDLE_SIGNOUT_PATH, IDLE_SIGNOUT_REASON, LAST_ACTIVITY_COOKIE };
 
 /** Idle time after which the session is ended. Staff's guard row carries the
  * same 15 minutes. */
@@ -51,8 +51,6 @@ export const IDLE_CHECK_INTERVAL_MS = 60 * 1000;
  * as a nudged mouse on an unattended desk is not a person using the portal. */
 export const ACTIVITY_EVENTS = ["click", "keydown", "touchstart", "visibilitychange"] as const;
 
-/** `/staff/login?reason=idle` tells the sign-in screen why the person is there. */
-export const IDLE_SIGNOUT_PATH = `${PORTAL_PREFIX.staff}/login?reason=${IDLE_SIGNOUT_REASON}`;
 
 /**
  * Pure: has the session been idle past the cap?

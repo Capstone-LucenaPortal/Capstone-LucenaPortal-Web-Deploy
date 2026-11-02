@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/portals/admin/components/ui/button";
 import { ROLE_ARTICLE, ROLE_LABEL } from "@/portals/admin/features/auth/lib/role-labels";
 import { refusalEndsSession } from "@/shared/guard/decide";
-import { CITIZEN_PORTAL_PATH, PORTAL_PREFIX } from "@/shared/guard/portals";
+import { CITIZEN_PORTAL_PATH, EMPLOYEE_SIGN_IN_PATH, PORTAL_PREFIX } from "@/shared/guard/portals";
 import { createClient } from "@/shared/supabase/client";
 import type { RoleAccessDecision } from "@/portals/admin/lib/supabase/access";
 
@@ -89,8 +89,8 @@ export function AccessRefusal({ decision }: { decision: AccessRefusalDecision })
             <Button variant="primary">{link.label}</Button>
           </a>
         )}
-        {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- a full page load, so nothing the router cached or prefetched under the refused session is reused, and none of its client state survives */}
-        <a href="/admin/login">
+        {/* A plain <a>, not <Link>: a full page load, so nothing the router cached or prefetched under the refused session is reused, and none of its client state survives */}
+        <a href={EMPLOYEE_SIGN_IN_PATH}>
           <Button variant="secondary">Back to sign in</Button>
         </a>
       </div>

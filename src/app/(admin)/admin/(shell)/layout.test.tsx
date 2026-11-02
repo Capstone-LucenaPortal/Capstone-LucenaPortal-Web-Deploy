@@ -65,7 +65,7 @@ describe("AdminLayout auth guard", () => {
   it("redirects to /login when there is no session", () => {
     mockSession = null;
     renderLayout();
-    expect(pushMock).toHaveBeenCalledWith("/admin/login");
+    expect(pushMock).toHaveBeenCalledWith("/employee");
     expect(screen.queryByText("protected content")).not.toBeInTheDocument();
   });
 
@@ -184,7 +184,7 @@ describe("AdminLayout auth guard", () => {
     renderLayout();
     expect(screen.getByRole("link", { name: "Back to sign in" })).toHaveAttribute(
       "href",
-      "/admin/login",
+      "/employee",
     );
   });
 
@@ -210,7 +210,7 @@ describe("AdminLayout auth guard", () => {
     );
 
     expect(screen.getByText(/your account has been deactivated/i)).toBeInTheDocument();
-    expect(pushMock).not.toHaveBeenCalledWith("/admin/login");
+    expect(pushMock).not.toHaveBeenCalledWith("/employee");
   });
 
   it("shows the signed-out confirmation once sign-out actually succeeds", async () => {

@@ -115,7 +115,7 @@ describe("Sidebar", () => {
     renderSidebar();
     await user.click(screen.getByRole("button", { name: "Logout" }));
     expect(signOutMock).toHaveBeenCalled();
-    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/admin/login"));
+    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/employee"));
     expect(refreshMock).toHaveBeenCalled();
     expect(pushMock).not.toHaveBeenCalled();
   });
@@ -149,7 +149,7 @@ describe("Sidebar", () => {
     expect(signOutMock).toHaveBeenCalledTimes(1);
 
     resolveSignOut({ error: null });
-    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/admin/login"));
+    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/employee"));
   });
 
   describe("hamburger drawer (mobile off-canvas nav)", () => {

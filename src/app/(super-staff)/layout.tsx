@@ -8,6 +8,9 @@ export const metadata: Metadata = {
   title: "LucenaPortal Super Staff",
   description:
     "Platform administration for the Lucena City Strategic Service Management System.",
+  // Staff-side pages stay out of search results (ADR 0009). Not a robots.txt
+  // Disallow, which would advertise the path.
+  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({

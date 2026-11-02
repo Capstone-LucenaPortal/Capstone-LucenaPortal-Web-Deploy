@@ -108,7 +108,7 @@ describe("ForbiddenPage", () => {
     render(<ForbiddenPage />);
     expect(screen.getByRole("link", { name: "Back to sign in" })).toHaveAttribute(
       "href",
-      "/admin/login",
+      "/employee",
     );
   });
 
@@ -124,7 +124,7 @@ describe("ForbiddenPage", () => {
   it("redirects to /login when there is no session", () => {
     mockSession = null;
     render(<ForbiddenPage />);
-    expect(pushMock).toHaveBeenCalledWith("/admin/login");
+    expect(pushMock).toHaveBeenCalledWith("/employee");
   });
 
   it("renders nothing while auth state is loading", () => {
@@ -150,7 +150,7 @@ describe("ForbiddenPage", () => {
     rerender(<ForbiddenPage />);
 
     expect(screen.getByText(/your account has been deactivated/i)).toBeInTheDocument();
-    expect(pushMock).not.toHaveBeenCalledWith("/admin/login");
+    expect(pushMock).not.toHaveBeenCalledWith("/employee");
   });
 
   it("shows the signed-out confirmation once sign-out actually succeeds", async () => {

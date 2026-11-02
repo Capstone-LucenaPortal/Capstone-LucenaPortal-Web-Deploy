@@ -31,7 +31,7 @@ export type DocumentKind =
  * Two independent gates, deliberately:
  *
  *  1. The request guard (src/shared/guard/) redirects any request without a
- *     session to /staff/login. Route handlers do NOT run the (portal)
+ *     session to /employee. Route handlers do NOT run the (portal)
  *     layout, so that check is the only reason an anonymous request never
  *     reaches this code.
  *  2. get_document_path() re-checks entitlement in the database on every

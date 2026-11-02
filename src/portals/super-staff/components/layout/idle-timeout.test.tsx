@@ -92,7 +92,7 @@ describe("IdleTimeout", () => {
     });
 
     expect(signOut).toHaveBeenCalledWith({ scope: "local" });
-    expect(replace).toHaveBeenCalledWith("/super-staff/login?reason=idle");
+    expect(replace).toHaveBeenCalledWith("/employee?reason=idle");
     expect(refresh).toHaveBeenCalled();
   });
 
@@ -133,7 +133,7 @@ describe("IdleTimeout", () => {
       vi.advanceTimersByTime(IDLE_TIMEOUT_MS + IDLE_CHECK_INTERVAL_MS);
     });
 
-    expect(replace).toHaveBeenCalledWith("/super-staff/login?reason=idle");
+    expect(replace).toHaveBeenCalledWith("/employee?reason=idle");
   });
 
   it("signs out once, not once per tick", async () => {

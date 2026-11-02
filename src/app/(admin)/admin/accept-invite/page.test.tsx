@@ -6,7 +6,9 @@
 import { vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { AuthWeakPasswordError } from "@supabase/supabase-js";
 import AcceptInvitePage from "@/app/(admin)/admin/accept-invite/page";
+import { PASSWORD_RULES_TEXT } from "@/shared/auth/password-policy";
 
 const replaceMock = vi.fn();
 const refreshMock = vi.fn();
@@ -21,6 +23,17 @@ const mockVerifyOtp = vi.fn();
 const mockGetSession = vi.fn();
 const mockUpdateUser = vi.fn();
 
+// A newly invited admin with no authenticator yet: the password leaves a
+// password-only (aal1) session, and enrolment can start.
+const mockMfa = {
+  getAuthenticatorAssuranceLevel: async () => ({ data: { currentLevel: "aal1", nextLevel: "aal1" }, error: null }),
+  listFactors: async () => ({ data: { all: [], totp: [], phone: [] }, error: null }),
+  enroll: async () => ({
+    data: { id: "factor-1", type: "totp", totp: { qr_code: "data:image/svg+xml;utf-8,<svg/>", secret: "SECRETKEY", uri: "otpauth://totp/x" } },
+    error: null,
+  }),
+};
+
 const mockSupabase = {
   auth: {
     setSession: mockSetSession,
@@ -28,6 +41,7 @@ const mockSupabase = {
     verifyOtp: mockVerifyOtp,
     getSession: mockGetSession,
     updateUser: mockUpdateUser,
+    mfa: mockMfa,
   },
 };
 
@@ -184,10 +198,13 @@ describe("AcceptInvitePage", () => {
     expect(mockUpdateUser).not.toHaveBeenCalled();
   });
 
-  it("shows the server error and does not redirect when updateUser fails", async () => {
+  // Never Supabase's own text (#87): see newPasswordErrorMessage.
+  it("shows plain copy, not the server's message, and does not redirect when updateUser fails", async () => {
     setUrl("/admin/accept-invite", "?code=good-code");
     mockExchangeCodeForSession.mockResolvedValue({ error: null });
-    mockUpdateUser.mockResolvedValue({ error: { message: "Password too weak" } });
+    mockUpdateUser.mockResolvedValue({
+      error: new AuthWeakPasswordError("Password too weak", 422, ["characters"]),
+    });
     const user = userEvent.setup();
 
     render(<AcceptInvitePage />);
@@ -197,11 +214,14 @@ describe("AcceptInvitePage", () => {
     await user.type(screen.getByLabelText("Confirm password"), "password123");
     await user.click(screen.getByRole("button", { name: "Set password and continue" }));
 
-    expect(await screen.findByText("Password too weak")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent(PASSWORD_RULES_TEXT);
+    expect(screen.queryByText("Password too weak")).not.toBeInTheDocument();
     expect(replaceMock).not.toHaveBeenCalled();
   });
 
-  it("calls updateUser and redirects to /dashboard on success", async () => {
+  // The dashboard opens only once a code is in: see
+  // src/shared/auth/accept-invite-enrolment.test.tsx for the rest of the way.
+  it("calls updateUser and goes on to enrolment, not yet to /dashboard, on success", async () => {
     setUrl("/admin/accept-invite", "?code=good-code");
     mockExchangeCodeForSession.mockResolvedValue({ error: null });
     mockUpdateUser.mockResolvedValue({ error: null });
@@ -217,7 +237,7 @@ describe("AcceptInvitePage", () => {
     await waitFor(() =>
       expect(mockUpdateUser).toHaveBeenCalledWith({ password: "password123" }),
     );
-    expect(replaceMock).toHaveBeenCalledWith("/admin/dashboard");
-    expect(refreshMock).toHaveBeenCalled();
+    expect(await screen.findByText("Set up your authenticator")).toBeInTheDocument();
+    expect(replaceMock).not.toHaveBeenCalled();
   });
 });

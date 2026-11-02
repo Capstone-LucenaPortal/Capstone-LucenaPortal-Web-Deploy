@@ -20,6 +20,9 @@ export const metadata: Metadata = {
     default: "Lucena City Admin Portal",
   },
   description: "Admin portal for Lucena City service requests",
+  // Staff-side pages stay out of search results (ADR 0009). Not a robots.txt
+  // Disallow, which would advertise the path.
+  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

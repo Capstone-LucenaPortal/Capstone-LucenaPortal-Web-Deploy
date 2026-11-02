@@ -81,7 +81,7 @@ describe("/responder/profile sign-out", () => {
 
     await confirmSignOut();
 
-    await waitFor(() => expect(replace).toHaveBeenCalledWith("/responder/login"));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/employee"));
     expect(calls).toEqual(["forget", "signOut", "unsubscribe"]);
   });
 

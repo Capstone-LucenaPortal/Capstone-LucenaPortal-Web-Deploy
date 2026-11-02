@@ -6,18 +6,30 @@
 // and when it resends a recovery link to an existing one. The visitor has no
 // session yet, so the shared request guard (src/shared/guard/decide.ts)
 // exempts this path from both the authentication gate and the role gate.
+// After the password, a new admin enrols an authenticator here (ADR 0009).
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/portals/admin/components/ui/button";
+import {
+  InviteAuthenticatorCode,
+  InviteEnrolment,
+  stepAfterInvitePassword,
+  stepBeforeInvitePassword,
+} from "@/shared/auth/authenticator";
 import { PASSWORD_RULES_TEXT, validatePassword } from "@/shared/auth/password-policy";
 import { createClient } from "@/shared/supabase/client";
+import { newPasswordErrorMessage } from "@/shared/supabase/sign-in-error";
+import { EMPLOYEE_SIGN_IN_PATH } from "@/shared/guard/portals";
 
 // "invalid" means the link itself is spent or expired — a fact we learned from
 // GoTrue. "failed" means we never got an answer, which is a different problem
 // and deserves different advice: telling someone their link is dead when their
 // connection dropped sends them to ask for a replacement they do not need.
-type Phase = "verifying" | "ready" | "invalid" | "failed";
+// "code" comes before the password for an account that already has an
+// authenticator (a resent link); "enrol" follows a password set on an account
+// with none.
+type Phase = "verifying" | "code" | "ready" | "enrol" | "invalid" | "failed";
 
 export default function AcceptInvitePage() {
   const router = useRouter();
@@ -92,7 +104,13 @@ export default function AcceptInvitePage() {
     // "verifying" forever. The user then stares at "Checking your invite…"
     // with no message, no recovery, and nothing in the UI to act on.
     void establishSession()
-      .then((ok) => setPhase(ok ? "ready" : "invalid"))
+      .then(async (ok) => {
+        if (!ok) {
+          setPhase("invalid");
+          return;
+        }
+        setPhase((await stepBeforeInvitePassword(supabase)) === "code" ? "code" : "ready");
+      })
       .catch((cause) => {
         console.error("accept-invite: could not check the link", cause);
         setPhase("failed");
@@ -118,13 +136,36 @@ export default function AcceptInvitePage() {
     const { error: updateError } = await supabase.auth.updateUser({ password });
 
     if (updateError) {
-      setError(updateError.message);
+      // Never Supabase's raw message: see newPasswordErrorMessage. An account
+      // with an authenticator whose code is not in yet goes back for it.
+      setError(newPasswordErrorMessage(updateError));
       setBusy(false);
+      if (updateError.code === "insufficient_aal") setPhase("code");
       return;
     }
 
-    // updateUser leaves them signed in, so they go straight through the
-    // portal gate rather than back to /login.
+    // A new account is still password-only (aal1) here and enrols; one whose
+    // code came first is code-verified (aal2) and goes home. The Portal
+    // opens only once an authenticator code is in.
+    const next = await stepAfterInvitePassword(supabase);
+    if (next === "enrol") {
+      setBusy(false);
+      setPhase("enrol");
+    } else if (next === "sign-in") {
+      router.replace(EMPLOYEE_SIGN_IN_PATH);
+    } else {
+      goHome();
+    }
+  }
+
+  function codeVerified() {
+    setError(null);
+    setPhase("ready");
+  }
+
+  function goHome() {
+    // The code is in, so they go straight through the portal gate rather
+    // than back to /employee.
     router.replace("/admin/dashboard");
     router.refresh();
   }
@@ -133,6 +174,10 @@ export default function AcceptInvitePage() {
 
   if (phase === "verifying") {
     content = <p className="text-sm text-gray-600">Checking your invite…</p>;
+  } else if (phase === "code") {
+    content = <InviteAuthenticatorCode notice={error} onVerified={codeVerified} />;
+  } else if (phase === "enrol") {
+    content = <InviteEnrolment onEnrolled={goHome} />;
   } else if (phase === "failed") {
     content = (
       <>
@@ -149,7 +194,7 @@ export default function AcceptInvitePage() {
           again. If it still fails, ask your Super Staff to send a new one.
         </p>
         <div className="mt-6">
-          <Link href="/admin/login">
+          <Link href={EMPLOYEE_SIGN_IN_PATH}>
             <Button variant="secondary">Back to sign in</Button>
           </Link>
         </div>
@@ -172,7 +217,7 @@ export default function AcceptInvitePage() {
           sign in normally instead.
         </p>
         <div className="mt-6">
-          <Link href="/admin/login">
+          <Link href={EMPLOYEE_SIGN_IN_PATH}>
             <Button variant="secondary">Back to sign in</Button>
           </Link>
         </div>

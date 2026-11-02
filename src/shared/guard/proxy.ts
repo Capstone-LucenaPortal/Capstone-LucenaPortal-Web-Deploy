@@ -1,9 +1,9 @@
 // src/shared/guard/proxy.ts
 //
 // The one request guard for the whole app. It gathers the inputs
-// decideRequest (src/shared/guard/decide.ts) needs — session, staff profile,
-// idle clock — and acts on its answer. The rules themselves are the
-// per-Portal table in src/shared/guard/portals.ts.
+// decideRequest (src/shared/guard/decide.ts) needs — session, assurance
+// level, staff profile, idle clock — and acts on its answer. The rules
+// themselves are the per-Portal table in src/shared/guard/portals.ts.
 
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
@@ -65,6 +65,12 @@ export async function guardRequest(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // The level is the token's `aal` claim, decoded from the session getUser()
+  // just validated, so no further round-trip. A level that cannot be read
+  // counts as password-only: the guard sends it to /employee.
+  // (It throws, rather than returning an error, on a token it cannot decode.)
+  const assurance = user ? await supabase.auth.mfa.getAuthenticatorAssuranceLevel().catch(() => null) : null;
+
   // The idle clock is read only for Portals with an idle timeout, so the
   // others never get a clock-offset cookie. Date.now() is this request's one
   // moment.
@@ -80,7 +86,9 @@ export async function guardRequest(request: NextRequest) {
 
   const input: GuardInput = {
     pathname,
+    reason: request.nextUrl.searchParams.get("reason"),
     hasSession: Boolean(user),
+    aal: assurance?.data?.currentLevel ?? null,
     lastActivity: clock.lastActivity,
     now,
   };

@@ -13,6 +13,7 @@ import { forgetDevice, unsubscribeDevice } from "@/portals/responder/features/al
 import { PasswordSheet } from "@/portals/responder/features/auth/components/password-sheet";
 import { useDuty, useSession } from "@/portals/responder/features/auth/hooks/use-session";
 import { firstNameOf, initialsOf } from "@/portals/responder/features/auth/lib/name";
+import { EMPLOYEE_SIGN_IN_PATH } from "@/shared/guard/portals";
 
 export default function ProfilePage() {
   const { onDuty } = useDuty();
@@ -41,7 +42,7 @@ export default function ProfilePage() {
     await forgetDevice();
 
     // Clear the session BEFORE navigating, and await it. Navigating first only
-    // hides the portal behind /login — the auth cookie survives, so typing
+    // hides the portal behind /employee — the auth cookie survives, so typing
     // /pool walks straight back in with no credentials. On a shared field
     // device that hands the next person the previous responder's session.
     const { error } = await createClient().auth.signOut();
@@ -49,7 +50,7 @@ export default function ProfilePage() {
     if (error) {
       // supabase-js keeps the local session when the revoke call fails, so the
       // cookie is still live. Staying put with a visible error is the honest
-      // outcome: bouncing to /login would show a sign-in form to someone who
+      // outcome: bouncing to /employee would show a sign-in form to someone who
       // is in fact still signed in, which is exactly the bug being fixed here.
       setSigningOut(false);
       setSignOutOpen(false);
@@ -65,7 +66,7 @@ export default function ProfilePage() {
 
     // replace(), not push(): the portal must not be one Back away.
     // refresh() drops the cached RSC render that still holds the profile.
-    router.replace("/responder/login");
+    router.replace(EMPLOYEE_SIGN_IN_PATH);
     router.refresh();
   }
 

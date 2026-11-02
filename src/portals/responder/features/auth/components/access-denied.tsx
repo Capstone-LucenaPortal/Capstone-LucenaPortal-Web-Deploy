@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/shared/supabase/client";
 import { refusalEndsSession } from "@/shared/guard/decide";
-import { CITIZEN_PORTAL_PATH, PORTAL_PREFIX } from "@/shared/guard/portals";
+import { CITIZEN_PORTAL_PATH, EMPLOYEE_SIGN_IN_PATH, PORTAL_PREFIX } from "@/shared/guard/portals";
 import type { GateDecision } from "../lib/gate";
 import { ROLE_ARTICLE, ROLE_LABEL } from "../lib/role-labels";
 
@@ -87,9 +87,8 @@ export function AccessDenied({ decision }: { decision: Refusal }) {
         {/* When the session is being ended, the exits stay shut until the
             cookie is actually gone. Leaving them live would let a click race
             the sign-out: the browser would carry the deactivated responder's
-            valid session to /responder/login, the request guard would send it
-            on to /responder/pool, and its role check would send it right back
-            to /responder/forbidden. A kept session has no such race. */}
+            valid session to the employee sign-in while it is still live. A
+            kept session has no such race. */}
         <div className="mt-5 flex flex-col gap-2.5">
           {exitsOpen ? (
             <>
@@ -101,9 +100,9 @@ export function AccessDenied({ decision }: { decision: Refusal }) {
                   {link.label}
                 </a>
               )}
-              {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- a full page load, so nothing the router cached or prefetched under the refused session is reused, and none of its client state survives */}
+              {/* A plain <a>, not <Link>: a full page load, so nothing the router cached or prefetched under the refused session is reused, and none of its client state survives */}
               <a
-                href="/responder/login"
+                href={EMPLOYEE_SIGN_IN_PATH}
                 className="flex h-12 items-center justify-center rounded-md border border-gray-300 bg-white text-[15px] font-semibold text-gray-900 hover:bg-gray-50"
               >
                 Back to sign in

@@ -30,7 +30,7 @@ describe("LogoutButton", () => {
     await clickLogout();
 
     await waitFor(() => expect(signOut).toHaveBeenCalled());
-    expect(replace).toHaveBeenCalledWith("/staff/login");
+    expect(replace).toHaveBeenCalledWith("/employee");
     expect(refresh).toHaveBeenCalled();
   });
 
@@ -39,7 +39,7 @@ describe("LogoutButton", () => {
     render(<LogoutButton />);
     await clickLogout();
 
-    await waitFor(() => expect(replace).toHaveBeenCalledWith("/staff/login"));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/employee"));
     // A router exposing only replace/refresh means a push() call would throw.
     // This asserts the intent explicitly anyway.
     expect(replace).toHaveBeenCalledTimes(1);
