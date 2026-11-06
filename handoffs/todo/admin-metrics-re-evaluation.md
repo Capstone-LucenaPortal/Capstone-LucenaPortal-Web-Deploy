@@ -9,6 +9,7 @@ The panel may ask: "Tell us about the metrics you tracked. What does each one me
 | When | What |
 |---|---|
 | About Tue 2026-11-10 | Grill, sheet, spec and tickets done |
+| About Sat 2026-11-14 | Cut-off for Joaquin's other fixes on the batch. Your metric tickets aren't bound by it: they have until the freeze |
 | About Tue 2026-11-17 | Code freeze: the metric batch is on `main` by then |
 | About 2026-11-22 to 27 | Defense (not firm yet) |
 
@@ -29,7 +30,7 @@ All of this work goes on one branch cut from `main`: `admin-metrics-batch`. Step
 
 **Do NOT merge that branch into `main` until the entire Admin metrics task is done: the grill, the sheet, the spec, and every issue and ticket that comes out of them.** Joaquin says when it merges.
 
-Joaquin's #94 and #96 (the Super-staff Audit log) land on the same branch, so you'll see their commits there. They aren't part of your task, but the merge waits for them too.
+Joaquin's other fixes land on the same branch, starting with #94 and #96 (the Super-staff Audit log), so you'll see their commits there. They aren't part of your task. Their cut-off is about 2026-11-14: the merge waits for whatever landed by then, but not for anything that missed it.
 
 ```text
 Re-evaluate every metric on the Admin Portal (/admin) with me. I'm Arjel, Joaquin's co-dev. I make the metric calls; Joaquin reviews them before any tickets are cut. You grill me now. I'll run /to-spec and /to-tickets myself when you tell me it's time.
@@ -102,11 +103,11 @@ Rules for this session
 Rules for every ticket session
 - Check first: read the ticket, its parent and siblings, and the ADRs before asking how to do it. Only ask what they leave open.
 - One commit per ticket: commit only when the whole ticket is done and tests pass, because QA pins a run to one SHA per ticket.
-- Batch branch: ticket work goes on admin-metrics-batch (unless Joaquin names another), one commit per ticket. When a ticket is done, rebase onto origin/admin-metrics-batch, run tsc and the full suite, then git push origin HEAD:admin-metrics-batch. Do this without being asked, as the last step. Joaquin's #94 and #96 land on this branch too: leave their commits alone.
+- Batch branch: ticket work goes on admin-metrics-batch (unless Joaquin names another), one commit per ticket. When a ticket is done, rebase onto origin/admin-metrics-batch, run tsc and the full suite, then git push origin HEAD:admin-metrics-batch. Do this without being asked, as the last step. Joaquin's other fixes, starting with #94 and #96, land on this branch too: leave their commits alone.
 - Never push to main, and never merge admin-metrics-batch into it. The branch stays unmerged until the entire Admin metrics task is done, with every issue and ticket that comes out of it. Then the whole batch reaches main together, as one fast-forward, only when Joaquin says so. A fix never goes ahead of the rest.
 - Ticket branches: create them with git switch --no-track -c <branch> origin/admin-metrics-batch. A branch tracking origin/main lets VS Code's Sync Changes push it straight onto main.
 - No Smoke per ticket. Check a fix with tests and one look on the dev server, then comment "Fixed in <sha> on admin-metrics-batch" on the issue. Joaquin runs one full Smoke after the batch merges, then the re-tests and the held Core regression.
-- Migrations: applying one to the Sandbox needs Joaquin's yes, because it's also the defense environment. Leave DB#31 alone: it isn't part of this work.
+- Migrations: applying one to the Sandbox needs Joaquin's yes, because it's also the defense environment. Leave DB#31 alone: it isn't part of this work. Joaquin's fixes add migrations too, so check the DB repo's newest number and take the next free one when you apply.
 - CI runs Node 24.20. If your node differs, before pushing run: npx -y -p node@24.20.0 node node_modules/vitest/vitest.mjs run
 - Run the full test suite on its own, with no other vitest or agents beside it, and rerun a surprise red before believing it. Run only one next dev at a time, and stop it when the check is done.
 - Browser checks with Claude in Chrome: check document.visibilityState first. In a hidden tab real clicks silently miss and screenshots time out, so use in-page el.click(), and pair every "nothing happened" check with a control that must work. A click that never landed looks like a pass.
