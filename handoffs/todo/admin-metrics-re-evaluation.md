@@ -23,6 +23,14 @@ The panel may ask: "Tell us about the metrics you tracked. What does each one me
 
 You have to type the commands in steps 3 and 5 yourself, because the agent can't start those two skills. The last section of the prompt lists what we already suspect: try to give your own answers before you read it.
 
+## The branch
+
+All of this work goes on one branch cut from `main`: `admin-metrics-batch`. Step 7 of the prompt creates it, and every ticket then lands on it.
+
+**Do NOT merge that branch into `main` until the entire Admin metrics task is done: the grill, the sheet, the spec, and every issue and ticket that comes out of them.** Joaquin says when it merges.
+
+Joaquin's #94 and #96 (the Super-staff Audit log) land on the same branch, so you'll see their commits there. They aren't part of your task, but the merge waits for them too.
+
 ```text
 Re-evaluate every metric on the Admin Portal (/admin) with me. I'm Arjel, Joaquin's co-dev. I make the metric calls; Joaquin reviews them before any tickets are cut. You grill me now. I'll run /to-spec and /to-tickets myself when you tell me it's time.
 
@@ -84,7 +92,7 @@ What can change: anything ticketed and merged before the freeze (about 2026-11-1
 - Then tell me to type /mattpocock-skills:to-tickets. Engineering tickets are GitHub issues with a "Parent: SCRUM-…" first line, ranked by what a panel would actually challenge. DB work goes to -R Capstone-LucenaPortal/Capstone-LucenaPortal-DB. Label pre-defense only if a panelist would see it on the usual demo path without anyone going looking. Severity doesn't decide that.
 
 Step 7: finish
-Nothing goes to main. Check git branch -r: if Joaquin has opened another batch, ask him which to use. Otherwise create the batch branch from origin/main, named admin-metrics-batch, with git switch --no-track -c. Commit the sheet, CONTEXT.md, CONTEXT-MAP.md and this hand-off's move as one commit: git mv handoffs/todo/admin-metrics-re-evaluation.md to handoffs/done/, update handoffs/README.md (move its row to Done, with the result) and any path that points at it (git grep handoffs/). Push it to the batch branch.
+Nothing goes to main. Check git branch -r: if Joaquin has opened another batch, ask him which to use. Otherwise branch off main: create the batch branch from origin/main, named admin-metrics-batch, with git switch --no-track -c. Do NOT merge this branch into main until the entire Admin metrics task is done, with every issue and ticket that comes out of it, and Joaquin says so. Commit the sheet, CONTEXT.md, CONTEXT-MAP.md and this hand-off's move as one commit: git mv handoffs/todo/admin-metrics-re-evaluation.md to handoffs/done/, update handoffs/README.md (move its row to Done, with the result) and any path that points at it (git grep handoffs/). Push it to the batch branch.
 End with: what was decided; the links; a section headed "Proposed tickets / issues to file", listing every candidate from the whole session with its title, why it matters and whether it's filed; and a plain line telling me to clear and start each ticket in a fresh session. Don't start implementing here, even if I answer something that sounds like a go-ahead.
 
 Rules for this session
@@ -94,8 +102,8 @@ Rules for this session
 Rules for every ticket session
 - Check first: read the ticket, its parent and siblings, and the ADRs before asking how to do it. Only ask what they leave open.
 - One commit per ticket: commit only when the whole ticket is done and tests pass, because QA pins a run to one SHA per ticket.
-- Batch branch: ticket work goes on admin-metrics-batch (unless Joaquin names another), one commit per ticket. When a ticket is done, rebase onto origin/admin-metrics-batch, run tsc and the full suite, then git push origin HEAD:admin-metrics-batch. Do this without being asked, as the last step.
-- Never push to main. The whole batch reaches main together, as one fast-forward, only when Joaquin says so. A fix never goes ahead of the rest.
+- Batch branch: ticket work goes on admin-metrics-batch (unless Joaquin names another), one commit per ticket. When a ticket is done, rebase onto origin/admin-metrics-batch, run tsc and the full suite, then git push origin HEAD:admin-metrics-batch. Do this without being asked, as the last step. Joaquin's #94 and #96 land on this branch too: leave their commits alone.
+- Never push to main, and never merge admin-metrics-batch into it. The branch stays unmerged until the entire Admin metrics task is done, with every issue and ticket that comes out of it. Then the whole batch reaches main together, as one fast-forward, only when Joaquin says so. A fix never goes ahead of the rest.
 - Ticket branches: create them with git switch --no-track -c <branch> origin/admin-metrics-batch. A branch tracking origin/main lets VS Code's Sync Changes push it straight onto main.
 - No Smoke per ticket. Check a fix with tests and one look on the dev server, then comment "Fixed in <sha> on admin-metrics-batch" on the issue. Joaquin runs one full Smoke after the batch merges, then the re-tests and the held Core regression.
 - Migrations: applying one to the Sandbox needs Joaquin's yes, because it's also the defense environment. Leave DB#31 alone: it isn't part of this work.
