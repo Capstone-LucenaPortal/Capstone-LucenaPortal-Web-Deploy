@@ -180,9 +180,10 @@ export function applicationMet(row: YellowCardRow): boolean | null {
  * Which timestamp column "Request Date" vs "Resolution Date" means for each
  * row shape — the SLA Reports page's "Date type" toggle. "request" reads
  * submitted_at (when the request was filed); "resolution" reads resolved_at
- * for incidents / decided_at for Yellow Card applications (when staff closed
- * it out) — the same request/resolution split the other converted pages
- * apply to their own date-basis toggles (see e.g. issueDateAccessor in
+ * for incidents / decided_at for Yellow Card applications (when staff decided
+ * it or the applicant withdrew it, DB#37) — the same request/resolution split
+ * the other converted pages apply to their own date-basis toggles (see e.g.
+ * issueDateAccessor in
  * src/portals/admin/lib/aggregate.ts). A row not yet resolved has a
  * null value under "resolution" and is dropped by filterByDateRange, the
  * same way any other null-accessor row is.

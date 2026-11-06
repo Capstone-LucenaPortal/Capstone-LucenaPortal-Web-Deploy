@@ -198,8 +198,9 @@ export function YellowCardPage() {
     [preset, customStart, customEnd]
   );
   // "application" reads submitted_at (when the applicant filed); "completion"
-  // reads decided_at (when staff approved/rejected it) — a still-pending
-  // application therefore has no decided_at and drops out of the KPI tiles,
+  // reads decided_at (when staff approved/rejected it or the applicant
+  // withdrew it, DB#37) — a still-pending application therefore has no
+  // decided_at and drops out of the KPI tiles,
   // the table, every panel and the monthly chart under the "completion"
   // basis. One accessor feeds all of them so they always count the same
   // rows (issue #24).
