@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/portals/citizen/features/auth/hooks/use-auth';
 import { catalogService, type SiteInfo, type SiteInfoEntry } from '@/portals/citizen/lib/supabase/catalogs';
+import ProgramsSummary from '@/portals/citizen/features/content/components/programs-summary';
 
 const FACEBOOK_PAGE_URL = 'https://www.facebook.com/lucenalguofficial';
 
@@ -201,40 +202,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* City Programs */}
-      <section id="city-programs" style={{ padding: '40px clamp(16px, 5vw, 48px)', maxWidth: 1800, margin: '0 auto', marginBottom: 40, background: '#F5F9FC' }}>
-        <h2 style={{ fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 700, color: '#003DA5', marginBottom: 32, textAlign: 'center' }}>City Programs</h2>
-        <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48, alignItems: 'center' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            {[
-              { title: 'Health & Wellness Outreach', desc: 'Free community check-ups and vaccination drives across all barangays.' },
-              { title: 'Livelihood & Skills Training', desc: 'Vocational training and micro-financing support for local entrepreneurs.' },
-              { title: 'Infrastructure Modernization', desc: 'Road widening, flood control, and public facility upgrades citywide.' },
-              { title: 'Youth & Education Support', desc: 'Scholarships and supplemental learning programs for Lucena students.' },
-            ].map((program) => (
-              <div key={program.title} style={{ display: 'flex', gap: 16 }}>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#003DA5', marginTop: 8, flexShrink: 0 }} />
-                <div>
-                  <h3 style={{ fontSize: 16, fontWeight: 700, color: '#003DA5', marginBottom: 4 }}>{program.title}</h3>
-                  <p style={{ fontSize: 14, color: '#333333', lineHeight: 1.7 }}>{program.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="bg-white border border-[#DDDDDD] rounded p-8 shadow-[0_1px_3px_rgba(0,0,0,0.08)]" style={{ background: 'white', padding: 40 }}>
-            <div style={{ background: '#003DA5', color: 'white', padding: 32, borderRadius: 8, textAlign: 'center' }}>
-              <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 12 }}>Featured Program</div>
-              <p style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>PROGRAM NAME PLACEHOLDER</p>
-              <p style={{ fontSize: 13, lineHeight: 1.6, color: 'rgba(255,255,255,0.9)' }}>Short placeholder description of the city&apos;s current flagship program — replace with real content.</p>
-            </div>
-            <div style={{ marginTop: 24, padding: 20, background: '#F0F8FF', borderRadius: 8 }}>
-              <p style={{ fontSize: 12, fontWeight: 600, color: '#003DA5', textTransform: 'uppercase', marginBottom: 8 }}>How to Apply</p>
-              <p style={{ fontSize: 13, color: '#333333', lineHeight: 1.6 }}>Placeholder — link or instructions on how residents can enroll or apply for this program.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
+      <ProgramsSummary />
       {/* Lucena Convention Center Carousel */}
       <section style={{ padding: '40px 0', maxWidth: '100%', overflow: 'hidden', margin: '0 auto', marginBottom: 40, background: '#FAFAFA' }}>
         <h2 style={{ fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 700, color: '#003DA5', marginBottom: 32, textAlign: 'center' }}>Lucena Convention Center</h2>

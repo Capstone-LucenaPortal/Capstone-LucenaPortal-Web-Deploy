@@ -1,4 +1,5 @@
 import type { MetadataRoute } from 'next';
+import { PROGRAM_CATEGORIES } from '@/portals/citizen/features/content/lib/programs';
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://lucena-city.gov.ph';
 
@@ -28,6 +29,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: '/events-calendar', priority: 0.8, changeFrequency: 'weekly' },
     { path: '/explore-lucena', priority: 0.6, changeFrequency: 'monthly' },
     { path: '/news', priority: 0.8, changeFrequency: 'daily' },
+    { path: '/programs', priority: 0.8, changeFrequency: 'monthly' },
+    ...PROGRAM_CATEGORIES.map(({ slug }) => ({
+      path: `/programs/${slug}`,
+      priority: 0.7,
+      changeFrequency: 'monthly' as const,
+    })),
     { path: '/yellow-card', priority: 0.9, changeFrequency: 'monthly' },
     { path: '/incident', priority: 0.9, changeFrequency: 'monthly' },
     { path: '/lcc', priority: 0.8, changeFrequency: 'monthly' },

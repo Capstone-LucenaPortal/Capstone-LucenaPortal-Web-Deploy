@@ -118,6 +118,7 @@ export default function Nav() {
     { label: 'About', path: '/about' },
     { label: 'News', path: '/news' },
     { label: 'Announcements', path: '/announcements' },
+    { label: 'Programs', path: '/programs' },
     { label: 'Explore Lucena', path: '/explore-lucena' },
   ];
 

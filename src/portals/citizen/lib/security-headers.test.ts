@@ -116,6 +116,8 @@ describe('securityHeaderRoutes', () => {
       '/news',
       '/privacy',
       '/profile',
+      '/programs',
+      '/programs/senior-citizen',
       '/receipt/LCC-2026-0001',
       '/reset-password',
       '/terms',

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import type React from 'react';
 import { useRouter } from 'next/navigation';
 import { catalogService, type SiteInfo, type SiteInfoEntry } from '@/portals/citizen/lib/supabase/catalogs';
+import OfficeDirectory from '@/portals/citizen/features/content/components/office-directory';
 
 type SectionKey = 'city-government' | 'directory' | 'awards' | 'invest';
 type GovTabKey = 'city-hall' | 'mayor' | 'vice-mayor' | 'council' | 'barangays';
@@ -55,14 +56,6 @@ const GOV_TABS: { key: GovTabKey; label: string }[] = [
   { key: 'council', label: 'City Council' },
   { key: 'barangays', label: 'Barangays' },
 ];
-
-const SECTION_PLACEHOLDERS: Record<Exclude<SectionKey, 'city-government' | 'awards' | 'invest'>, { title: string; subtitle: string; body: string }> = {
-  directory: {
-    title: 'Directory',
-    subtitle: 'City offices and personnel',
-    body: 'Content pending. Add a searchable directory of city offices, department heads, and contact details.',
-  },
-};
 
 type AwardCategory = 'Governance' | 'Anti-Drug' | 'Environment' | 'Health' | 'Leadership' | 'Education';
 
@@ -917,9 +910,7 @@ export default function AboutPage() {
             </div>
           ) : (
             <div className="bg-white border border-[#DDDDDD] rounded shadow-[0_1px_3px_rgba(0,0,0,0.08)]" style={{ padding: '32px 36px' }}>
-              <h2 style={{ fontSize: 26, fontWeight: 700, color: '#003DA5', marginBottom: 4 }}>{SECTION_PLACEHOLDERS[section].title}</h2>
-              <p style={{ fontSize: 14, color: '#666666', marginBottom: 20 }}>{SECTION_PLACEHOLDERS[section].subtitle}</p>
-              <p style={{ fontSize: 14, color: '#333333' }}>{SECTION_PLACEHOLDERS[section].body}</p>
+              <OfficeDirectory />
             </div>
           )}
         </div>

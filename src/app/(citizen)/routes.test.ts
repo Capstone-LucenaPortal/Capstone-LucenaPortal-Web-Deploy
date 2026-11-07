@@ -26,7 +26,7 @@ describe('citizen routes', () => {
     expect(firstSegments(CITIZEN).filter((segment) => staffSide.includes(segment))).toEqual([]);
   });
 
-  it('are the addresses the Citizen Portal had before the merge', () => {
+  it('are the addresses the Citizen Portal had before the merge, plus /programs', () => {
     expect(firstSegments(CITIZEN).sort()).toEqual([
       'about',
       'announcements',
@@ -40,6 +40,7 @@ describe('citizen routes', () => {
       'news',
       'privacy',
       'profile',
+      'programs',
       'receipt',
       'reset-password',
       'terms',
