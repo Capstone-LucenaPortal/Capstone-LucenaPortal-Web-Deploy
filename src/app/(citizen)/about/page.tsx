@@ -57,17 +57,13 @@ const GOV_TABS: { key: GovTabKey; label: string }[] = [
   { key: 'barangays', label: 'Barangays' },
 ];
 
-type AwardCategory = 'Governance' | 'Anti-Drug' | 'Environment' | 'Health' | 'Leadership' | 'Education';
+type AwardCategory = 'Governance' | 'Leadership';
 
-const AWARD_CATEGORIES: AwardCategory[] = ['Governance', 'Anti-Drug', 'Environment', 'Health', 'Leadership', 'Education'];
+const AWARD_CATEGORIES: AwardCategory[] = ['Governance', 'Leadership'];
 
 const CATEGORY_COLORS: Record<AwardCategory, string> = {
   'Governance': '#003DA5',
-  'Anti-Drug': '#DC2626',
-  'Environment': '#22C55E',
-  'Health': '#F97316',
   'Leadership': '#8B5CF6',
-  'Education': '#F59E0B',
 };
 
 interface AwardEntry {
@@ -77,46 +73,15 @@ interface AwardEntry {
   desc: string;
   category: AwardCategory;
   photoNote: string;
-  isStub?: boolean;
-  images?: { src: string; alt: string }[];
+  images: { src: string; alt: string }[];
   verified?: boolean;
 }
 
 const AWARD_ENTRIES: AwardEntry[] = [
   {
-    agency: 'DILG', year: '2024', category: 'Governance',
-    title: 'Seal of Good Local Governance',
-    desc: 'Conferred to LGUs passing all core assessment areas, including financial administration, disaster preparedness, and social protection.',
-    photoNote: 'Placeholder — awaiting photo release from Lucena PIO.',
-  },
-  {
-    agency: 'DILG', year: '2023', category: 'Governance',
-    title: 'Seal of Good Financial Housekeeping',
-    desc: 'Recognises compliance with full-disclosure requirements and an unqualified audit standing.',
-    photoNote: 'Placeholder — awaiting photo release from Lucena PIO.',
-  },
-  {
-    agency: 'DILG', year: '2018', category: 'Anti-Drug',
-    title: 'City Anti-Drug Abuse Council (CADAC) Award',
-    desc: 'Recognises the functionality of the city’s anti-drug council and its coordination with barangay-level BADACs.',
-    photoNote: 'Placeholder — awaiting photo release from Lucena PIO.',
-  },
-  {
-    agency: 'PDEA / DILG', year: '2026', category: 'Anti-Drug',
-    title: 'Barangay Market View declared drug-cleared',
-    desc: 'Barangay-level clearance achieved with the Lucena CADAC and the Quezon Police Provincial Office.',
-    photoNote: 'Placeholder — awaiting photo release from Lucena PIO.',
-  },
-  {
-    agency: '–', year: '2017', category: 'Environment',
-    title: 'Sanitary Landfill conversion (RA 9003 compliance)',
-    desc: 'The city open dumpsite was converted to a sanitary landfill. Other LGUs have since conducted benchmarking visits.',
-    photoNote: 'Placeholder — awaiting photo release from Lucena PIO.',
-  },
-  {
     agency: 'Department of Finance', year: '–', category: 'Governance',
     title: 'Top 10 Performing Cities',
-    desc:'Lucena City was named one of the Top 10 Performing Cities in Local Revenue Generation, awarded by the Department of Finance.',
+    desc: 'Lucena City was named one of the Top 10 Performing Cities in Local Revenue Generation, awarded by the Department of Finance.',
     photoNote: 'Photo: announcement of the recognition.',
     images: [{ src: '/Top 10 performing cities.jpg', alt: 'Lucena City announced as one of the Top 10 Performing Cities in Local Revenue Generation' }],
   },
@@ -148,26 +113,13 @@ const AWARD_ENTRIES: AwardEntry[] = [
     photoNote: 'Photo: Lucena City Public Market delegation at the awards.',
     images: [{ src: '/gcash award.jpg', alt: 'Lucena City Public Market delegation on stage at the GCash Digital Excellence Awards' }],
   },
-  {
-    agency: '–', year: '–', category: 'Education', isStub: true,
-    title: 'Awaiting verified entry',
-    desc: 'No education recognition confirmed yet. Add from PIO records.',
-    photoNote: 'No image on file.',
-  },
 ];
 
-// `isStub` entries are internal editorial notes, not content. They rendered
-// to the public as cards titled "— recognition pending confirmation" whose
-// body read "Add verified details from the City PIO" — an instruction to a
-// colleague, published on a government site. The rows stay in the file so the
-// PIO can complete and un-stub them; they simply do not render until then.
-const PUBLISHABLE_AWARDS = AWARD_ENTRIES.filter((e) => !e.isStub);
-
 const AWARD_STATS = [
-  { value: String(PUBLISHABLE_AWARDS.length), label: 'Recognitions' },
-  { value: '5', label: 'Awarding Bodies' },
-  { value: '2017–2026', label: 'Years Covered' },
-  { value: String(PUBLISHABLE_AWARDS.filter((e) => e.verified).length), label: 'Independently Verifiable' },
+  { value: String(AWARD_ENTRIES.length), label: 'Recognitions' },
+  { value: '3', label: 'Awarding Bodies' },
+  { value: '2025–2026', label: 'Years Covered' },
+  { value: String(AWARD_ENTRIES.filter((e) => e.verified).length), label: 'Independently Verifiable' },
 ];
 
 function AwardCard({ entry }: { entry: AwardEntry }) {
@@ -183,34 +135,17 @@ function AwardCard({ entry }: { entry: AwardEntry }) {
         <p style={{ fontSize: 13, color: '#666666', lineHeight: 1.6 }}>{entry.desc}</p>
       </div>
 
-      {entry.images ? (
-        // Natural height, not a cropped slot: these are mostly posters whose
-        // citation is printed in the image, and cropping cuts it off.
-        <div style={{ display: 'grid', gap: 10, margin: '0 20px' }}>
-          {entry.images.map((image) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img key={image.src} src={encodeURI(image.src)} alt={image.alt} loading="lazy" style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 6 }} />
-          ))}
-        </div>
-      ) : (
-        <div style={{
-          height: 140,
-          margin: '0 20px',
-          borderRadius: 6,
-          background: 'repeating-linear-gradient(45deg, #F0F0F0, #F0F0F0 10px, #FAFAFA 10px, #FAFAFA 20px)',
-          border: '1px solid #EEEEEE',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: '#666666', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Photo Slot · 16:9</span>
-        </div>
-      )}
+      {/* Natural height, not a cropped slot: these are mostly posters whose
+          citation is printed in the image, and cropping cuts it off. */}
+      <div style={{ display: 'grid', gap: 10, margin: '0 20px' }}>
+        {entry.images.map((image) => (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img key={image.src} src={encodeURI(image.src)} alt={image.alt} loading="lazy" style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 6 }} />
+        ))}
+      </div>
 
       <div style={{ padding: '14px 20px', marginTop: 14 }}>
-        {/* "Placeholder — awaiting photo release from Lucena PIO" is an
-            internal workflow note; only a real caption is shown. */}
-        {entry.photoNote && !entry.photoNote.startsWith('Placeholder') && (
-          <p style={{ fontSize: 12, color: '#003DA5', marginBottom: 8 }}>{entry.photoNote}</p>
-        )}
+        <p style={{ fontSize: 12, color: '#003DA5', marginBottom: 8 }}>{entry.photoNote}</p>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingTop: 10, borderTop: '1px solid #EEEEEE' }}>
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: entry.verified ? '#22C55E' : '#F59E0B' }} />
           <span style={{ fontSize: 10, fontWeight: 700, color: '#666666', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{entry.verified ? 'Source verified' : 'Source pending confirmation'}</span>
@@ -222,7 +157,7 @@ function AwardCard({ entry }: { entry: AwardEntry }) {
 
 function AwardsTab() {
   const [filter, setFilter] = useState<AwardCategory | 'All'>('All');
-  const filtered = filter === 'All' ? PUBLISHABLE_AWARDS : PUBLISHABLE_AWARDS.filter((e) => e.category === filter);
+  const filtered = filter === 'All' ? AWARD_ENTRIES : AWARD_ENTRIES.filter((e) => e.category === filter);
 
   return (
     <div>

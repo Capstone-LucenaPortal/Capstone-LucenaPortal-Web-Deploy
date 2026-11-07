@@ -45,9 +45,26 @@ describe('About > Awards & Recognition', () => {
     expect(screen.queryByText(/Add verified details/)).toBeNull();
   });
 
-  it('counts only the recognitions a resident can see', () => {
+  it('lists only the awards that have a photo', () => {
     openAwards();
-    expect(stat('Recognitions')).toBe('10');
+    expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(5);
+    expect(screen.queryByText(/Photo Slot/)).toBeNull();
+  });
+
+  it('offers a filter only for categories that have an award', () => {
+    openAwards();
+    for (const empty of ['Anti-Drug', 'Environment', 'Health', 'Education']) {
+      expect(screen.queryByRole('button', { name: empty })).toBeNull();
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Leadership' }));
+    expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(2);
+  });
+
+  it('states figures that match the awards listed', () => {
+    openAwards();
+    expect(stat('Recognitions')).toBe('5');
+    expect(stat('Awarding Bodies')).toBe('3');
+    expect(stat('Years Covered')).toBe('2025–2026');
     expect(stat('Independently Verifiable')).toBe('3');
   });
 });
