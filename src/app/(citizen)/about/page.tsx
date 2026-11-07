@@ -78,7 +78,7 @@ interface AwardEntry {
   category: AwardCategory;
   photoNote: string;
   isStub?: boolean;
-  image?: string;
+  images?: { src: string; alt: string }[];
   verified?: boolean;
 }
 
@@ -114,32 +114,39 @@ const AWARD_ENTRIES: AwardEntry[] = [
     photoNote: 'Placeholder — awaiting photo release from Lucena PIO.',
   },
   {
-    agency: '–', year: '–', category: 'Governance', isStub: true,
-    title: 'Highly Urbanized City — recognition pending confirmation',
-    desc: 'A photo on file references a “Highly Urbanized City” recognition, but the awarding body, year, and specific achievement have not yet been confirmed. Add verified details from the City PIO.',
-    photoNote: 'Photo on file — awaiting written confirmation from Lucena PIO.',
-    image: '/Highly Urbanized City.jpg',
+    agency: 'Department of Finance', year: '–', category: 'Governance',
+    title: 'Top 10 Performing Cities',
+    desc:'Lucena City was named one of the Top 10 Performing Cities in Local Revenue Generation, awarded by the Department of Finance.',
+    photoNote: 'Photo: announcement of the recognition.',
+    images: [{ src: '/Top 10 performing cities.jpg', alt: 'Lucena City announced as one of the Top 10 Performing Cities in Local Revenue Generation' }],
   },
   {
-    agency: '–', year: '–', category: 'Governance', isStub: true,
-    title: 'Top 10 Performing Cities — recognition pending confirmation',
-    desc: 'A photo on file suggests Lucena was ranked among the “Top 10 Performing Cities” in some index or survey, but the awarding body, year, and ranking source have not yet been confirmed. Add verified details from the City PIO.',
-    photoNote: 'Photo on file — awaiting written confirmation from Lucena PIO.',
-    image: '/Top 10 performing cities.jpg',
-  },
-  {
-    agency: '–', year: '–', category: 'Health', isStub: true,
-    title: 'City Public Market — recognition pending confirmation',
-    desc: 'A photo on file indicates the Lucena Public Market received some form of recognition, but the awarding body, year, and specific citation have not yet been confirmed. Add verified details from the City PIO.',
-    photoNote: 'Photo on file — awaiting written confirmation from Lucena PIO.',
-    image: '/City public market recognized.jpg',
+    agency: '–', year: '2025', category: 'Governance',
+    title: 'City Public Market Recognized',
+    desc: 'The City Public Market Office was recognized as one of the best implementers of the Sa Lucena VIP Ka Program.',
+    photoNote: 'Photo: City Public Market Office at the recognition.',
+    images: [{ src: '/City public market recognized.jpg', alt: 'City Public Market Office staff recognized at the Sa Lucena VIP Ka Program' }],
   },
   {
     agency: 'Philippine Councilors League', year: '2026', category: 'Leadership', verified: true,
-    title: 'National Finalist — 2025 Local Legislative Awards (Highly Urbanized City Category)',
+    title: '2025 Local Legislative Award',
     desc: 'The Sangguniang Panlungsod was named a National Finalist in the Highly Urbanized City category at the Philippine Councilors League Congress — commended by the Quezon Provincial Board through Provincial Resolution 2026-173, received on the council’s behalf by Councilors Brizuela and Ona.',
     photoNote: 'Photo: council recognition at the Philippine Councilors League Congress.',
-    image: '/2025 Local legislative award.jpg',
+    images: [{ src: '/2025 Local legislative award.jpg', alt: 'Lucena City National Finalist plaque with the 20th Sangguniang Panlungsod' }],
+  },
+  {
+    agency: 'Philippine Councilors League', year: '2026', category: 'Leadership', verified: true,
+    title: 'Highly Urbanized City',
+    desc: 'Lucena City was named a National Finalist in the Highly Urbanized City (HUC) category at the 2025 Local Legislative Award National Recognition Ceremony, held at the World Trade Center, Pasay City on March 5, 2026.',
+    photoNote: 'Photo: National Recognition Ceremony announcement.',
+    images: [{ src: '/Highly Urbanized City.jpg', alt: 'City of Lucena National Finalist poster for the 2025 Local Legislative Award ceremony' }],
+  },
+  {
+    agency: 'GCash', year: '2026', category: 'Governance', verified: true,
+    title: 'GCash Award',
+    desc: 'The Lucena City Public Market received the Palengke Digital Breakthrough Growth Award at the 5th GCash Digital Excellence Awards, recognizing its move to digitally enabled operations for vendors and shoppers. The ceremony was held at the Grand Hyatt Manila on February 19, 2026.',
+    photoNote: 'Photo: Lucena City Public Market delegation at the awards.',
+    images: [{ src: '/gcash award.jpg', alt: 'Lucena City Public Market delegation on stage at the GCash Digital Excellence Awards' }],
   },
   {
     agency: '–', year: '–', category: 'Education', isStub: true,
@@ -149,11 +156,18 @@ const AWARD_ENTRIES: AwardEntry[] = [
   },
 ];
 
+// `isStub` entries are internal editorial notes, not content. They rendered
+// to the public as cards titled "— recognition pending confirmation" whose
+// body read "Add verified details from the City PIO" — an instruction to a
+// colleague, published on a government site. The rows stay in the file so the
+// PIO can complete and un-stub them; they simply do not render until then.
+const PUBLISHABLE_AWARDS = AWARD_ENTRIES.filter((e) => !e.isStub);
+
 const AWARD_STATS = [
-  { value: String(AWARD_ENTRIES.length), label: 'Recognitions' },
-  { value: '4', label: 'Awarding Bodies' },
+  { value: String(PUBLISHABLE_AWARDS.length), label: 'Recognitions' },
+  { value: '5', label: 'Awarding Bodies' },
   { value: '2017–2026', label: 'Years Covered' },
-  { value: '1', label: 'Independently Verifiable' },
+  { value: String(PUBLISHABLE_AWARDS.filter((e) => e.verified).length), label: 'Independently Verifiable' },
 ];
 
 function AwardCard({ entry }: { entry: AwardEntry }) {
@@ -169,10 +183,14 @@ function AwardCard({ entry }: { entry: AwardEntry }) {
         <p style={{ fontSize: 13, color: '#666666', lineHeight: 1.6 }}>{entry.desc}</p>
       </div>
 
-      {entry.image ? (
-        <div style={{ height: 140, margin: '0 20px', borderRadius: 6, overflow: 'hidden' }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={encodeURI(entry.image)} alt={entry.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+      {entry.images ? (
+        // Natural height, not a cropped slot: these are mostly posters whose
+        // citation is printed in the image, and cropping cuts it off.
+        <div style={{ display: 'grid', gap: 10, margin: '0 20px' }}>
+          {entry.images.map((image) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img key={image.src} src={encodeURI(image.src)} alt={image.alt} loading="lazy" style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 6 }} />
+          ))}
         </div>
       ) : (
         <div style={{
@@ -204,13 +222,7 @@ function AwardCard({ entry }: { entry: AwardEntry }) {
 
 function AwardsTab() {
   const [filter, setFilter] = useState<AwardCategory | 'All'>('All');
-  // `isStub` entries are internal editorial notes, not content. They rendered
-  // to the public as cards titled "— recognition pending confirmation" whose
-  // body read "Add verified details from the City PIO" — an instruction to a
-  // colleague, published on a government site. The rows stay in the file so the
-  // PIO can complete and un-stub them; they simply do not render until then.
-  const publishable = AWARD_ENTRIES.filter((e) => !e.isStub);
-  const filtered = filter === 'All' ? publishable : publishable.filter((e) => e.category === filter);
+  const filtered = filter === 'All' ? PUBLISHABLE_AWARDS : PUBLISHABLE_AWARDS.filter((e) => e.category === filter);
 
   return (
     <div>
