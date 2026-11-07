@@ -10,6 +10,7 @@ const row = (patch: Partial<AuditRow> = {}): AuditRow => ({
   occurred_at: "2026-08-12T02:15:00Z",
   actor_name: "Ramon Cruz",
   area: "configuration",
+  target_kind: "config",
   target_id: "booking_config",
   target_label: "Booking configuration",
   change: "Downpayment (%) 50 → 30",
@@ -114,6 +115,105 @@ describe("toEntry", () => {
       }),
     );
     expect(e?.references).toEqual([]);
+  });
+
+  describe("an export row's wording", () => {
+    // Before DB l105, export_yellow_card_applications wrote the plural whatever
+    // the count, and audit_log is append-only, so the slip is corrected on display.
+    const exportRow = (patch: Partial<AuditRow> = {}) =>
+      row({
+        area: "pii_access",
+        target_kind: "yellow_card_export",
+        target_id: null,
+        change: "Exported applicant list",
+        ...patch,
+      });
+
+    it('reads "1 applications" as "1 application"', () => {
+      expect(
+        toEntry(exportRow({ target_label: "1 applications" }))?.target,
+      ).toBe("1 application");
+    });
+
+    it('reads a detail ending ", 1 rows" as ", 1 row" and leaves the rest alone', () => {
+      expect(
+        toEntry(
+          exportRow({ detail: "status=all, 2026-07-31..2026-07-31, 1 rows" }),
+        )?.detail,
+      ).toBe("status=all, 2026-07-31..2026-07-31, 1 row");
+    });
+
+    it.each([
+      "0 applications",
+      "2 applications",
+      "11 applications",
+      "21 applications",
+    ])('leaves the label "%s" as stored', (label) => {
+      expect(toEntry(exportRow({ target_label: label }))?.target).toBe(label);
+    });
+
+    it.each([
+      "status=all, 2026-07-31..2026-07-31, 0 rows",
+      "status=all, 2026-07-31..2026-07-31, 2 rows",
+      "status=all, 2026-07-31..2026-07-31, 21 rows",
+      "status=all, 1 rows, 2026-07-31..2026-07-31",
+    ])('leaves the detail "%s" as stored', (detail) => {
+      expect(toEntry(exportRow({ detail }))?.detail).toBe(detail);
+    });
+
+    it("leaves a row of any other kind alone, even with the same words", () => {
+      const e = toEntry(
+        exportRow({
+          target_kind: "yellow_card_application",
+          target_label: "1 applications",
+          detail: "note, 1 rows",
+        }),
+      );
+      expect(e?.target).toBe("1 applications");
+      expect(e?.detail).toBe("note, 1 rows");
+    });
+
+    it("leaves a row with no kind alone", () => {
+      const e = toEntry(
+        exportRow({
+          target_kind: null,
+          target_label: "1 applications",
+          detail: "note, 1 rows",
+        }),
+      );
+      expect(e?.target).toBe("1 applications");
+      expect(e?.detail).toBe("note, 1 rows");
+    });
+
+    it("leaves text that is already right as it is", () => {
+      // DB l105 writes the singular at the source, so old and new rows sit side
+      // by side in the log.
+      const e = toEntry(
+        exportRow({
+          target_label: "1 application",
+          detail: "status=all, 2026-07-31..2026-07-31, 1 row",
+        }),
+      );
+      expect(e?.target).toBe("1 application");
+      expect(e?.detail).toBe("status=all, 2026-07-31..2026-07-31, 1 row");
+    });
+
+    it("keeps the fallbacks for a missing label and detail", () => {
+      const e = toEntry(exportRow({ target_label: null, detail: null }));
+      expect(e?.target).toBe("—");
+      expect(e?.detail).toBeUndefined();
+    });
+
+    it("keeps its references", () => {
+      const e = toEntry(
+        exportRow({
+          target_label: "1 applications",
+          detail: "status=all, 2026-07-31..2026-07-31, 1 rows",
+          changes: { count: 1, refs: ["YC-2026-000061"] },
+        }),
+      );
+      expect(e?.references).toEqual(["YC-2026-000061"]);
+    });
   });
 
   it("drops a row missing any of id, occurred_at or area", () => {

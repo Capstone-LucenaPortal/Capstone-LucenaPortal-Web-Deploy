@@ -1,3 +1,4 @@
+import type { Database } from "@/shared/supabase/types";
 import type { AuditArea, AuditEntry } from "../types";
 
 /**
@@ -11,6 +12,7 @@ export type AuditRow = {
   occurred_at: string | null;
   actor_name: string | null;
   area: AuditArea | null;
+  target_kind: Database["public"]["Enums"]["audit_target_kind"] | null;
   target_id: string | null;
   target_label: string | null;
   change: string | null;
@@ -30,6 +32,11 @@ export type AuditRow = {
  */
 export function toEntry(row: AuditRow): AuditEntry | null {
   if (!row.id || !row.occurred_at || !row.area) return null;
+  const isExport = row.target_kind === "yellow_card_export";
+  const label = isExport
+    ? singularExportLabel(row.target_label)
+    : row.target_label;
+  const detail = isExport ? singularExportDetail(row.detail) : row.detail;
   return {
     id: row.id,
     timestamp: row.occurred_at,
@@ -38,16 +45,31 @@ export function toEntry(row: AuditRow): AuditEntry | null {
     actor: row.actor_name ?? "System",
     area: row.area,
     change: row.change ?? "",
-    target: row.target_label ?? "—",
+    target: label ?? "—",
     // Histories match on this, never on the label: a rename must not orphan a
     // history, and a fabricated id would attach it to the wrong row.
     targetId: row.target_id,
-    detail: row.detail ?? undefined,
+    detail: detail ?? undefined,
     sessionId: row.session_id,
     ipAddress: typeof row.ip_address === "string" ? row.ip_address : null,
     userAgent: row.user_agent,
     references: exportedReferences(row.changes),
   };
+}
+
+/**
+ * Before DB l105, `export_yellow_card_applications` wrote the plural whatever
+ * the count. `audit_log` is append-only (DB l69), so those stored rows are
+ * corrected here, on display. The whole label is matched, so "11 applications"
+ * is safe, and a row written since l105 passes through.
+ */
+function singularExportLabel(label: string | null): string | null {
+  return label === "1 applications" ? "1 application" : label;
+}
+
+/** As above, for the row count that ends the detail: ", 21 rows" never matches. */
+function singularExportDetail(detail: string | null): string | null {
+  return detail?.replace(/, 1 rows$/, ", 1 row") ?? null;
 }
 
 /**
