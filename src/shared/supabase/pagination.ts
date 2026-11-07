@@ -47,8 +47,8 @@ export interface RangeableQuery<Row> {
  * `signal`, when given, is checked at the TOP of every loop iteration —
  * before the first page's request as well as every subsequent one. This is
  * what actually stops a cancelled fetch mid-pagination: `query` itself
- * should already carry the same signal via `.abortSignal()` (see
- * listIncidents/listApplications/listBookings), which cancels whichever
+ * should already carry the same signal via `.abortSignal()` (see Admin's
+ * listIncidents or Super-staff's listAuditEntries), which cancels whichever
  * single HTTP request is currently in flight, but that alone does not stop
  * this loop from immediately issuing the NEXT page's request the moment the
  * in-flight one settles — an aborted query still resolves (PostgREST's

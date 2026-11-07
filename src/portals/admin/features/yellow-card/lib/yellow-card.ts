@@ -1,6 +1,6 @@
 import { createClient } from "@/shared/supabase/client";
 import { toPortalError } from "@/portals/admin/lib/supabase/errors";
-import { fetchAllRows } from "@/portals/admin/lib/supabase/pagination";
+import { fetchAllRows } from "@/shared/supabase/pagination";
 import type { Database } from "@/shared/supabase/types";
 import type { YellowCardDateBasis } from "@/portals/admin/features/yellow-card/types";
 
@@ -50,7 +50,7 @@ export async function listApplications(signal?: AbortSignal): Promise<YellowCard
 
   // Page through the view rather than trusting a single request — PostgREST
   // silently caps an unpaginated `.select()` at 1000 rows (see
-  // src/portals/admin/lib/supabase/pagination.ts).
+  // src/shared/supabase/pagination.ts).
   const { data, error } = await fetchAllRows(query, signal);
 
   if (error) throw toPortalError(error);

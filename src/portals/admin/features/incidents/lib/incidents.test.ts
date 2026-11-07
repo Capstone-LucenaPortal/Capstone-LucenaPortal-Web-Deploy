@@ -73,7 +73,7 @@ describe("listIncidents", () => {
   });
 
   // fetchAllRows itself checks `signal.aborted` at the top of every page
-  // loop (see lib/supabase/pagination.test.ts for the paging-specific coverage)
+  // loop (see src/shared/supabase/pagination.test.ts for the paging-specific coverage)
   // — this pins that listIncidents actually threads the SAME signal object
   // through to fetchAllRows, not just onto the query builder, by proving an
   // already-aborted signal stops the fetch before any page request is even

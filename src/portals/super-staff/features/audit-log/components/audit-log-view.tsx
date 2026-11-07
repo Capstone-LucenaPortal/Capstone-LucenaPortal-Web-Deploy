@@ -30,13 +30,14 @@ export function AuditLogView() {
 
   // One unfiltered load drives stable tab counts; filtering is client-side. The
   // newest entry anchors the default 30-day window so an inbox that has been
-  // quiet for a while still opens on rows rather than on an empty range.
+  // quiet for a while still opens on rows rather than on an empty range. The load
+  // can take several requests, so leaving the page cancels the rest of them.
   useEffect(() => {
-    let active = true;
+    const controller = new AbortController();
     setLoading(true);
-    listAuditEntries()
+    listAuditEntries(controller.signal)
       .then((rows) => {
-        if (!active) return;
+        if (controller.signal.aborted) return;
         setAll(rows);
         const anchor =
           rows.length > 0 ? new Date(rows[0].timestamp) : new Date();
@@ -46,13 +47,11 @@ export function AuditLogView() {
         setLoading(false);
       })
       .catch((e: unknown) => {
-        if (!active) return;
+        if (controller.signal.aborted) return;
         setError(rpcErrorMessage(e, "Could not load the audit log."));
         setLoading(false);
       });
-    return () => {
-      active = false;
-    };
+    return () => controller.abort();
   }, []);
 
   const { fromIso, toIso } = useMemo(

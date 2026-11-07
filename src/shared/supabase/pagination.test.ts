@@ -1,4 +1,4 @@
-import { fetchAllRows } from "@/portals/admin/lib/supabase/pagination";
+import { fetchAllRows } from "@/shared/supabase/pagination";
 import { vi } from "vitest";
 
 function makeRows(count: number, startId: number): { id: number }[] {

@@ -1,3 +1,7 @@
+import {
+  fetchAllRows,
+  type RangeableQuery,
+} from "@/shared/supabase/pagination";
 import { RpcError, toRpcError } from "./errors";
 
 /**
@@ -15,7 +19,7 @@ import { RpcError, toRpcError } from "./errors";
  * standing between callers and a builder that already works.
  *
  * What IS still repeated in every caller is the unwrapping: check `error`,
- * classify it, decide what a missing payload means. That is what these two
+ * classify it, decide what a missing payload means. That is what these helpers
  * take, and all they take. The row type flows in from the builder untouched.
  */
 
@@ -36,6 +40,25 @@ type Result<T> = { data: T | null; error: DbErrorLike | null };
 export async function rows<T>(query: PromiseLike<Result<T[]>>): Promise<T[]> {
   const { data, error } = await query;
   if (error) throw toRpcError(error);
+  return data ?? [];
+}
+
+/**
+ * A list read that may pass PostgREST's 1,000-row cap, where `rows` would stop
+ * at the cap without saying so. Every page or an error, never the pages so far.
+ *
+ * Pages are read by offset, so give the query a stable order, and a fixed upper
+ * limit if the relation is being written to. `query` should carry `signal` too
+ * (see `fetchAllRows`). The cast: `fetchAllRows` types its error `unknown`
+ * because a cancelled load reports the abort reason rather than a PostgREST
+ * error. That classifies as `unexpected`, and nobody is left to read it anyway.
+ */
+export async function allRows<T>(
+  query: RangeableQuery<T>,
+  signal?: AbortSignal,
+): Promise<T[]> {
+  const { data, error } = await fetchAllRows(query, signal);
+  if (error) throw toRpcError(error as DbErrorLike);
   return data ?? [];
 }
 

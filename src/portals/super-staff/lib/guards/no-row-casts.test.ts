@@ -79,7 +79,7 @@ describe("no ad-hoc row casts under src/portals/super-staff/features", () => {
   it("has no cast to a hand-declared row type", () => {
     expect(
       offenders(ROW_CAST),
-      "Read the view through rows()/maybeRow()/singleRow() in @/lib/supabase/select " +
+      "Read the view through rows()/allRows()/maybeRow()/singleRow() in @/lib/supabase/select " +
         "instead. The typed client infers a view's row correctly since the " +
         "@supabase/ssr 0.12.4 upgrade, so a cast here asserts a shape nothing " +
         "checks — see PRD Q9.",

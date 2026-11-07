@@ -123,8 +123,8 @@ missing*.
 table declares — PostgREST cannot see a view's own guarantees. So a row arrives
 pessimistic and gets narrowed once, at the read:
 
-- `rows()` / `maybeRow()` / `singleRow()` in `lib/supabase/select` unwrap the
-  result. No feature module casts a row; a guard test enforces that.
+- `rows()` / `allRows()` / `maybeRow()` / `singleRow()` in `lib/supabase/select`
+  unwrap the result. No feature module casts a row; a guard test enforces that.
 - `requiredColumn()` turns a column the base table declares NOT NULL back into a
   value, and **throws rather than substituting** — §7.1 requires the portal
   "must not render a null as `0`".

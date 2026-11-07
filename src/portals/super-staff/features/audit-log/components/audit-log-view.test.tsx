@@ -10,7 +10,7 @@ import { AuditLogView } from "./audit-log-view";
 const listAuditEntries = vi.fn();
 
 vi.mock("../lib/queries", () => ({
-  listAuditEntries: () => listAuditEntries(),
+  listAuditEntries: (signal?: AbortSignal) => listAuditEntries(signal),
 }));
 
 const entry = (patch: Partial<AuditEntry> = {}): AuditEntry => ({
@@ -50,6 +50,30 @@ async function show(...entries: AuditEntry[]) {
 
 beforeEach(() => {
   listAuditEntries.mockReset();
+});
+
+describe("AuditLogView — the load", () => {
+  // listAuditEntries stops paging on this signal: see its own tests.
+  it("cancels the load when the page is left", () => {
+    listAuditEntries.mockReturnValue(new Promise(() => {}));
+    const { unmount } = render(<AuditLogView />);
+    const signal: AbortSignal = listAuditEntries.mock.calls[0][0];
+    expect(signal.aborted).toBe(false);
+
+    unmount();
+
+    expect(signal.aborted).toBe(true);
+  });
+
+  it("shows the load error when the load fails, and no results line", async () => {
+    listAuditEntries.mockRejectedValue(new Error("page 2 failed"));
+    render(<AuditLogView />);
+
+    expect(
+      await screen.findByText("Could not load the audit log."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/^Showing/)).not.toBeInTheDocument();
+  });
 });
 
 describe("AuditLogView — an export's references", () => {
