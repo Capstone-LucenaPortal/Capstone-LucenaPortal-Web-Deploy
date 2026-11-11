@@ -208,7 +208,7 @@ function sectionBody(key: SectionKey, { health, reachability, samples }: SystemH
           ["Job overdue", `no run in ${jt.job_overdue_factor}× its interval (warning)`],
           [
             "Run history",
-            `kept ${formatSeconds(jt.run_history_keep_seconds)} (warning when older runs remain)`,
+            `kept ${formatSeconds(jt.run_history_keep_seconds)} (warning after ${jt.job_overdue_factor} missed purges)`,
           ],
         ],
       };

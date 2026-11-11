@@ -117,11 +117,11 @@ export default function HomePage() {
           </div>
 
           {/* Navigation Arrows */}
-          <button onClick={() => setHeroSlide((heroSlide - 1 + heroSlides.length) % heroSlides.length)}
+          <button aria-label="Previous slide" onClick={() => setHeroSlide((heroSlide - 1 + heroSlides.length) % heroSlides.length)}
             style={{ position: 'absolute', left: 24, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.25)', border: 'none', color: 'white', width: 48, height: 48, borderRadius: 4, cursor: 'pointer', fontSize: 20, zIndex: 3 }}>
             ←
           </button>
-          <button onClick={() => setHeroSlide((heroSlide + 1) % heroSlides.length)}
+          <button aria-label="Next slide" onClick={() => setHeroSlide((heroSlide + 1) % heroSlides.length)}
             style={{ position: 'absolute', right: 24, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.25)', border: 'none', color: 'white', width: 48, height: 48, borderRadius: 4, cursor: 'pointer', fontSize: 20, zIndex: 3 }}>
             →
           </button>
@@ -129,7 +129,7 @@ export default function HomePage() {
           {/* Slide Indicators */}
           <div style={{ position: 'absolute', bottom: 76, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 8, zIndex: 3 }}>
             {heroSlides.map((_, i) => (
-              <button key={i} onClick={() => setHeroSlide(i)}
+              <button key={i} aria-label={`Go to slide ${i + 1} of ${heroSlides.length}`} aria-current={i === heroSlide ? 'true' : undefined} onClick={() => setHeroSlide(i)}
                 style={{ width: i === heroSlide ? 32 : 8, height: 8, background: i === heroSlide ? 'white' : 'rgba(255,255,255,0.5)', border: 'none', borderRadius: 999, cursor: 'pointer', transition: 'all 0.3s' }} />
             ))}
           </div>
@@ -254,18 +254,18 @@ export default function HomePage() {
             })}
           </div>
 
-          <button onClick={() => setLccSlide((lccSlide - 1 + lccSlides.length) % lccSlides.length)}
+          <button aria-label="Previous slide" onClick={() => setLccSlide((lccSlide - 1 + lccSlides.length) % lccSlides.length)}
             style={{ position: 'absolute', left: '12%', top: '50%', transform: 'translateY(-50%)', background: 'white', border: 'none', color: '#333333', width: 48, height: 48, borderRadius: '50%', cursor: 'pointer', fontSize: 20, zIndex: 3, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>
             ←
           </button>
-          <button onClick={() => setLccSlide((lccSlide + 1) % lccSlides.length)}
+          <button aria-label="Next slide" onClick={() => setLccSlide((lccSlide + 1) % lccSlides.length)}
             style={{ position: 'absolute', right: '12%', top: '50%', transform: 'translateY(-50%)', background: 'white', border: 'none', color: '#333333', width: 48, height: 48, borderRadius: '50%', cursor: 'pointer', fontSize: 20, zIndex: 3, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>
             →
           </button>
 
           <div style={{ position: 'absolute', bottom: -30, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 10 }}>
             {lccSlides.map((_, i) => (
-              <button key={i} onClick={() => setLccSlide(i)}
+              <button key={i} aria-label={`Go to slide ${i + 1} of ${lccSlides.length}`} aria-current={i === lccSlide ? 'true' : undefined} onClick={() => setLccSlide(i)}
                 style={{ width: i === lccSlide ? 32 : 8, height: 8, background: i === lccSlide ? '#003DA5' : '#DDDDDD', border: 'none', borderRadius: 999, cursor: 'pointer', transition: 'all 0.3s' }} />
             ))}
           </div>

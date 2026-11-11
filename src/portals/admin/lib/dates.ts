@@ -6,20 +6,18 @@ import { MANILA_TIME_ZONE } from "@/shared/dates/manila";
 // belongs here rather than inside any one feature slice.
 export type DateRangeKey = "Today" | "Week" | "Month" | "Quarter" | "Annual";
 
-// This is a Philippines deployment (UTC+8, no DST). `submitted_at` is
-// timestamptz, but export_yellow_card_applications(p_from date, p_to date)
-// compares it against `date` bounds, which Postgres casts to timestamptz
-// using the *session* timezone — UTC on this project. A date built from the
-// browser's (or server's) local getters therefore does not name a Manila
-// calendar day, and the RPC's `submitted_at >= p_from` silently clips the
-// first eight hours of every "day" (00:00-08:00 Manila = 16:00-23:59 UTC the
-// prior day). This is the same defect class fixed in the DB repo at l24's
-// public_venue_availability and, more directly on point, l31's
-// submit_booking / submit_downpayment — l31's migration header spells out
-// exactly this shift: a UTC session zone moves everything eight hours and
-// defeats the intended comparison. Both anchor to Asia/Manila instead of the
-// host/session zone; this does the same in TypeScript, since there is no
-// "at time zone" here — only Intl.DateTimeFormat.
+// This is a Philippines deployment (UTC+8, no DST). The bounds built here go
+// to export_yellow_card_applications(p_from date, p_to date), which reads each
+// one as a Manila calendar day: since DB l44 (kept by l88 for both date
+// bases) it bounds the range as `p_from::timestamp at time zone 'Asia/Manila'`
+// up to, but not including, the same for `p_to + 1`. So the dates must name
+// Manila days. A date built from the browser's (or server's) local getters
+// does not — on a host west of Manila, "today" would still be yesterday for
+// hours after Manila midnight (eight on a UTC host). The DB anchors to Asia/Manila with
+// "at time zone"; there is no such operator here, only Intl.DateTimeFormat.
+// (History: before l44 the RPC cast those `date` params to timestamptz in the
+// UTC session zone, clipping the first eight hours of every Manila day. That
+// is fixed; nothing on this side needs to compensate for it.)
 // en-CA's locale format is already YYYY-MM-DD, so formatting with it against
 // the Asia/Manila zone directly yields the ISO string for the Manila
 // calendar day containing `date` — no arithmetic needed for "today".
@@ -66,11 +64,6 @@ function manilaDayOfWeek(year: number, month: number, day: number): number {
 // is exactly the hole this function exists to close. What this function
 // guarantees is that every non-Custom preset resolves to real, non-null
 // bounds instead of silently falling through to "no filter."
-//
-// TODO: the "Custom" date-range path (see the page's customStart/customEnd
-// state) builds its bounds straight from the <input type="date"> values and
-// has the same UTC-session-cast exposure this function was built to close.
-// Out of scope for this fix; tracked separately.
 export function presetDateRange(
   preset: DateRangeKey,
   now: Date = new Date()

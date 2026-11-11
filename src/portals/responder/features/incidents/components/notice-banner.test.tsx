@@ -33,13 +33,14 @@ describe("NoticeBanner", () => {
   });
 
   it("explains a force-release in words a responder can act on", () => {
-    // The case that drove decision E3: a supervisor can take the ticket while
-    // it is being worked, and the next tap must not be a blank error page.
+    // The case that drove decision E3: a supervisor or an account change can
+    // take the ticket while it is being worked, and the next tap must not be a
+    // blank error page. Issue #105: the sentence names neither.
     render(<NoticeBanner code="force_released" />);
 
     expect(
       screen.getByText(
-        "A supervisor returned this ticket to the pool. It is back with your department.",
+        "This ticket was returned to the pool and is no longer yours.",
       ),
     ).toBeInTheDocument();
   });

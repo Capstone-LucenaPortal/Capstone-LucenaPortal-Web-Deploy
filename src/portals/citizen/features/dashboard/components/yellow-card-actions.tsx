@@ -11,12 +11,12 @@ interface Props {
 }
 
 /**
- * Statuses `withdraw_yellow_card_application` accepts. `resubmitted` is
- * included because a revision that has been sent back is still live and still
- * blocks a new application. The DB remains the authority; this only decides
- * whether to render a control at all.
+ * Statuses `withdraw_yellow_card_application` accepts: `pending` and
+ * `revision_requested`. `resubmitted` is live but excluded, because staff are
+ * actively holding it and the SLA is running against them. The DB remains the
+ * authority; this only decides whether to render a control at all.
  */
-const WITHDRAWABLE = new Set(['pending', 'resubmitted', 'revision_requested']);
+const WITHDRAWABLE = new Set(['pending', 'revision_requested']);
 
 /**
  * Withdraw a live application.

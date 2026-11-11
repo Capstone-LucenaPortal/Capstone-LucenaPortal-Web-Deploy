@@ -46,6 +46,18 @@ _Avoid_: app, frontend, repo (when meaning an audience's section)
 Anyone who holds a staff role — Staff, Super-staff, Responder or Admin — and so signs in to one of the four staff-side Portals. Each City employee belongs to exactly one of them. Residents are **Citizens**, never City employees.
 _Avoid_: staff (when meaning all four roles — **Staff** is only the Staff Portal's people), worker, user
 
+### Cycle
+
+**Cycle**:
+One pass of an incident to resolved. The first cycle runs from the report being filed, and only a **Reopen** starts the next one, back in the department pool; a responder's release or rejection is recorded in the cycle already under way. A new cycle starts over what a responder must do before resolving, while the incident's timeline keeps every cycle. The database numbers them in `cycle_number` on each event and photo, and the highest is the current one.
+_Avoid_: round, attempt
+
+### Reopen
+
+**Reopen**:
+The citizen's "not fixed" on a resolved report. Only the citizen who filed it can reopen it, giving a reason, and only while it is resolved: once they confirm the fix or it closes automatically, a new problem is a new report. A reopen sends the report back to its department's pool with no responder, so anyone there may claim it, starts a new **Cycle** and restarts the SLA clock. The database spells it `reopen_incident`, a `reopened` event and the incident's `reopened_count`.
+_Avoid_: release (that is a responder handing a ticket back, within the same cycle), dispute
+
 ### Monitoring
 
 **Monitoring** means two different things depending on the Portal. Since #72 (ADR 0008) Super-staff's old Monitoring screen is **System Health**:

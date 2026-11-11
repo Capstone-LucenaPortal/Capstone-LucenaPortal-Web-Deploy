@@ -1,6 +1,6 @@
 import type { Database } from "@/shared/supabase/types";
 import type { AccountFormValue } from "../components/account-form-fields";
-import type { Module, Role } from "../types";
+import type { Account, Module, Role } from "../types";
 
 /** The generated argument type for update_staff_account. Params with SQL
  *  defaults arrive here as optional-but-not-nullable, which is why the call
@@ -42,7 +42,27 @@ const trimmedOrNull = (value: string | undefined): string | null => {
   return trimmed ? trimmed : null;
 };
 
-export function toUpdateArgs(id: string, value: AccountFormValue): UpdateArgs {
+/** The account's role and modules as loaded, before any edit. Take them from
+ *  the loaded Account, never the form value, so flipping the role dropdown
+ *  away and back can't change what is sent. */
+export type StoredAccess = Pick<Account, "role" | "modules">;
+
+/** Staff: the ticked modules. Any other role keeps what it already holds,
+ *  unless the role is changing, which clears them (a move from Staff must
+ *  not leave modules behind). Sending [] for an unchanged non-staff role
+ *  would empty them silently, or, on your own account, trip
+ *  update_staff_account's own-modules guard (42501). See #107. */
+function modulesToSend(value: AccountFormValue, stored: StoredAccess): Module[] {
+  if (value.role === "Staff") return value.modules;
+  if (value.role === stored.role) return stored.modules;
+  return [];
+}
+
+export function toUpdateArgs(
+  id: string,
+  value: AccountFormValue,
+  stored: StoredAccess,
+): UpdateArgs {
   const isStaff = value.role === "Staff";
   const isResponder = value.role === "Responder";
 
@@ -50,7 +70,7 @@ export function toUpdateArgs(id: string, value: AccountFormValue): UpdateArgs {
     p_id: id,
     p_full_name: value.fullName.trim(),
     p_role: ROLE_CODE[value.role],
-    p_modules: isStaff ? value.modules.map((m) => MODULE_CODE[m]) : [],
+    p_modules: modulesToSend(value, stored).map((m) => MODULE_CODE[m]),
     p_department_code: isResponder ? trimmedOrNull(value.departmentCode) : null,
     p_phone: isResponder ? trimmedOrNull(value.phone) : null,
     p_employee_id: isResponder ? trimmedOrNull(value.employeeId) : null,

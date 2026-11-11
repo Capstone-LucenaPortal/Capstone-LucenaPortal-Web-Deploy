@@ -124,7 +124,7 @@ const EVENT_LABEL: Record<IncidentEventType, string> = {
   note: "Note",
   photo_added: "After photo added",
   released: "Released back to the pool",
-  force_released: "Returned to the pool by a supervisor",
+  force_released: "Returned to the pool",
   rejected: "Sent back to staff",
   resolved: "Resolved",
   confirmed: "Confirmed by the citizen",
@@ -137,11 +137,18 @@ const EVENT_LABEL: Record<IncidentEventType, string> = {
 /**
  * l97 writes `photo_added` for the citizen's before photo as well as the
  * responder's after photo (#57), so that one label depends on who added it.
+ *
+ * `force_released` too (#105): since l104 an account change that stops the
+ * holder working the report (deactivation, a move to another role or
+ * department) writes it as the system, so only a supervisor's row names one.
  */
 function eventLabel(event: IncidentEvent): string {
   if (!event.event_type) return "Updated";
   if (event.event_type === "photo_added" && event.actor_role === "citizen") {
     return "Photo added by the citizen";
+  }
+  if (event.event_type === "force_released" && event.actor_role === "supervisor") {
+    return "Returned to the pool by a supervisor";
   }
 
   return EVENT_LABEL[event.event_type];
@@ -156,7 +163,8 @@ function eventLabel(event: IncidentEvent): string {
  * existed on exactly one screen, for one person, and vanished on sign-out.
  *
  * `actor_name` comes from the row rather than from the session, so a supervisor's
- * force-release and a colleague's earlier work name the person who did it.
+ * force-release and a colleague's earlier work name the person who did it -- and
+ * a force-release an account change made names "System".
  *
  * Ordered by the query (created_at ascending). Chronological, oldest first: the
  * screen above it is a forward narrative ("Progress · tap as you go") and the

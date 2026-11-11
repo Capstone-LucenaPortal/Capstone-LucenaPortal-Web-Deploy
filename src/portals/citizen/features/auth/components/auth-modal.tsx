@@ -48,9 +48,9 @@ function AuthForm({ barangays }: { barangays: CatalogOption[] }) {
   const [showPassword, setShowPassword] = useState(false);
   const [formError, setFormError] = useState('');
   const [resetSending, setResetSending] = useState(false);
-  // Set once a sign-up succeeds but awaits email confirmation: the address the
-  // link went to. The form gives way to a "Check Your Email" panel (#65).
-  const [signupSentTo, setSignupSentTo] = useState<string | null>(null);
+  // Set once a sign-up comes back as awaiting email confirmation: the address
+  // the citizen submitted. The form gives way to a "Check Your Email" panel (#65).
+  const [signupSubmittedEmail, setSignupSubmittedEmail] = useState<string | null>(null);
 
   // Sign-up fields
   const [firstName, setFirstName] = useState('');
@@ -112,7 +112,7 @@ function AuthForm({ barangays }: { barangays: CatalogOption[] }) {
           worksInLucena: workingInLucena === 'yes',
           agreedToTerms: agreeTerms,
         });
-        if (outcome === 'confirm-email') setSignupSentTo(email);
+        if (outcome === 'confirm-email') setSignupSubmittedEmail(email);
       }
       setEmail(''); setPassword('');
     } catch (err) {
@@ -256,16 +256,23 @@ function AuthForm({ barangays }: { barangays: CatalogOption[] }) {
   // Sign Up, done but awaiting email confirmation. A success, so plain text and
   // no Create Account button. When it showed as an error under the filled
   // form, citizens submitted again.
-  if (signupSentTo !== null) {
+  //
+  // Supabase gives the same reply (no session, no error) for a new address, an
+  // earlier unconfirmed sign-up (link re-sent) and an existing account (nothing
+  // sent), to hide which addresses exist. So one wording has to be true of all
+  // three, and it must not be varied by reading the signUp reply (#86).
+  if (signupSubmittedEmail !== null) {
     return (
       <ModalShell labelledBy={headingId} onClose={closeAuthModal} panelClassName={modalClass} panelStyle={{ padding: 40, position: 'relative' }}>
         <ModalCloseButton onClose={closeAuthModal} />
         <h2 id={headingId} className="text-[28px] font-bold text-lucena-blue" style={{ marginBottom: 24 }}>Check Your Email</h2>
         <p className="text-sm text-dark-gray leading-relaxed" style={{ marginBottom: 24 }}>
-          Your account was created. We sent a confirmation link to <strong>{signupSentTo}</strong>.
+          If <strong>{signupSubmittedEmail}</strong> can be used for a new account, we&apos;ve sent a confirmation link to it.
           Open it to confirm your email address, then sign in.
+          Already have an account? Sign in, or reset your password.
         </p>
-        <Button type="button" variant="ghost" onClick={() => setMode('login')} className="w-full text-lucena-blue">Back to Sign In</Button>
+        <Button type="button" variant="ghost" onClick={() => setMode('login')} className="w-full text-lucena-blue" style={{ marginBottom: 12 }}>Sign In</Button>
+        <Button type="button" variant="ghost" onClick={() => setMode('forgot')} className="w-full text-lucena-blue">Forgot Password?</Button>
       </ModalShell>
     );
   }

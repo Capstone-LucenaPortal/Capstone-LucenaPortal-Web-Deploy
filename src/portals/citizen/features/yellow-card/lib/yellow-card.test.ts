@@ -454,7 +454,7 @@ describe('computeAgeError', () => {
 describe('translateSubmitError', () => {
   it('prefers the errcode over message text when both are present', () => {
     expect(translateSubmitError('duplicate key value violates unique constraint', '23505')).toBe(
-      'You already have an active Yellow Card application. Withdraw it from your dashboard before applying again.',
+      'You already have a Yellow Card application. Check its status on your dashboard. You can withdraw it there while it is still pending or waiting on your changes.',
     );
   });
 
@@ -472,7 +472,7 @@ describe('translateSubmitError', () => {
       'You must accept the Data Privacy consent to proceed.',
     );
     expect(translateSubmitError('you already have a live application')).toBe(
-      'You already have an active Yellow Card application. Withdraw it from your dashboard before applying again.',
+      'You already have a Yellow Card application. Check its status on your dashboard. You can withdraw it there while it is still pending or waiting on your changes.',
     );
   });
 

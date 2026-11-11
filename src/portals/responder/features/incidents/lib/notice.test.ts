@@ -6,6 +6,11 @@ describe("noticeFor", () => {
     expect(
       noticeFor({ message: "release_incident: INC-1 is not your ticket" }),
     ).toBe("force_released");
+    expect(
+      noticeFor({
+        message: "advance_incident_stage: INC-2026-000106 is not your ticket",
+      }),
+    ).toBe("force_released");
   });
 
   it("maps the photo-cap violation to its own code", () => {
@@ -15,6 +20,25 @@ describe("noticeFor", () => {
           "request_incident_photo_upload: already 3 after photos this cycle (limit 3)",
       }),
     ).toBe("photo_limit");
+  });
+
+  // Issue #106: a stale pool card after a reroute or a reject. claim_incident
+  // checks the department before the status, so these never reach "not in the
+  // pool" on their own -- and `none` is what a reject leaves behind.
+  it("maps a claim on a report in another department to gone", () => {
+    expect(
+      noticeFor({
+        message: "claim_incident: INC-1 belongs to department ENG, not yours",
+      }),
+    ).toBe("gone");
+  });
+
+  it("maps a claim on a rejected report, department none, to gone", () => {
+    expect(
+      noticeFor({
+        message: "claim_incident: INC-1 belongs to department none, not yours",
+      }),
+    ).toBe("gone");
   });
 
   it("RE-THROWS anything it does not recognise", () => {
@@ -65,6 +89,15 @@ describe("noticeText", () => {
 
   it("returns the sentence for a known code", () => {
     expect(noticeText("gone")).toBe(NOTICES.gone);
+  });
+
+  it("says a taken-back ticket is no longer yours, naming no actor or department", () => {
+    // Issue #105: an account change releases a ticket too, and a responder moved
+    // to another department is told about their OLD one, so the sentence can
+    // name neither a supervisor nor "your department".
+    expect(noticeText("force_released")).toBe(
+      "This ticket was returned to the pool and is no longer yours.",
+    );
   });
 
   it("says the photo is too big, not that the upload failed (issue #66)", () => {

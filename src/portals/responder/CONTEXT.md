@@ -21,3 +21,11 @@ _Avoid_: Alerts
 A notification shown by the phone itself, outside the app, when a verified incident enters the
 department's pool. Sent only to on-duty responders who turned alerts on for that device.
 _Avoid_: Push (in UI copy), notification (that is the Inbox entry)
+
+**New cycle**:
+A reopened ticket comes back to the pool as a new cycle; **Cycle** and **Reopen** are defined in
+[`CONTEXT-MAP.md`](../../../CONTEXT-MAP.md). On My ticket a new cycle starts the stages, the
+after-photo cap and Resolve readiness over: the stages may be tapped again from the first, the cap
+counts only this cycle's photos, and Resolve waits for an after photo attached this cycle. The
+timeline carries every cycle across, and earlier cycles' after photos are hidden, not greyed out.
+_Avoid_: round, attempt

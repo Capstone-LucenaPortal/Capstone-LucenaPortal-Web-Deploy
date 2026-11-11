@@ -26,6 +26,7 @@ const entry = (patch: Partial<AuditEntry> = {}): AuditEntry => ({
   ipAddress: null,
   userAgent: null,
   references: [],
+  releasedReport: null,
   ...patch,
 });
 
@@ -119,5 +120,57 @@ describe("AuditLogView — an export's references", () => {
   it("leaves an entry with no detail, context or references unexpandable", async () => {
     await show(entry());
     expect(screen.queryByText("▸")).not.toBeInTheDocument();
+  });
+
+  it("does not list an export's references as a released report", async () => {
+    await show(exported);
+    await userEvent.click(screen.getByText("Exported applicant list"));
+
+    expect(
+      screen.queryByText("Report returned to the pool"),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("AuditLogView — a report an account change released", () => {
+  const deactivated = entry({
+    id: "deact",
+    area: "accounts",
+    change: "Deactivated account",
+    target: "juan.delacruz@lucenacity.gov.ph",
+    targetId: "22222222-2222-2222-2222-222222222222",
+    detail: "Transferred to another office",
+    releasedReport: "INC-2026-000042",
+  });
+
+  it("shows the released report on its own labelled line, and no References block", async () => {
+    await show(deactivated);
+    await userEvent.click(screen.getByText("Deactivated account"));
+
+    const line = screen.getByText("Report returned to the pool").parentElement!;
+    expect(within(line).getByText("INC-2026-000042")).toBeInTheDocument();
+    expect(
+      screen.getByText("Transferred to another office"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("References")).not.toBeInTheDocument();
+  });
+
+  it("makes an entry expandable on its released report alone", async () => {
+    await show({ ...deactivated, detail: undefined });
+    await userEvent.click(screen.getByText("Deactivated account"));
+
+    expect(screen.getByText("INC-2026-000042")).toBeInTheDocument();
+  });
+
+  it("shows no released-report line on an account entry that released nothing", async () => {
+    await show({ ...deactivated, releasedReport: null });
+    await userEvent.click(screen.getByText("Deactivated account"));
+
+    expect(
+      screen.getByText("Transferred to another office"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Report returned to the pool"),
+    ).not.toBeInTheDocument();
   });
 });

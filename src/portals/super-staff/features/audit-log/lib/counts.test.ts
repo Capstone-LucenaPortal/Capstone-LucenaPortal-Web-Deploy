@@ -14,6 +14,7 @@ const mk = (area: AuditArea): AuditEntry => ({
   ipAddress: null,
   userAgent: null,
   references: [],
+  releasedReport: null,
 });
 
 describe("computeAreaCounts", () => {
@@ -62,6 +63,7 @@ describe("computeAreaCounts", () => {
         ipAddress: null,
         userAgent: null,
         references: [],
+        releasedReport: null,
       },
     ]);
     expect(counts.all).toBe(1);

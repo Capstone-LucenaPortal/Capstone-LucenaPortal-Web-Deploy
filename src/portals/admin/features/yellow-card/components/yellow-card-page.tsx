@@ -256,11 +256,6 @@ export function YellowCardPage() {
     // currently no "All time" pseudo-preset, so this covers every value
     // DateFilterBar can produce; if one is ever added, it is the only case
     // that may send nulls.
-    // TODO: Custom's from/to are the raw <input type="date"> strings, sent
-    // straight to the same RPC whose `date` params get cast to timestamptz in
-    // the UTC session zone (see presetDateRange's header in src/portals/admin/lib/dates.ts).
-    // Out of scope here — predates this branch and was explicitly scoped out
-    // — but it shares the defect.
     const { from, to } = dateRange;
 
     // Named presets are well-formed by construction (presetDateRange); the

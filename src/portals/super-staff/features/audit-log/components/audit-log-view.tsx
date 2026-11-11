@@ -171,8 +171,12 @@ export function AuditLogView() {
               rows.map((e) => {
                 const context = forensicContext(e);
                 const hasReferences = e.references.length > 0;
+                const hasReleasedReport = e.releasedReport !== null;
                 const expandable =
-                  Boolean(e.detail) || context.length > 0 || hasReferences;
+                  Boolean(e.detail) ||
+                  context.length > 0 ||
+                  hasReferences ||
+                  hasReleasedReport;
                 const isOpen = expandedId === e.id;
                 return (
                   <Fragment key={e.id}>
@@ -207,10 +211,28 @@ export function AuditLogView() {
                           className="px-4 py-3 text-sm text-gray-600"
                         >
                           {e.detail && <p>{e.detail}</p>}
+                          {/* The one report an account change (DB l104) sent
+                              back to the department's pool. Not a References
+                              block: that is an export's list of applicants. */}
+                          {hasReleasedReport && (
+                            <p className={cn("text-xs", e.detail && "mt-2")}>
+                              <span className="text-gray-500">
+                                Report returned to the pool
+                              </span>{" "}
+                              <span className="font-mono text-gray-700">
+                                {e.releasedReport}
+                              </span>
+                            </p>
+                          )}
                           {/* Every reference an export released, uncapped:
                               the auditor needs the whole list, not a count. */}
                           {hasReferences && (
-                            <div className={cn("text-xs", e.detail && "mt-2")}>
+                            <div
+                              className={cn(
+                                "text-xs",
+                                (e.detail || hasReleasedReport) && "mt-2",
+                              )}
+                            >
                               <p className="text-gray-500">References</p>
                               <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-mono text-gray-700">
                                 {e.references.map((ref, i) => (
@@ -223,7 +245,8 @@ export function AuditLogView() {
                             <dl
                               className={cn(
                                 "grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-xs",
-                                (e.detail || hasReferences) && "mt-2",
+                                (e.detail || hasReferences || hasReleasedReport) &&
+                                  "mt-2",
                               )}
                             >
                               {context.map((f) => (

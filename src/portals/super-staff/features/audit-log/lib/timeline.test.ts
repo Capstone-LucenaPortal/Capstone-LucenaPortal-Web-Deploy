@@ -15,6 +15,7 @@ const entry = (patch: Partial<AuditEntry> = {}): AuditEntry => ({
   ipAddress: null,
   userAgent: null,
   references: [],
+  releasedReport: null,
   ...patch,
 });
 
@@ -39,6 +40,21 @@ describe("toTimelineItem", () => {
 
   it("treats an empty detail as no detail", () => {
     expect(toTimelineItem(entry({ detail: "" })).summary).toBe("Published");
+  });
+
+  it("names the report an account change returned to the pool", () => {
+    const released = entry({
+      area: "accounts",
+      change: "Deactivated account",
+      detail: "Transferred to another office",
+      releasedReport: "INC-2026-000042",
+    });
+    expect(toTimelineItem(released).summary).toBe(
+      "Deactivated account — Transferred to another office · Report INC-2026-000042 returned to the pool",
+    );
+    expect(
+      toTimelineItem({ ...released, detail: undefined }).summary,
+    ).toBe("Deactivated account · Report INC-2026-000042 returned to the pool");
   });
 
   it("maps a list in order", () => {

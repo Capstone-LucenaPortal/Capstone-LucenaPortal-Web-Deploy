@@ -15,6 +15,7 @@ const rows: AuditEntry[] = [
     ipAddress: null,
     userAgent: null,
     references: [],
+    releasedReport: null,
   },
   {
     id: "aud-0002",
@@ -28,6 +29,7 @@ const rows: AuditEntry[] = [
     ipAddress: null,
     userAgent: null,
     references: [],
+    releasedReport: null,
   },
   {
     id: "aud-0004",
@@ -41,6 +43,7 @@ const rows: AuditEntry[] = [
     ipAddress: null,
     userAgent: null,
     references: [],
+    releasedReport: null,
   },
 ];
 

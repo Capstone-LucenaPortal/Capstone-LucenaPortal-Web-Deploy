@@ -41,4 +41,9 @@ export type AuditEntry = {
    *  in the order stored (`changes.refs`, written since DB l18). Empty for
    *  every other entry, and for an export of zero rows. */
   references: string[];
+  /** The Reference Number of the report an account change returned to its
+   *  department's pool (`changes.report_released`, written since DB l104 by
+   *  deactivating a Responder or moving them off the role or department).
+   *  Null for every other entry, and for every entry written before l104. */
+  releasedReport: string | null;
 };

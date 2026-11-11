@@ -107,7 +107,8 @@ describe("historyToShow", () => {
   });
 
   it("keeps a null-outcome row that is not the held ticket", () => {
-    // A supervisor's take-back: the work done on it still counts (story 48).
+    // A take-back, by a supervisor or an account change: the work done on it
+    // still counts (story 48).
     const takenBack = { ...held, id: "taken-back" };
     expect(historyToShow([takenBack, onTime], null)).toEqual([takenBack, onTime]);
   });

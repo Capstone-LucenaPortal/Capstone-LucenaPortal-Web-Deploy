@@ -1,4 +1,7 @@
 import type { TimelineItem } from "@/portals/super-staff/components/ui/history-timeline";
+import { releasedReport } from "@/portals/super-staff/features/audit-log/lib/entry";
+import { listAuditEntriesForTarget } from "@/portals/super-staff/features/audit-log/lib/queries";
+import { toTimelineItems } from "@/portals/super-staff/features/audit-log/lib/timeline";
 import { createClient } from "@/shared/supabase/client";
 import type { Account } from "../types";
 import { toAccountRow } from "./account-row";
@@ -52,19 +55,34 @@ export async function countActiveSuperStaff(): Promise<number> {
  * target_id, not on the display name — a rename must not orphan the history.
  */
 export async function getAccountHistory(id: string): Promise<TimelineItem[]> {
-  const { data, error } = await createClient()
-    .from("super_audit_log")
-    .select("id, occurred_at, actor_name, change, detail")
-    .eq("target_id", id)
-    .order("occurred_at", { ascending: false });
+  // How an entry reads in a history is audit-log's to say (CONTEXT.md), so
+  // this takes the same path as the content editors' histories.
+  return toTimelineItems(await listAuditEntriesForTarget(id));
+}
 
-  if (error) throw new Error(error.message);
-  return (data ?? [])
-    .filter((e) => e.id && e.occurred_at)
-    .map((e) => ({
-      id: e.id!,
-      timestamp: e.occurred_at!,
-      summary: e.detail ? `${e.change ?? ""} — ${e.detail}` : (e.change ?? ""),
-      actor: e.actor_name ?? "System",
-    }));
+/**
+ * The report the account's newest audit entry returned to the pool, if any.
+ * Read straight after `set_staff_account_status` or `update_staff_account`
+ * succeeds: each writes exactly one audit row for the account, and returns
+ * only the `staff_accounts` row, so that entry is the one place the Reference
+ * Number is. The change has already happened by then, so a failed read is
+ * reported as no release, never as an error.
+ */
+export async function newestReleasedReport(
+  id: string,
+): Promise<string | null> {
+  try {
+    const { data, error } = await createClient()
+      .from("super_audit_log")
+      .select("changes")
+      .eq("target_id", id)
+      .order("occurred_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) return null;
+    return releasedReport(data?.changes);
+  } catch {
+    return null;
+  }
 }

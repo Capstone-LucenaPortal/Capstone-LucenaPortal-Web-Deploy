@@ -47,6 +47,10 @@ function YellowCardContent() {
 
   const [checkingExisting, setCheckingExisting] = useState(true);
   const [liveNotice, setLiveNotice] = useState<LiveApplicationNotice | null>(null);
+  // Why the applications read failed. Set, it stands in for both the notice and
+  // the form: "couldn't check" must not look like "nothing to check".
+  const [checkError, setCheckError] = useState('');
+  const [checkAttempt, setCheckAttempt] = useState(0);
 
   const [genders, setGenders] = useState<CatalogOption[]>([]);
   const [civilStatuses, setCivilStatuses] = useState<CatalogOption[]>([]);
@@ -77,8 +81,12 @@ function YellowCardContent() {
 
   useEffect(() => {
     (async () => {
+      let failure = '';
       const [applications, cards, g, c, b, cfg, docs] = await Promise.all([
-        yellowCardService.getMyApplications().catch(() => []),
+        yellowCardService.getMyApplications().catch((err: unknown) => {
+          failure = (err instanceof Error && err.message) || 'Could not load your Yellow Card information right now. Please try again later.';
+          return null;
+        }),
         yellowCardService.getMyCards().catch(() => []),
         catalogService.getGenders().catch(() => []),
         catalogService.getCivilStatuses().catch(() => []),
@@ -86,7 +94,8 @@ function YellowCardContent() {
         catalogService.getYellowCardConfig().catch(() => null),
         catalogService.getYellowCardDocumentTypes().catch(() => []),
       ]);
-      setLiveNotice(liveApplicationNotice(applications, cards));
+      setCheckError(failure);
+      setLiveNotice(applications ? liveApplicationNotice(applications, cards) : null);
       setGenders(g);
       setCivilStatuses(c);
       setBarangays(b);
@@ -94,7 +103,15 @@ function YellowCardContent() {
       setDocumentTypes(docs);
       setCheckingExisting(false);
     })();
-  }, []);
+  }, [checkAttempt]);
+
+  // Re-runs the whole load: an outage that failed this read probably failed the
+  // catalogs too, and the form would otherwise open with empty dropdowns.
+  const handleRetryCheck = () => {
+    setCheckError('');
+    setCheckingExisting(true);
+    setCheckAttempt((attempt) => attempt + 1);
+  };
 
   useEffect(() => {
     setEligibilityError(computeAgeError(formData.dateOfBirth) ?? '');
@@ -205,6 +222,22 @@ function YellowCardContent() {
     return (
       <section style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 1000, margin: '0 auto', textAlign: 'center' }}>
         <p style={{ fontSize: 15, color: '#666666' }}>Checking your application status…</p>
+      </section>
+    );
+  }
+
+  if (checkError) {
+    return (
+      <section style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 1000, margin: '0 auto', textAlign: 'center' }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
+        <h1 style={{ fontSize: 'clamp(24px, 5vw, 32px)', fontWeight: 700, color: '#003DA5', marginBottom: 12 }}>
+          We couldn&#39;t check your application
+        </h1>
+        <p role="alert" style={{ fontSize: 15, color: '#666666', marginBottom: 24 }}>{checkError}</p>
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <Button variant="primary" onClick={handleRetryCheck}>Try again</Button>
+          <Button variant="ghost" onClick={() => router.push('/dashboard')}>Go to Dashboard</Button>
+        </div>
       </section>
     );
   }

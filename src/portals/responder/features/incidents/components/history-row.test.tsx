@@ -74,10 +74,11 @@ describe("HistoryRow", () => {
     expect(screen.queryByText(/to spare|over$/)).not.toBeInTheDocument();
   });
 
-  it("labels a ticket a supervisor took back, without an SLA verdict", () => {
-    // force_released is written with the supervisor as the actor, so the
-    // responder has no outcome event of their own. The held ticket is left out
-    // of the list upstream, which is what makes a null outcome mean this.
+  it("labels a ticket that was taken back, without an SLA verdict", () => {
+    // force_released is written with the supervisor or, for an account change,
+    // the system as the actor, so the responder has no outcome event of their
+    // own. The held ticket is left out of the list upstream, which is what
+    // makes a null outcome mean this.
     render(
       <HistoryRow
         row={aHistoryRow({

@@ -37,7 +37,43 @@ describe("toEntry", () => {
       ipAddress: null,
       userAgent: null,
       references: [],
+      releasedReport: null,
     });
+  });
+
+  it("carries the report an account change returned to the pool", () => {
+    // DB l104: deactivating a Responder, or moving them off the role or to
+    // another department, releases the report they hold and records its
+    // Reference Number in changes.report_released.
+    const e = toEntry(
+      row({
+        area: "accounts",
+        target_kind: "staff_account",
+        change: "Deactivated account",
+        changes: {
+          status: { from: "active", to: "inactive" },
+          report_released: "INC-2026-000042",
+        },
+      }),
+    );
+    expect(e?.releasedReport).toBe("INC-2026-000042");
+    expect(e?.references).toEqual([]);
+  });
+
+  it("reads a missing or malformed report_released as no released report", () => {
+    expect(toEntry(row({ changes: null }))?.releasedReport).toBeNull();
+    expect(
+      toEntry(row({ changes: { status: { from: "active", to: "inactive" } } }))
+        ?.releasedReport,
+    ).toBeNull();
+    expect(toEntry(row({ changes: { report_released: null } }))?.releasedReport).toBeNull();
+    expect(toEntry(row({ changes: { report_released: 42 } }))?.releasedReport).toBeNull();
+    expect(
+      toEntry(row({ changes: { report_released: ["INC-2026-000042"] } }))
+        ?.releasedReport,
+    ).toBeNull();
+    expect(toEntry(row({ changes: { report_released: "" } }))?.releasedReport).toBeNull();
+    expect(toEntry(row({ changes: ["INC-2026-000042"] }))?.releasedReport).toBeNull();
   });
 
   it("attributes an actorless entry to System — the RPCs write some unattended", () => {

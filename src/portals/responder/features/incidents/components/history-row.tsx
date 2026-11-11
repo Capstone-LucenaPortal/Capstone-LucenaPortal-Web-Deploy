@@ -31,11 +31,12 @@ const OUTCOME: Partial<
 };
 
 /**
- * The fourth way a responder's involvement ends: a supervisor took the ticket
- * back. force_released is written with the supervisor as the actor, so it
- * leaves the responder no outcome of their own. A null outcome can only mean
- * this once the held ticket is left out of the list (`historyToShow`), since
- * refuse_incident won't refuse a ticket someone holds.
+ * The fourth way a responder's involvement ends: a supervisor or an account
+ * change took the ticket back. force_released is written with the supervisor
+ * or the system as the actor, so it leaves the responder no outcome of their
+ * own. A null outcome can only mean this once the held ticket is left out of
+ * the list (`historyToShow`), since refuse_incident won't refuse a ticket
+ * someone holds.
  */
 const TAKEN_BACK = "Taken back";
 

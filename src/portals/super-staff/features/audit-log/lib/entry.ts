@@ -54,6 +54,7 @@ export function toEntry(row: AuditRow): AuditEntry | null {
     ipAddress: typeof row.ip_address === "string" ? row.ip_address : null,
     userAgent: row.user_agent,
     references: exportedReferences(row.changes),
+    releasedReport: releasedReport(row.changes),
   };
 }
 
@@ -85,6 +86,27 @@ function exportedReferences(changes: unknown): string[] {
   return Array.isArray(refs) && refs.every((r) => typeof r === "string")
     ? refs
     : [];
+}
+
+/**
+ * `changes.report_released` as `set_staff_account_status` and
+ * `update_staff_account` write it since DB l104: the Reference Number of the
+ * report the change returned to the department's pool. The functions strip
+ * nulls, so the key is absent when nothing was released. Any value that is not
+ * a non-empty string reads as none. The account screens read audit rows
+ * themselves, so they share this.
+ */
+export function releasedReport(changes: unknown): string | null {
+  if (
+    typeof changes !== "object" ||
+    changes === null ||
+    !("report_released" in changes)
+  )
+    return null;
+  const { report_released } = changes;
+  return typeof report_released === "string" && report_released !== ""
+    ? report_released
+    : null;
 }
 
 /**

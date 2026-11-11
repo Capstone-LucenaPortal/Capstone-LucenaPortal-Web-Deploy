@@ -22,6 +22,10 @@ import {
   getPhotoUrl,
   getPool,
 } from "@/portals/responder/features/incidents/lib/data";
+import {
+  noticeText,
+  type NoticeCode,
+} from "@/portals/responder/features/incidents/lib/notice";
 import { cn } from "@/portals/responder/lib/utils";
 
 export const metadata = { title: "Pool · LucenaPortal Responder" };
@@ -67,6 +71,16 @@ export default async function PoolPage({
   // all — looking either up in the list would 404 both.
   const selected = report ? await getIncident(report) : null;
 
+  // Issue #106: asked for, but out of my department's scope -- rerouted or
+  // rejected since the link (usually a Phone alert) was made. That has to read
+  // differently from "nothing asked for", and it has to read at phone width,
+  // where the detail pane is hidden while nothing is selected -- so it is the
+  // list's notice banner, not the pane's empty state. A notice the URL already
+  // carries wins, so the responder never gets two banners.
+  const missing = report && !selected ? report : null;
+  let bannerCode = notice;
+  if (missing && !noticeText(notice)) bannerCode = "gone" satisfies NoticeCode;
+
   // The citizen's evidence, BEFORE claiming. This is the whole point of l56c:
   // responder_incident_photos admits an incident in my department even when I
   // have no event on it, so a responder can judge whether a job is theirs
@@ -102,7 +116,11 @@ export default async function PoolPage({
           </div>
         </div>
 
-        <NoticeBanner code={notice} />
+        <NoticeBanner code={bannerCode} />
+        {/* The arrival is the caller's OWN my_notifications row, so it can be
+            marked read without the report being visible. A malformed id
+            throws, and MarkArrivalRead swallows that. */}
+        {missing && <MarkArrivalRead incidentId={missing} />}
         {held?.reference_number && (
           <ActiveClaimBanner heldRef={held.reference_number} />
         )}

@@ -26,8 +26,10 @@
  * present and is safe to surface verbatim.
  */
 export const NOTICES = {
-  force_released:
-    "A supervisor returned this ticket to the pool. It is back with your department.",
+  // Issue #105: names no actor and no department. A supervisor or an account
+  // change can take a ticket back, and a responder moved to another department
+  // still reaches this, about a ticket that went back to their OLD one.
+  force_released: "This ticket was returned to the pool and is no longer yours.",
   gone: "That report is no longer in the pool.",
   blocked:
     "You are already holding {ref}. Finish or hand it back before claiming another.",
@@ -118,16 +120,25 @@ export function noticeText(
 /**
  * The one place a Postgres error becomes a code. Throws for anything unlisted.
  *
- * The ownership case is the one that drives the design: a supervisor can
- * force-release a ticket while a responder is working it, and the next stage tap
- * then fails on ownership. That must read as "a supervisor returned this ticket
- * to the pool", not as a blank error page mid-shift.
+ * The ownership case is the one that drives the design: a supervisor, or an
+ * account change, can force-release a ticket while a responder is working it,
+ * and the next stage tap then fails on ownership. Of the account changes only a
+ * move to another department leaves the responder able to tap at all. That must
+ * read as "this ticket was returned to the pool", not as a blank error page
+ * mid-shift.
  */
 export function noticeFor(error: { message?: string } | null): NoticeCode {
   const message = error?.message ?? "";
 
   if (/is not your ticket/.test(message)) return "force_released";
   if (/no incident |not in progress|too late to/.test(message)) return "gone";
+  // Issue #106: a stale pool card after a reroute or a reject (department
+  // `none`). claim_incident checks the department before the status. Also hit
+  // by a reroute INTO the caller's department just before the claim's read,
+  // where the sentence is slightly off -- accepted, because the pool it lands
+  // on then shows the report. Pinned to claim_incident so the same words from
+  // any other RPC still re-throw.
+  if (/claim_incident: .* belongs to department/.test(message)) return "gone";
   if (/needs at least one confirmed after photo/.test(message))
     return "needs_photo";
   if (/photos this cycle \(limit/.test(message)) return "photo_limit";

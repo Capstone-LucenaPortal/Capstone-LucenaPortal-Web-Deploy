@@ -336,6 +336,14 @@ export class YellowCardSubmitError extends Error {
 }
 
 /**
+ * The error doesn't say which status the existing application is in, so this
+ * has to hold for every live status. `withdraw_yellow_card_application` only
+ * accepts `pending` and `revision_requested`, so it can't promise a withdrawal.
+ */
+const DUPLICATE_APPLICATION_MESSAGE =
+  'You already have a Yellow Card application. Check its status on your dashboard. You can withdraw it there while it is still pending or waiting on your changes.';
+
+/**
  * Pure: a `submit_yellow_card_application` errcode/message -> a sentence
  * written for a citizen.
  *
@@ -347,10 +355,7 @@ export class YellowCardSubmitError extends Error {
  */
 export function translateSubmitError(message: string, code?: string): string {
   if (code === '23505') {
-    // The RPC's own message tells the citizen to withdraw first; dropping that
-    // instruction left them with a dead end, since the portal now offers the
-    // withdraw action on the dashboard.
-    return 'You already have an active Yellow Card application. Withdraw it from your dashboard before applying again.';
+    return DUPLICATE_APPLICATION_MESSAGE;
   }
   if (code === '22023') {
     return 'Please check that all required fields are filled in correctly.';
@@ -363,9 +368,8 @@ export function translateSubmitError(message: string, code?: string): string {
     return 'You must accept the Data Privacy consent to proceed.';
   }
   if (m.includes('already') && (m.includes('application') || m.includes('live'))) {
-    // Same situation as the coded 23505 branch above, so the same instruction:
-    // a citizen told only 'you already have one' has no way forward.
-    return 'You already have an active Yellow Card application. Withdraw it from your dashboard before applying again.';
+    // Same situation as the coded 23505 branch above, so the same message.
+    return DUPLICATE_APPLICATION_MESSAGE;
   }
   return 'We could not submit your application right now. Please try again later.';
 }
@@ -422,7 +426,8 @@ export async function verifyCard(token: string): Promise<VerifyCardResult> {
 /**
  * Pure: a `withdraw_yellow_card_application` errcode -> citizen copy.
  * `42501` covers not-yours and wrong-status alike — withdrawal is legal only
- * from `pending` / `revision_requested` / `resubmitted`.
+ * from `pending` / `revision_requested`. `resubmitted` is refused because staff
+ * are actively holding it and the SLA is running against them.
  */
 export function translateWithdrawError(code: string | undefined): string {
   switch (code) {

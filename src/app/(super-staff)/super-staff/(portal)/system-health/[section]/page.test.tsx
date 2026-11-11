@@ -403,8 +403,17 @@ describe("System Health · section pages", () => {
 
       expect(thresholds()).toEqual([
         "Job overdue: no run in 2× its interval (warning)",
-        "Run history: kept 7 d (warning when older runs remain)",
+        "Run history: kept 7 d (warning after 2 missed purges)",
       ]);
+    });
+
+    it("counts the missed purges from the database's overdue factor", async () => {
+      const health = healthySnapshot();
+      health.sections.jobs.detail.thresholds.job_overdue_factor = 3;
+      vi.mocked(queries.getSystemHealth).mockResolvedValue(health);
+      await renderSection("jobs");
+
+      expect(thresholds()).toContain("Run history: kept 7 d (warning after 3 missed purges)");
     });
   });
 

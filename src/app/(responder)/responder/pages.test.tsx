@@ -211,6 +211,67 @@ describe("portal pages", () => {
     expect(markArrivalRead).toHaveBeenCalledWith("inc-4501");
   });
 
+  // Issue #106: a Phone alert tapped after a reroute or a reject. The report is
+  // out of responder_incidents' department scope, so getIncident() is null.
+  it("/responder/pool?report= says a report that has left the pool has left it", async () => {
+    db.incident = null;
+
+    withProviders(
+      await PoolPage({ searchParams: Promise.resolve({ report: "inc-gone" }) }),
+    );
+
+    const sentence = screen.getByText("That report is no longer in the pool.");
+    // At phone width the detail pane is `hidden` while nothing is selected, so
+    // a sentence inside it would reach desktop responders only.
+    expect(sentence.closest(".hidden")).toBeNull();
+  });
+
+  it("/responder/pool?report= still marks a report that has left the pool read", async () => {
+    db.incident = null;
+
+    withProviders(
+      await PoolPage({ searchParams: Promise.resolve({ report: "inc-gone" }) }),
+    );
+
+    expect(markArrivalRead).toHaveBeenCalledWith("inc-gone");
+  });
+
+  it("/responder/pool?report=&notice=gone says it once, not twice", async () => {
+    db.incident = null;
+
+    withProviders(
+      await PoolPage({
+        searchParams: Promise.resolve({ report: "inc-gone", notice: "gone" }),
+      }),
+    );
+
+    expect(
+      screen.getAllByText("That report is no longer in the pool."),
+    ).toHaveLength(1);
+  });
+
+  it("/responder/pool?report=&notice= keeps the notice it was sent", async () => {
+    db.incident = null;
+
+    withProviders(
+      await PoolPage({
+        searchParams: Promise.resolve({
+          report: "inc-gone",
+          notice: "force_released",
+        }),
+      }),
+    );
+
+    expect(
+      screen.getByText(
+        "This ticket was returned to the pool and is no longer yours.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("That report is no longer in the pool."),
+    ).not.toBeInTheDocument();
+  });
+
   it("/responder/pool marks nothing read while no report is open", async () => {
     withProviders(await PoolPage({ searchParams: Promise.resolve({}) }));
 
@@ -314,7 +375,7 @@ describe("portal pages", () => {
     expect(screen.getByText("No active ticket")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "A supervisor returned this ticket to the pool. It is back with your department.",
+        "This ticket was returned to the pool and is no longer yours.",
       ),
     ).toBeInTheDocument();
   });

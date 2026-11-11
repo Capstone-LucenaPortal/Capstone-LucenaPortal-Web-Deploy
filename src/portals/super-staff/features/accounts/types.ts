@@ -8,7 +8,8 @@ export type Account = {
   fullName: string;
   email: string;
   role: Role;
-  /** Assigned service modules; only meaningful for Staff. */
+  /** Assigned service modules; only meaningful for Staff. Some other accounts
+   *  hold them too, granting nothing; a save leaves those as they are (#107). */
   modules: Module[];
   /** Incident force-release flag; only meaningful for Staff with the Incidents module. */
   isSupervisor: boolean;

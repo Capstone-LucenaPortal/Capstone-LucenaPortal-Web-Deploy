@@ -184,9 +184,35 @@ describe('AuthModal — sign up submit', { timeout: 20_000 }, () => {
     expect(screen.getByText('juan@example.com')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Create Account' })).not.toBeInTheDocument();
+  });
 
-    await userEvent.click(screen.getByRole('button', { name: 'Back to Sign In' }));
-    expect(setAuthMode).toHaveBeenCalledWith('login');
+  it('offers a citizen who already has an account Sign In and Forgot Password', async () => {
+    signup.mockResolvedValueOnce('confirm-email');
+    await fillAndSubmit();
+    await screen.findByRole('heading', { name: 'Check Your Email' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sign In' }));
+    expect(setAuthMode).toHaveBeenLastCalledWith('login');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Forgot Password?' }));
+    expect(setAuthMode).toHaveBeenLastCalledWith('forgot');
+  });
+
+  // Issue #86. Supabase answers the same way for a new address and for one that
+  // already has an account, and nothing is sent for the second. So the panel
+  // can't claim an account was made or a link went out, and can't say which
+  // case this is.
+  it('words the Check Your Email panel so it is true whether or not the address has an account', async () => {
+    signup.mockResolvedValueOnce('confirm-email');
+    await fillAndSubmit();
+    await screen.findByRole('heading', { name: 'Check Your Email' });
+    const panel = screen.getByRole('dialog');
+    expect(panel).toHaveTextContent(
+      "If juan@example.com can be used for a new account, we've sent a confirmation link to it.",
+    );
+    expect(panel).toHaveTextContent('Already have an account?');
+    expect(panel).not.toHaveTextContent(/account was created/i);
+    expect(panel).not.toHaveTextContent(/we sent a confirmation link/i);
   });
 
   it('still shows a real sign-up failure in the error line', async () => {

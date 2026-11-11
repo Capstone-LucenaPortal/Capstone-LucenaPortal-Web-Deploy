@@ -23,6 +23,7 @@ import {
   getAccount,
   getAccountHistory,
   listAccounts,
+  newestReleasedReport,
 } from "../lib/queries";
 import { validateAccount, type FieldErrors } from "../lib/validation";
 import type { Account } from "../types";
@@ -125,10 +126,12 @@ export function AccountDetailView({ id }: { id: string }) {
       // Every other field here is fully type-checked.
       const { error } = await createClient().rpc(
         "update_staff_account",
-        toUpdateArgs(account.id, value) as UpdateRpcArgs,
+        toUpdateArgs(account.id, value, account) as UpdateRpcArgs,
       );
       if (error) throw new Error(plainRpcError(error.message));
-      toast("Changes saved.", "success");
+      // A Responder moved off the role or to another department gives up
+      // the report they hold (DB l104).
+      toast(await withReleasedReport("Changes saved.", account.id), "success");
       await load();
     } catch (error) {
       toast(
@@ -173,7 +176,13 @@ export function AccountDetailView({ id }: { id: string }) {
         p_reason: reason.trim(),
       });
       if (error) throw new Error(plainRpcError(error.message));
-      toast(next ? "Account reactivated." : "Account deactivated.", "success");
+      // Only a deactivation can release a report (DB l104).
+      toast(
+        next
+          ? "Account reactivated."
+          : await withReleasedReport("Account deactivated.", account.id),
+        "success",
+      );
       setActiveOpen(false);
       setReason("");
       await load();
@@ -381,6 +390,18 @@ export function AccountDetailView({ id }: { id: string }) {
       </Modal>
     </div>
   );
+}
+
+/**
+ * A success message, plus the report the change just returned to the pool.
+ * The RPCs return only the account, so the Reference Number is read from the
+ * audit row they wrote; if that read fails the plain message stands.
+ */
+async function withReleasedReport(message: string, accountId: string) {
+  const released = await newestReleasedReport(accountId);
+  return released
+    ? `${message} Report ${released} went back to the department's pool.`
+    : message;
 }
 
 function MetaRow({

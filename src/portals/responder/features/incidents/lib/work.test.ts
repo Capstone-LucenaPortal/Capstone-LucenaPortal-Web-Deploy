@@ -162,6 +162,26 @@ describe("buildTimeline", () => {
     expect(entry.meta).toContain("Juan Dela Cruz");
   });
 
+  it("does not blame a supervisor for a release an account change made", () => {
+    // Issue #105: since DB l104 a deactivation or a move to another role or
+    // department also writes force_released, as the system, with no supervisor.
+    const note =
+      "The responder holding this report is no longer assigned to this work.";
+    const [entry] = buildTimeline([
+      anEvent({
+        event_type: "force_released",
+        actor_role: "system",
+        actor_name: "System",
+        note,
+        created_at: at("11:00"),
+      }),
+    ]);
+
+    expect(entry.title).toBe("Returned to the pool");
+    expect(entry.meta).toContain("System");
+    expect(entry.meta).toContain(note);
+  });
+
   it("carries the citizen's and staff's events on the same thread", () => {
     const titles = buildTimeline([
       anEvent({ event_type: "submitted", actor_name: "Maria" }),
