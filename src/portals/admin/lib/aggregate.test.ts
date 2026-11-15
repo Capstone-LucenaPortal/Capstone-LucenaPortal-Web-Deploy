@@ -22,7 +22,7 @@ import {
   pointsDelta,
   previousPeriodRange,
   recentMonthlyCounts,
-  venueUtilisation,
+  bookingRequestsPerVenue,
   yellowCardRangeStats,
   yellowCardDateAccessor,
   issueDateAccessor,
@@ -46,6 +46,8 @@ function buildYellowCardRow(overrides: Partial<YellowCardRow> = {}): YellowCardR
     sla_elapsed_seconds: 1000,
     sla_breached: false,
     review_cycles: 0,
+    due_at: null,
+    deadline_state: null,
     ...overrides,
   };
 }
@@ -69,6 +71,8 @@ function buildIncidentRow(overrides: Partial<IncidentRow> = {}): IncidentRow {
     closed_at: null,
     reopened_count: 0,
     time_to_triage_hours: null,
+    sla_due_at: null,
+    sla_at_risk: null,
     sla_met: null,
     ...overrides,
   };
@@ -402,7 +406,7 @@ describe("eventTypeMix", () => {
   });
 });
 
-describe("venueUtilisation", () => {
+describe("bookingRequestsPerVenue", () => {
   // THE PINNED EDGE CASE, deliberately the mirror image of barangayCoverage's:
   // a venue nobody booked is still a real, nameable venue — an unused venue
   // is a signal worth showing, not an absence to hide.
@@ -410,7 +414,7 @@ describe("venueUtilisation", () => {
     const venues = [buildVenueRow({ code: "ATRIUM", label: "Atrium" }), buildVenueRow({ code: "ARENA", label: "Sports Arena" })];
     const rows = [buildBookingRow({ venue_code: "ATRIUM" })];
 
-    const result = venueUtilisation(rows, venues);
+    const result = bookingRequestsPerVenue(rows, venues);
 
     expect(result).toEqual([
       expect.objectContaining({ venue: "Atrium", bookings: 1 }),
@@ -418,16 +422,15 @@ describe("venueUtilisation", () => {
     ]);
   });
 
-  it("carries capacityLabel from the venue catalog and always passes avgFillPct: null", () => {
+  it("carries capacityLabel from the venue catalog, and no fill figure", () => {
     const venues = [buildVenueRow({ code: "ATRIUM", label: "Atrium", capacity_label: "Capacity: 1,000 pax" })];
 
-    const result = venueUtilisation([], venues);
+    const result = bookingRequestsPerVenue([], venues);
 
     expect(result).toEqual([
       {
         venue: "Atrium",
         capacityLabel: "Capacity: 1,000 pax",
-        avgFillPct: null,
         bookings: 0,
         barClass: "bg-blue-800",
       },
@@ -438,7 +441,7 @@ describe("venueUtilisation", () => {
     const venues = [buildVenueRow({ code: "ATRIUM", label: "Atrium" })];
     const rows = [buildBookingRow({ venue_code: "GHOST-VENUE" })];
 
-    const result = venueUtilisation(rows, venues);
+    const result = bookingRequestsPerVenue(rows, venues);
 
     expect(result).toEqual([expect.objectContaining({ venue: "Atrium", bookings: 0 })]);
   });
@@ -512,16 +515,16 @@ describe("previousPeriodRange", () => {
 
 describe("percentDelta", () => {
   it("computes a relative percent change", () => {
-    expect(percentDelta(110, 100)).toBe("+10% vs previous period");
-    expect(percentDelta(90, 100)).toBe("-10% vs previous period");
+    expect(percentDelta(110, 100)).toEqual({ text: "+10% vs previous period", movement: "up" });
+    expect(percentDelta(90, 100)).toEqual({ text: "-10% vs previous period", movement: "down" });
   });
 
   it("reads 'New activity' rather than dividing by zero when previous is 0 and current is not", () => {
-    expect(percentDelta(5, 0)).toBe("New activity vs previous period");
+    expect(percentDelta(5, 0)).toEqual({ text: "New activity vs previous period", movement: null });
   });
 
   it("reads 'No activity' when both current and previous are 0", () => {
-    expect(percentDelta(0, 0)).toBe("No activity vs previous period");
+    expect(percentDelta(0, 0)).toEqual({ text: "No activity vs previous period", movement: null });
   });
 });
 
@@ -533,7 +536,7 @@ describe("formatRate", () => {
   });
 
   // THE PINNED EDGE CASE this task exists to fix: a zero-denominator rate
-  // (decidedRatePct/resolvedRatePct/the pooled SLA compliance calcs all
+  // (decidedRatePct/resolutionOf/the pooled SLA compliance calcs all
   // return null for it) must render as "—", never "0%" — the false signal
   // that misreports a quiet period as a wave of rejections or breaches.
   it("renders null as '—', never '0%'", () => {
@@ -543,15 +546,25 @@ describe("formatRate", () => {
 
 describe("pointsDelta", () => {
   it("computes a signed percentage-point change", () => {
-    expect(pointsDelta(87.2, 84.6)).toBe("+2.6 pts vs previous period");
-    expect(pointsDelta(84.6, 87.2)).toBe("-2.6 pts vs previous period");
+    expect(pointsDelta(87.2, 84.6)).toEqual({ text: "+2.6 pts vs previous period", movement: "up" });
+    expect(pointsDelta(84.6, 87.2)).toEqual({ text: "-2.6 pts vs previous period", movement: "down" });
+  });
+});
+
+describe("movement", () => {
+  // A delta that rounds to zero shows no movement, so a tile never calls a
+  // "+0 pts" better or worse.
+  it("is null when the change rounds to nothing at the precision shown", () => {
+    expect(pointsDelta(50.02, 50)).toEqual({ text: "+0 pts vs previous period", movement: null });
+    expect(percentDelta(10000, 10001)).toEqual({ text: "+0% vs previous period", movement: null });
+    expect(countDelta(7, 7)).toEqual({ text: "+0 vs previous period", movement: null });
   });
 });
 
 describe("countDelta", () => {
   it("computes a signed integer change", () => {
-    expect(countDelta(25, 30)).toBe("-5 vs previous period");
-    expect(countDelta(30, 25)).toBe("+5 vs previous period");
+    expect(countDelta(25, 30)).toEqual({ text: "-5 vs previous period", movement: "down" });
+    expect(countDelta(30, 25)).toEqual({ text: "+5 vs previous period", movement: "up" });
   });
 });
 
@@ -589,33 +602,33 @@ describe("formatDuration", () => {
 
 describe("daysDelta", () => {
   it("reads faster when the duration shrank", () => {
-    expect(daysDelta(1.5, 2.6)).toBe("1.1d faster vs previous period");
+    expect(daysDelta(1.5, 2.6)).toEqual({ text: "1.1d faster vs previous period", movement: "down" });
   });
 
   it("reads slower when the duration grew", () => {
-    expect(daysDelta(2.6, 1.5)).toBe("1.1d slower vs previous period");
+    expect(daysDelta(2.6, 1.5)).toEqual({ text: "1.1d slower vs previous period", movement: "up" });
   });
 
   it("writes the swing in the unit that fits it", () => {
-    expect(daysDelta(0.5, 1)).toBe("12h faster vs previous period");
-    expect(daysDelta(40 / 1440, 10 / 1440)).toBe("30 min slower vs previous period");
+    expect(daysDelta(0.5, 1)).toEqual({ text: "12h faster vs previous period", movement: "down" });
+    expect(daysDelta(40 / 1440, 10 / 1440)).toEqual({ text: "30 min slower vs previous period", movement: "up" });
   });
 
   it("works from the unrounded means, not the rounded ones", () => {
     // The reported Month: a 0.02d mean against a 0.7d one. Rounded to days
     // first it read "0.7d faster"; the real swing is 16.3 hours.
-    expect(daysDelta(0.02, 0.7)).toBe("16.3h faster vs previous period");
+    expect(daysDelta(0.02, 0.7)).toEqual({ text: "16.3h faster vs previous period", movement: "down" });
   });
 
   it("reads 'No change' when the swing is under a minute", () => {
-    expect(daysDelta(1.8, 1.8)).toBe("No change vs previous period");
-    expect(daysDelta(1.8, 1.8 + 0.5 / 1440)).toBe("No change vs previous period");
+    expect(daysDelta(1.8, 1.8)).toEqual({ text: "No change vs previous period", movement: null });
+    expect(daysDelta(1.8, 1.8 + 0.5 / 1440)).toEqual({ text: "No change vs previous period", movement: null });
   });
 
   it("reads 'No comparable data' when either side has no mean", () => {
-    expect(daysDelta(null, 1.8)).toBe("No comparable data vs previous period");
-    expect(daysDelta(1.8, null)).toBe("No comparable data vs previous period");
-    expect(daysDelta(null, null)).toBe("No comparable data vs previous period");
+    expect(daysDelta(null, 1.8)).toEqual({ text: "No comparable data vs previous period", movement: null });
+    expect(daysDelta(1.8, null)).toEqual({ text: "No comparable data vs previous period", movement: null });
+    expect(daysDelta(null, null)).toEqual({ text: "No comparable data vs previous period", movement: null });
   });
 });
 
@@ -711,7 +724,7 @@ describe("yellowCardRangeStats", () => {
     const result = yellowCardRangeStats(rows, range, getDate, 33);
 
     expect(result.approvalRatePct).toBeNull();
-    expect(result.approvalRateDelta).toBe("No comparable data vs previous period");
+    expect(result.approvalRateDelta.text).toBe("No comparable data vs previous period");
   });
 
   it("pendingReview reads ALL rows, not just those in range — a point-in-time backlog", () => {
@@ -725,28 +738,6 @@ describe("yellowCardRangeStats", () => {
     const result = yellowCardRangeStats(rows, range, getDate, 33);
 
     expect(result.pendingReview).toBe(2);
-  });
-
-  // admin_yellow_card_analytics.sla_breached is only meaningful for DECIDED
-  // applications — its underlying counter only accrues on status change
-  // (see applicationMet's doc comment in src/portals/admin/features/sla/lib/sla.ts), so a pending row
-  // reads sla_breached: false no matter how overdue it actually is.
-  // pendingPastSla must therefore always be null (unavailable), never a
-  // count derived from `sla_breached === true`, even when a pending row
-  // happens to carry sla_breached: true — that combination cannot honestly
-  // occur once the DB fix lands, but this pins that the client-side code no
-  // longer trusts it either way in the meantime.
-  it("pendingPastSla is unavailable (null), not a count derived from sla_breached", () => {
-    const rows = [
-      buildYellowCardRow({ submitted_at: "2026-01-01T00:00:00Z", status: "pending", sla_breached: true }),
-      buildYellowCardRow({ submitted_at: "2026-05-10T00:00:00Z", status: "resubmitted", sla_breached: false }),
-      buildYellowCardRow({ submitted_at: "2026-05-10T00:00:00Z", status: "approved" }),
-      buildYellowCardRow({ submitted_at: "2026-05-10T00:00:00Z", status: "withdrawn" }),
-    ];
-
-    const result = yellowCardRangeStats(rows, range, getDate, 33);
-
-    expect(result.pendingPastSla).toBeNull();
   });
 
   it("barangaysReached counts distinct barangays with a counted application in range, barangaysWithZero fills the rest", () => {
@@ -765,39 +756,6 @@ describe("yellowCardRangeStats", () => {
   // independently of the applications themselves. "How many barangays exist"
   // being unknown must not render as "zero barangays exist", which would make
   // the tile read "2 / 0" and the note claim -2 barangays have no applicants.
-  // The "past NNh SLA" caption on the Pending Review tile used to hardcode
-  // "48h". admin_yellow_card_analytics carries the real target per row in
-  // sla_target_hours (driven by public_yellow_card_config's
-  // processing_time_target_days, which Super Staff can change), so the
-  // caption must read it rather than restate a copy of it.
-  describe("pendingSlaTargetHours", () => {
-    it("reports the SLA target the pending rows themselves carry", () => {
-      const rows = [
-        buildYellowCardRow({ submitted_at: "2026-05-10T00:00:00Z", status: "pending", sla_target_hours: 72 }),
-        buildYellowCardRow({ submitted_at: "2026-05-11T00:00:00Z", status: "resubmitted", sla_target_hours: 72 }),
-      ];
-
-      expect(yellowCardRangeStats(rows, range, getDate, 33).pendingSlaTargetHours).toBe(72);
-    });
-
-    it("is null when the pending rows disagree — there is no single figure to name", () => {
-      const rows = [
-        // An application filed before a save_yellow_card_config change keeps
-        // the target it was created with, so a mixed backlog is real.
-        buildYellowCardRow({ submitted_at: "2026-05-10T00:00:00Z", status: "pending", sla_target_hours: 48 }),
-        buildYellowCardRow({ submitted_at: "2026-05-11T00:00:00Z", status: "pending", sla_target_hours: 72 }),
-      ];
-
-      expect(yellowCardRangeStats(rows, range, getDate, 33).pendingSlaTargetHours).toBeNull();
-    });
-
-    it("is null when nothing is pending", () => {
-      const rows = [buildYellowCardRow({ submitted_at: "2026-05-10T00:00:00Z", status: "approved" })];
-
-      expect(yellowCardRangeStats(rows, range, getDate, 33).pendingSlaTargetHours).toBeNull();
-    });
-  });
-
   it("leaves barangaysTotal/barangaysWithZero null when the barangay count is unknown", () => {
     const rows = [
       buildYellowCardRow({ submitted_at: "2026-05-10T00:00:00Z", barangay_name: "Barangay One", status: "approved" }),
@@ -901,9 +859,9 @@ describe("issueRangeStats", () => {
   // GitHub #18: a refusal sets status `closed` with reason `invalid`, and the
   // rate used to count every `closed` row as resolved. Only a resolved
   // report, or one closed as confirmed or auto-confirmed, counts (PO answer,
-  // 2026-10-27, question 32). The rest stay in the denominator: they were
-  // still reports filed in range.
-  it("resolutionRatePct counts confirmed and auto-confirmed closures, not invalid, duplicate or expired ones", () => {
+  // 2026-10-27, question 32). Since #120 (sheet I2) invalid, duplicate and
+  // expired reports leave the denominator too; open ones stay in it.
+  it("resolutionRatePct counts confirmed and auto-confirmed closures, and leaves invalid, duplicate and expired ones out", () => {
     const submitted_at = "2026-05-10T00:00:00Z";
     const rows = [
       buildIncidentRow({ submitted_at, status: "resolved" }),
@@ -919,7 +877,24 @@ describe("issueRangeStats", () => {
     const result = issueRangeStats(rows, range, getDate, slaHours);
 
     expect(result.reports).toBe(8);
-    expect(result.resolutionRatePct).toBe(37.5);
+    expect(result.resolutionRatePct).toBe(60);
+    expect(result.resolutionStillOpen).toBe(2);
+  });
+
+  // Reports were filed, but every one was closed as a duplicate: there is
+  // nothing left to divide by, so the rate is "—", not 0%.
+  it("resolutionRatePct is null when every report in range was closed as invalid, duplicate or expired", () => {
+    const submitted_at = "2026-05-10T00:00:00Z";
+    const rows = [
+      buildIncidentRow({ submitted_at, status: "closed", closure_reason: "duplicate" }),
+      buildIncidentRow({ submitted_at, status: "closed", closure_reason: "invalid" }),
+    ];
+
+    const result = issueRangeStats(rows, range, getDate, slaHours);
+
+    expect(result.reports).toBe(2);
+    expect(result.resolutionRatePct).toBeNull();
+    expect(result.resolutionStillOpen).toBe(0);
   });
 
   // resolutionRateDelta must not coerce a null rate to 0 and report a
@@ -931,7 +906,7 @@ describe("issueRangeStats", () => {
     const result = issueRangeStats(rows, range, getDate, slaHours);
 
     expect(result.resolutionRatePct).toBeNull();
-    expect(result.resolutionRateDelta).toBe("No comparable data vs previous period");
+    expect(result.resolutionRateDelta.text).toBe("No comparable data vs previous period");
   });
 
   // Regression guard: unlike the existing fixture below (all three rows
@@ -954,12 +929,10 @@ describe("issueRangeStats", () => {
     expect(result.openBacklog).toBe(2);
   });
 
-  it("openBacklog reads ALL rows, not just those in range, while backlogPastSla stays unavailable", () => {
+  it("openBacklog reads ALL rows, not just those in range", () => {
     const now = new Date("2026-05-20T00:00:00Z");
     const rows = [
-      // 4 days old, medium (24h target) — from an earlier month.
       buildIncidentRow({ submitted_at: "2026-05-16T00:00:00Z", status: "open", incident_level: "medium" }),
-      // 1 hour old, medium — well inside its 24h window.
       buildIncidentRow({ submitted_at: "2026-05-19T23:00:00Z", status: "in_progress", incident_level: "medium" }),
       buildIncidentRow({ submitted_at: "2026-05-10T00:00:00Z", status: "resolved" }),
     ];
@@ -967,46 +940,57 @@ describe("issueRangeStats", () => {
     const result = issueRangeStats(rows, range, getDate, slaHours, now);
 
     expect(result.openBacklog).toBe(2);
-    expect(result.backlogPastSla).toBeNull();
   });
 
-  // Admin Portal Fix Plan, Task 1.3: backlogPastSla used to compute
-  // `ageHours = now - submitted_at` per open row and compare it against
-  // slaHours[row.incident_level] — today's LIVE config, not the target that
-  // applied when the row was created. That counted never-armed (unverified)
-  // incidents as breached purely for looking old, charged routing/
-  // verification delay against the department, and re-judged old incidents
-  // against a target Super Staff may have since changed. It is
-  // unconditionally null now (see the doc comment above its assignment in
-  // issueRangeStats, src/portals/admin/lib/aggregate.ts) regardless of level, config, or
-  // how stale any row is — this pins that no combination of inputs revives
-  // the old per-row computation.
-  it("backlogPastSla is unavailable (null) regardless of level, staleness, or config — never a number computed from submitted_at", () => {
+  // Past due is read against the browser's now; at risk was read by the view
+  // against the database's now when the page fetched. Past due starts at the
+  // due time itself, as in Staff's deriveSlaState and l112's `now() <
+  // sla_due_at`, so the two never overlap and a report counts once (#124).
+  describe("the boundary between at risk and past due", () => {
     const now = new Date("2026-05-20T00:00:00Z");
-    const rows = [
-      // Would have read as breached many times over under the old
-      // submitted_at + live-config math (16 days old, critical = 4h target).
-      buildIncidentRow({ submitted_at: "2026-05-04T00:00:00Z", status: "open", incident_level: "critical" }),
-      buildIncidentRow({ submitted_at: "2026-05-19T19:00:00Z", status: "open", incident_level: "high" }),
-      buildIncidentRow({ submitted_at: "2026-05-19T19:00:00Z", status: "open", incident_level: "low" }),
-    ];
 
-    const result = issueRangeStats(rows, range, getDate, slaHours, now);
+    it("a report at exactly its due time is past due, not at risk", () => {
+      const rows = [buildIncidentRow({ status: "open", sla_due_at: "2026-05-20T00:00:00Z", sla_at_risk: false })];
 
-    expect(result.openBacklog).toBe(3);
-    expect(result.backlogPastSla).toBeNull();
+      const result = issueRangeStats(rows, range, getDate, slaHours, now);
+
+      expect(result.backlogPastDue).toBe(1);
+      expect(result.backlogAtRisk).toBe(0);
+    });
+
+    it("a report the view flagged at risk whose due time has since passed counts once, as past due", () => {
+      const rows = [buildIncidentRow({ status: "in_progress", sla_due_at: "2026-05-19T23:59:59Z", sla_at_risk: true })];
+
+      const result = issueRangeStats(rows, range, getDate, slaHours, now);
+
+      expect(result.backlogPastDue).toBe(1);
+      expect(result.backlogAtRisk).toBe(0);
+    });
+
+    it("a report flagged at risk a moment before its due time is at risk", () => {
+      const rows = [buildIncidentRow({ status: "in_pool", sla_due_at: "2026-05-20T00:00:01Z", sla_at_risk: true })];
+
+      const result = issueRangeStats(rows, range, getDate, slaHours, now);
+
+      expect(result.backlogPastDue).toBe(0);
+      expect(result.backlogAtRisk).toBe(1);
+    });
   });
 
-  it("backlogPastSla stays null even when the SLA config is unavailable too — doubly unknown, not zero", () => {
-    const now = new Date("2026-05-20T00:00:00Z");
+  // Reopening a report resets its routed time, so its time to triage is
+  // the time from filing to reopening, not triage (#121, sheet I10).
+  it("avgTimeToTriageDays leaves a reopened report out of the average", () => {
     const rows = [
-      buildIncidentRow({ submitted_at: "2026-01-01T00:00:00Z", status: "open", incident_level: "critical" }),
+      buildIncidentRow({ submitted_at: "2026-05-10T00:00:00Z", time_to_triage_hours: 4 }),
+      buildIncidentRow({ submitted_at: "2026-05-11T00:00:00Z", time_to_triage_hours: 8 }),
+      buildIncidentRow({ submitted_at: "2026-05-12T00:00:00Z", time_to_triage_hours: 336, reopened_count: 1 }),
+      // Never routed: no triage time to average.
+      buildIncidentRow({ submitted_at: "2026-05-13T00:00:00Z", time_to_triage_hours: null }),
     ];
 
-    const result = issueRangeStats(rows, range, getDate, null, now);
+    const result = issueRangeStats(rows, range, getDate, slaHours);
 
-    expect(result.openBacklog).toBe(1);
-    expect(result.backlogPastSla).toBeNull();
+    expect(result.avgTimeToTriageDays).toBe(6 / 24);
   });
 });
 
@@ -1027,17 +1011,18 @@ describe("conventionRangeStats", () => {
     const result = conventionRangeStats(rows, range, getDate);
 
     expect(result.bookings).toBe(2);
-    expect(result.bookingsDelta).toBe("+100% vs previous period");
+    expect(result.bookingsDelta.text).toBe("+100% vs previous period");
   });
 
-  // Utilization and resident/outside share have no real source (see the
-  // function's doc comment). They used to be returned as fields fixed at
-  // 0/"Not tracked" that nothing read — a placeholder zero sitting in a
-  // stats object is an invitation for a future tile to bind to it and
-  // present it as a measurement. The shape carries only what is real.
+  // Resident/outside share has no real source (see the function's doc
+  // comment). It used to be returned as fields fixed at 0/"Not tracked" that
+  // nothing read — a placeholder zero sitting in a stats object is an
+  // invitation for a future tile to bind to it and present it as a
+  // measurement. The shape carries only what is real: Event days replaced
+  // Utilization (#117).
   it("returns no utilization or resident/outside share fields at all", () => {
     const result = conventionRangeStats([], range, getDate);
 
-    expect(Object.keys(result).sort()).toEqual(["bookings", "bookingsDelta"]);
+    expect(Object.keys(result).sort()).toEqual(["bookings", "bookingsDelta", "confirmed", "eventDays"]);
   });
 });

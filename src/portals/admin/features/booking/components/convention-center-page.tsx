@@ -8,7 +8,7 @@ import {
   conventionRangeStats,
   eventTypeMix,
   recentMonthlyCounts,
-  venueUtilisation,
+  bookingRequestsPerVenue,
 } from "@/portals/admin/lib/aggregate";
 import { ConventionDateBasis } from "@/portals/admin/features/booking/types";
 import {
@@ -36,8 +36,7 @@ import { PageHero } from "@/portals/admin/components/layout/page-hero";
 import { MixBarCard } from "@/portals/admin/components/ui/mix-bar-card";
 import { MonthlyBarCard } from "@/portals/admin/components/ui/monthly-bar-card";
 import { LoadingStatus, Skeleton } from "@/portals/admin/components/ui/skeleton";
-import { BookingOriginsTable } from "@/portals/admin/features/booking/components/booking-origins-table";
-import { VenueUtilizationCard } from "@/portals/admin/features/booking/components/venue-utilization-card";
+import { VenueRequestsCard } from "@/portals/admin/features/booking/components/venue-requests-card";
 import { BookingReviewModal } from "@/portals/admin/features/booking/components/booking-review-modal";
 import { getBookingStatusVariant, getEventTypeBarClass, getEventTypeChipClasses } from "@/portals/admin/lib/status-colors";
 import {
@@ -260,11 +259,11 @@ export function ConventionCenterPage() {
   // type. It never shows a month after the current one, so upcoming event
   // dates can't push the past months out of the window.
   const monthlyBookings = useMemo(() => recentMonthlyCounts(rows, getDate), [rows, getDate]);
-  // venueUtilisation intentionally stays on raw `rows` too (not `filtered`):
-  // it's driven by the full venue catalog via listVenues(), not by which
-  // codes happen to appear in the current filter, and was not part of Fix
-  // round 1's scope.
-  const venueBookingsData = useMemo(() => venueUtilisation(rows, venues), [rows, venues]);
+  // The venue panel reads `filtered`, like the event type mix: the range and
+  // the status tab both narrow it (#118, metrics sheet C7). It used to read
+  // raw `rows`, so a narrow range still showed every year's requests. Every
+  // venue in the catalog still gets a row, with 0 when nobody booked it.
+  const venueRequests = useMemo(() => bookingRequestsPerVenue(filtered, venues), [filtered, venues]);
 
   // The CSV carries no organiser PII — every column here also appears in the
   // visible table — so it reads the already-filtered `rows` state directly
@@ -288,7 +287,7 @@ export function ConventionCenterPage() {
 
   return (
     <div className="space-y-4">
-      <PageHero title="Convention Center Bookings" subtitle="Utilization and resident vs outside Lucena breakdown" image="/perez-park.webp">
+      <PageHero title="Convention Center Bookings" subtitle="Demand, event days and venue mix" image="/perez-park.webp">
         <DateFilterBar
           tone="dark"
           basisOptions={BASIS_OPTIONS}
@@ -321,45 +320,30 @@ export function ConventionCenterPage() {
           and finish loading together. */}
       {isLoading && <LoadingStatus label="Loading bookings…" />}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {/* Booking requests: demand, whatever became of each request. The
+            caption says how many were confirmed, fully paid or completed,
+            which answers "how many events took place?" (#118, metrics
+            sheet C1). Volume figure: grey delta. */}
         <KpiTile
-          label="Bookings"
+          label="Booking requests"
           value={isLoading ? <Skeleton className="h-7 w-16" /> : error ? "—" : stats.bookings.toLocaleString()}
+          caption={isLoading || error ? undefined : `${stats.confirmed.toLocaleString()} confirmed`}
           note={isLoading ? <Skeleton className="h-3 w-24" /> : error || !compare ? undefined : stats.bookingsDelta}
+          direction="neutral"
           noteTone="positive"
         />
-        {/* Utilization states its own gap instead of showing a fabricated
-            fill rate: public_booking_venues.capacity_label is free text
-            ("1000 classroom / 500 table"), not a number to divide bookings
-            by — the same gap VenueUtilizationCard's avgFillPct already
-            renders as "no cap tracking" per venue. See
-            src/portals/admin/lib/aggregate.ts's conventionRangeStats doc comment. */}
+        {/* Event days, not Utilization: no venue capacity NUMBER exists to
+            divide by, so this counts days in range with a confirmed booking,
+            by event date whatever the date type and status tab. The same
+            figure as the Dashboard's "Days with an event" (eventDays in
+            src/portals/admin/lib/aggregate.ts, #117). Not judged against a
+            promise, so it has no better-or-worse delta. */}
         <KpiTile
-          label="Utilization"
-          value="Not tracked"
-          note="No venue capacity figure to divide bookings by"
-          noteTone="neutral"
-        />
-        {/* Resident Share states its own gap instead of showing a fabricated
-            number: submit_booking never writes origin_barangay_code or
-            origin_locality, so origin_barangay_code is always null and the
-            generated is_resident column (origin_barangay_code is not null)
-            always evaluates to false, not null — there is still no real
-            resident-share figure to report. See BookingOriginsTable below
-            for the fuller explanation of the same gap. */}
-        <KpiTile
-          label="Resident Share"
-          value="Not tracked"
-          note="submit_booking does not capture residency yet"
-          noteTone="neutral"
-        />
-        {/* Outside Lucena is the mirror of Resident Share above — same
-            missing origin data, same honest gap rather than a fabricated
-            percentage. */}
-        <KpiTile
-          label="Outside Lucena"
-          value="Not tracked"
-          note="submit_booking does not capture residency yet"
+          label="Event days"
+          value={isLoading ? <Skeleton className="h-7 w-16" /> : error ? "—" : `${stats.eventDays.pct}%`}
+          caption={isLoading || error ? undefined : stats.eventDays.note}
+          note={isLoading ? <Skeleton className="h-3 w-24" /> : undefined}
           noteTone="neutral"
         />
       </div>
@@ -391,9 +375,7 @@ export function ConventionCenterPage() {
         />
       </div>
 
-      <VenueUtilizationCard venues={venueBookingsData} />
-
-      <BookingOriginsTable bookings={filtered} />
+      <VenueRequestsCard venues={venueRequests} subtitle={rangeLabel} />
 
       <section className="rounded-none border border-gray-200 bg-white">
         <div className="flex flex-wrap items-center justify-between gap-3 px-6 pt-6">

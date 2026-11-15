@@ -19,7 +19,7 @@ the system, `Capstone-LucenaPortal-DB` and `Central-System-Documents`.
 | **Staff** | `/staff` | `src/portals/staff/` | [`CONTEXT.md`](src/portals/staff/CONTEXT.md) | [`docs/adr/`](src/portals/staff/docs/adr/) | The three municipal-staff queues: Yellow Card applications, Incident reports, LCC Booking requests. |
 | **Super-staff** | `/super-staff` | `src/portals/super-staff/` | [`CONTEXT.md`](src/portals/super-staff/CONTEXT.md) | _none yet_ | Posts, announcements and news; staff account administration; **System health**, whether the software itself is working. |
 | **Responder** | `/responder` | `src/portals/responder/` | [`CONTEXT.md`](src/portals/responder/CONTEXT.md) | [`docs/adr/`](src/portals/responder/docs/adr/) | Field units claiming incidents from a department pool, working fixed status stages, resolving with photo evidence. |
-| **Admin** | `/admin` | `src/portals/admin/` | _not written yet_ | _none yet_ | Administrator / Mayor review surface and SLA compliance reporting, read from the database's views and RPCs. |
+| **Admin** | `/admin` | `src/portals/admin/` | [`CONTEXT.md`](src/portals/admin/CONTEXT.md) | _none yet_ | Administrator / Mayor review surface: **Service performance** for the three services — requests, backlog, SLA compliance — read from the database's views and RPCs. What each figure means is in [`docs/metrics.md`](src/portals/admin/docs/metrics.md). |
 
 A Portal's ADRs, when it has any, live in `docs/adr/` inside its folder and keep the numbering
 they had in the old repo. This repo holds only Portal-level ADRs; a decision spanning Portals

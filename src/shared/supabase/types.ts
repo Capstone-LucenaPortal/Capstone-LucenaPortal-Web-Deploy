@@ -3619,6 +3619,8 @@ export type Database = {
           reopened_count: number | null
           resolved_at: string | null
           routed_at: string | null
+          sla_at_risk: boolean | null
+          sla_due_at: string | null
           sla_met: boolean | null
           status: Database["public"]["Enums"]["incident_status"] | null
           submitted_at: string | null
@@ -3708,7 +3710,9 @@ export type Database = {
         Row: {
           barangay_code: string | null
           barangay_name: string | null
+          deadline_state: string | null
           decided_at: string | null
+          due_at: string | null
           id: string | null
           reference_number: string | null
           review_cycles: number | null
@@ -7456,6 +7460,16 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      admin_yc_deadline_state: {
+        Args: {
+          p_due_at: string
+          p_sla_clock_started_at: string
+          p_sla_elapsed_seconds: number
+          p_sla_target_hours: number
+          p_status: Database["public"]["Enums"]["yellow_card_application_status"]
+        }
+        Returns: string
       }
       advance_incident_stage: {
         Args: {

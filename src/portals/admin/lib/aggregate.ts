@@ -267,27 +267,26 @@ export function eventTypeMix(rows: BookingRow[]): EventTypeSlice[] {
 }
 
 /**
- * Booking counts per venue, for the "Bookings by venue" panel.
+ * Booking requests per venue, for the "Booking requests per venue" panel
+ * (metrics sheet C7). The page passes the rows its range and status tab
+ * already filter, so the panel agrees with the table under it (#118).
  *
  * Unlike barangayCoverage, this is driven by `venues` (from listVenues()),
- * not by which codes happen to appear in `rows` — a venue with zero bookings
+ * not by which codes happen to appear in `rows` — a venue with zero requests
  * in range is still a real, nameable venue and a real signal ("nobody booked
  * this"), so it appears with `bookings: 0` rather than being silently
  * dropped. `capacityLabel` and `venue` (the display name) come from the venue
  * catalog too, since admin_booking_analytics carries only `venue_code`, never
  * a label or capacity.
  *
- * `avgFillPct` is always null: admin_booking_analytics has
- * `estimated_headcount` per booking, but no venue capacity NUMBER —
- * `booking_venues.capacity_label` is free text (e.g. "1000 classroom / 500
- * table"), not a figure to divide by. VenueUtilizationCard already renders
- * null as "no cap tracking"; inventing a percentage from parsed free text
- * would be worse than that honest gap. `chip` is likewise never set here —
- * public_booking_venues carries no promotional-badge data — but stays
- * optional on the returned shape so a future data source can populate it
- * without a prop change.
+ * There is no fill figure: admin_booking_analytics has `estimated_headcount`
+ * per booking, but no venue capacity NUMBER — `booking_venues.capacity_label`
+ * is free text (e.g. "1000 classroom / 500 table"), not a figure to divide
+ * by. `chip` is never set here — public_booking_venues carries no
+ * promotional-badge data — but stays optional on the returned shape so a
+ * future data source can populate it without a prop change.
  */
-export function venueUtilisation(rows: BookingRow[], venues: VenueRow[]): VenueBooking[] {
+export function bookingRequestsPerVenue(rows: BookingRow[], venues: VenueRow[]): VenueBooking[] {
   const bookingsByVenueCode = new Map<string, number>();
 
   for (const row of rows) {
@@ -298,7 +297,6 @@ export function venueUtilisation(rows: BookingRow[], venues: VenueRow[]): VenueB
   return venues.map((venue) => ({
     venue: venue.label ?? venue.code ?? "Unknown venue",
     capacityLabel: venue.capacity_label ?? "",
-    avgFillPct: null,
     bookings: venue.code ? bookingsByVenueCode.get(venue.code) ?? 0 : 0,
     barClass: "bg-blue-800",
   }));
@@ -378,43 +376,60 @@ function isoDateFromMs(ms: number): string {
 }
 
 /**
+ * A KPI tile's "vs previous period" note: the words, and which way the figure
+ * moved as those words show it. `movement` is null when the note shows no
+ * movement — no change at the rounding shown, or no previous figure to
+ * compare with — so a tile never calls a "+0%" better or worse. KpiTile turns
+ * the movement into "better" or "worse" only for a figure that passes a
+ * direction (an effectiveness figure); a volume figure's note stays as written.
+ */
+export interface Delta {
+  text: string;
+  movement: "up" | "down" | null;
+}
+
+function movementOf(diff: number): Delta["movement"] {
+  return diff > 0 ? "up" : diff < 0 ? "down" : null;
+}
+
+/**
  * Relative percent change from `previous` to `current`, formatted as a KPI
  * tile note. `previous === 0` has no percentage baseline to divide by, so it
  * reads as "New activity" (current > 0) or "No activity" (current === 0)
  * rather than an Infinity/NaN.
  */
-export function percentDelta(current: number, previous: number, suffix = "vs previous period"): string {
+export function percentDelta(current: number, previous: number, suffix = "vs previous period"): Delta {
   if (previous === 0) {
-    return current === 0 ? `No activity ${suffix}` : `New activity ${suffix}`;
+    return { text: current === 0 ? `No activity ${suffix}` : `New activity ${suffix}`, movement: null };
   }
   const pct = Math.round(((current - previous) / previous) * 1000) / 10;
   const sign = pct >= 0 ? "+" : "";
-  return `${sign}${pct}% ${suffix}`;
+  return { text: `${sign}${pct}% ${suffix}`, movement: movementOf(pct) };
 }
 
 /** Absolute percentage-point change, for KPI tiles reporting a rate. */
-export function pointsDelta(current: number, previous: number, suffix = "vs previous period"): string {
+export function pointsDelta(current: number, previous: number, suffix = "vs previous period"): Delta {
   const diff = round1(current - previous);
   const sign = diff >= 0 ? "+" : "";
-  return `${sign}${diff} pts ${suffix}`;
+  return { text: `${sign}${diff} pts ${suffix}`, movement: movementOf(diff) };
 }
 
 /**
- * pointsDelta, but for a possibly-null rate — decidedRatePct/resolvedRatePct
- * (and the pooled SLA compliance calcs in dashboard.ts/sla.ts) return `null`
+ * pointsDelta, but for a possibly-null rate — decidedRatePct/resolutionOf
+ * (and the per-service SLA compliance in sla.ts) return `null`
  * when their denominator is 0, e.g. no decided applications yet in a "Today"
  * preset. With no rate on one or both sides there is no meaningful swing to
  * report — this reads "No comparable data" rather than coercing null to 0
  * and reporting a fabricated (and often huge) delta.
  */
-function ratePointsDelta(current: number | null, previous: number | null, suffix = "vs previous period"): string {
-  if (current === null || previous === null) return `No comparable data ${suffix}`;
+export function ratePointsDelta(current: number | null, previous: number | null, suffix = "vs previous period"): Delta {
+  if (current === null || previous === null) return { text: `No comparable data ${suffix}`, movement: null };
   return pointsDelta(current, previous, suffix);
 }
 
 /**
- * Renders a possibly-null rate (decidedRatePct/resolvedRatePct, or the
- * pooled SLA compliance figures in dashboard.ts/sla.ts) for on-screen
+ * Renders a possibly-null rate (decidedRatePct/resolutionOf, or the
+ * per-service SLA compliance figures in sla.ts) for on-screen
  * display: "—" when there is no denominator to compute a rate from, the
  * rounded percentage otherwise. Every KPI tile that shows a rate must go
  * through this rather than `${value}%` or `value ?? 0`, so a genuine
@@ -432,7 +447,7 @@ export function formatRate(value: number | null): string {
  * ("5.2h"), whole minutes under an hour ("27 min", "<1 min"). Rounding up
  * into the next unit shows that unit ("1d", not "24h"; "1h", not "60 min").
  * `null` — nothing in range was resolved — is "—", following formatRate's
- * rule. Every Avg Response surface must go through this rather than
+ * rule. Every Avg time to resolve surface must go through this rather than
  * `${value}d`, so a 27-minute mean can never read as "0d".
  */
 export function formatDuration(days: number | null): string {
@@ -448,10 +463,10 @@ export function formatDuration(days: number | null): string {
 
 /** Absolute integer change, for KPI tiles reporting a small count (e.g. SLA
  * violations) where a percentage swing would be noisy or undefined at 0. */
-export function countDelta(current: number, previous: number, suffix = "vs previous period"): string {
+export function countDelta(current: number, previous: number, suffix = "vs previous period"): Delta {
   const diff = current - previous;
   const sign = diff >= 0 ? "+" : "";
-  return `${sign}${diff} ${suffix}`;
+  return { text: `${sign}${diff} ${suffix}`, movement: movementOf(diff) };
 }
 
 /**
@@ -463,12 +478,12 @@ export function countDelta(current: number, previous: number, suffix = "vs previ
  * period — see averageResolutionDays) has no swing to report, so it reads
  * "No comparable data", as ratePointsDelta does for a null rate.
  */
-export function daysDelta(current: number | null, previous: number | null): string {
-  if (current === null || previous === null) return "No comparable data vs previous period";
+export function daysDelta(current: number | null, previous: number | null): Delta {
+  if (current === null || previous === null) return { text: "No comparable data vs previous period", movement: null };
   const diff = current - previous;
-  if (Math.abs(diff) * 1440 < 1) return "No change vs previous period";
+  if (Math.abs(diff) * 1440 < 1) return { text: "No change vs previous period", movement: null };
   const direction = diff < 0 ? "faster" : "slower";
-  return `${formatDuration(Math.abs(diff))} ${direction} vs previous period`;
+  return { text: `${formatDuration(Math.abs(diff))} ${direction} vs previous period`, movement: movementOf(diff) };
 }
 
 /**
@@ -499,10 +514,121 @@ export function averageResolutionDays(rows: IncidentRow[]): number | null {
   return durations.reduce((sum, days) => sum + days, 0) / durations.length;
 }
 
-// Applications still in flight, per admin_yellow_card_analytics.status —
-// "withdrawn" is terminal (see barangayCoverage's doc comment above) and is
-// deliberately excluded, same as there.
-const YELLOW_CARD_PENDING_STATUSES = new Set(["pending", "resubmitted", "revision_requested"]);
+/**
+ * A report's time to triage in hours: filing to routing, from the view (l42).
+ * null when it was never routed, or when it was reopened: reopening resets
+ * `routed_at` (l28's reopen_incident), so the view's figure is then filing to
+ * reopening, not triage (metrics sheet I8). The table, the export and Avg time
+ * to triage all read it through here, so they leave out the same reports.
+ */
+export function triageHoursOf(row: IncidentRow): number | null {
+  if ((row.reopened_count ?? 0) > 0) return null;
+  return row.time_to_triage_hours ?? null;
+}
+
+/**
+ * Average time to triage in days, over `rows` as given, leaving out reports
+ * never routed or reopened (triageHoursOf). In days so it shares
+ * formatDuration and daysDelta with Avg time to resolve. `null` when nothing
+ * qualifies, rendered "—" (metrics sheet I10).
+ */
+export function averageTriageDays(rows: IncidentRow[]): number | null {
+  const hours = rows
+    .map(triageHoursOf)
+    .filter((value): value is number => value !== null && Number.isFinite(value) && value >= 0);
+
+  if (hours.length === 0) return null;
+  return hours.reduce((sum, value) => sum + value, 0) / hours.length / 24;
+}
+
+// The Service backlog: every request waiting on the city right now, whatever
+// the range (Admin CONTEXT.md; metrics sheet D2). A request whose next move is
+// the resident's is not in it: a Yellow Card in revision, a booking awaiting
+// payment, a resubmission or its organisation document. The Yellow Card and
+// booking sets are the Staff Portal's own Backlog (REVIEWABLE_STATUSES and
+// NEEDS_ACTION_STATUSES in its status.ts files), so both Portals give the same
+// number. A confirmed booking is in it: the office still records the balance.
+// The Dashboard counts all three; Pending Review and Open Backlog count their
+// own service from this same definition (#116).
+const SERVICE_BACKLOG_STATUSES = {
+  yellowCard: new Set(["pending", "resubmitted"]),
+  incidents: new Set(["open", "in_pool", "in_progress"]),
+  bookings: new Set(["awaiting_tier_review", "awaiting_quote", "payment_verification", "confirmed"]),
+};
+
+/** The rows of one service that are in the Service backlog. */
+export function inServiceBacklog<T extends { status: string | null }>(
+  rows: T[],
+  service: keyof typeof SERVICE_BACKLOG_STATUSES
+): T[] {
+  const statuses = SERVICE_BACKLOG_STATUSES[service];
+  return rows.filter((row) => row.status !== null && statuses.has(row.status));
+}
+
+/** Of one service's Service backlog, how many are past due and how many at risk. */
+export interface BacklogDeadlines {
+  pastDue: number;
+  atRisk: number;
+}
+
+/**
+ * Pending Review's "N past due · M at risk" (metrics sheet Y4), and the
+ * Yellow Card half of SLA Reports' Past due now (S4). Reads ALL of `rows`,
+ * whatever the range: the backlog is right now.
+ */
+export function yellowCardBacklogDeadlines(rows: YellowCardRow[]): BacklogDeadlines {
+  const pendingRows = inServiceBacklog(rows, "yellowCard");
+  return {
+    pastDue: yellowCardPastDueRows(rows).length,
+    atRisk: pendingRows.filter((row) => row.deadline_state === "at_risk").length,
+  };
+}
+
+/**
+ * The Yellow Card applications past due now: the rows behind Pending
+ * Review's past-due note and SLA Reports' Past due now, which the Yellow
+ * Card table narrows to when it arrives from there (#127). Reads ALL of
+ * `rows`, whatever the range.
+ */
+export function yellowCardPastDueRows(rows: YellowCardRow[]): YellowCardRow[] {
+  // The database's deadline_state, the Staff queue's own (l80, l112): it
+  // needs Working Time, Office Hours and Holidays, so nothing here
+  // recomputes it. sla_breached is no use here: a pending row never sets it.
+  return inServiceBacklog(rows, "yellowCard").filter((row) => row.deadline_state === "overdue");
+}
+
+/**
+ * Open Backlog's "N past due · M at risk" (metrics sheet I4), and the
+ * incident half of SLA Reports' Past due now (S4). Reads ALL of `rows`,
+ * whatever the range, against `now`.
+ */
+export function incidentBacklogDeadlines(rows: IncidentRow[], now: Date = new Date()): BacklogDeadlines {
+  const openRows = inServiceBacklog(rows, "incidents");
+  // At risk is the view's flag (l112, super_metrics' rule), read when the
+  // page fetched; a report whose due time has passed since then counts once,
+  // as past due. A report with no due time has no clock: neither.
+  return {
+    pastDue: incidentPastDueRows(rows, now).length,
+    atRisk: openRows.filter((row) => row.sla_at_risk === true && !isIncidentPastDue(row, now)).length,
+  };
+}
+
+// Past due once now reaches the report's own due time, which the database
+// stamps when the clock arms (routed and verified), with the target of that
+// moment. A report with no due time has no clock, so it is never past due.
+function isIncidentPastDue(row: IncidentRow, now: Date): boolean {
+  return row.sla_due_at !== null && new Date(row.sla_due_at).getTime() <= now.getTime();
+}
+
+/**
+ * The incident reports past due now: the rows behind Open Backlog's
+ * past-due note and SLA Reports' Past due now, which the Incident Reports
+ * table narrows to when it arrives from there (#127). Reads ALL of `rows`,
+ * whatever the range, against `now`.
+ */
+export function incidentPastDueRows(rows: IncidentRow[], now: Date = new Date()): IncidentRow[] {
+  return inServiceBacklog(rows, "incidents").filter((row) => isIncidentPastDue(row, now));
+}
 
 /**
  * KPI-tile figures for the Yellow Card page, computed from `rows` the page
@@ -511,7 +637,7 @@ const YELLOW_CARD_PENDING_STATUSES = new Set(["pending", "resubmitted", "revisio
  * `applications`/`approvalRatePct` and their deltas describe `range` (via
  * `getDate`, so the caller controls whether that's submitted_at or
  * decided_at — the page's "application"/"completion" date-basis toggle).
- * `pendingReview`/`pendingPastSla` intentionally read ALL of `rows`, not the
+ * `pendingReview` and its past-due and at-risk counts intentionally read ALL of `rows`, not the
  * date-filtered slice: pending review is a point-in-time backlog, not a
  * per-period count, the same rule the old mock data documented ("Pending
  * review is a point-in-time backlog, so it stays constant across ranges").
@@ -537,7 +663,8 @@ export function yellowCardRangeStats(
 
   const barangaysReached = barangayCoverage(current).length;
 
-  const pendingRows = rows.filter((row) => row.status !== null && YELLOW_CARD_PENDING_STATUSES.has(row.status));
+  const pendingRows = inServiceBacklog(rows, "yellowCard");
+  const deadlines = yellowCardBacklogDeadlines(rows);
 
   return {
     applications: current.length,
@@ -548,57 +675,9 @@ export function yellowCardRangeStats(
     barangaysTotal,
     barangaysWithZero: barangaysTotal === null ? null : Math.max(0, barangaysTotal - barangaysReached),
     pendingReview: pendingRows.length,
-    // sla_breached is only meaningful for DECIDED applications (see
-    // applicationMet's doc comment in src/portals/admin/features/sla/lib/sla.ts) — the counter behind
-    // it only accrues on status change, so a pending row's sla_breached
-    // reads false no matter how long it has actually been sitting. Counting
-    // `row.sla_breached === true` here would therefore always undercount
-    // (structurally, toward 0), which is worse than admitting there is no
-    // honest number to show: there is no due_at/armed-clock column yet to
-    // compute a real one from, so this stays null ("unavailable") until
-    // Phase 6 lands.
-    pendingPastSla: null,
-    // Computed even though pendingPastSla above is unconditionally null: the
-    // Yellow Card page's Pending Review caption checks pendingPastSla first
-    // and always short-circuits to "unavailable" before it would ever read
-    // this value (see the ternary in src/app/(admin)/admin/(shell)/yellow-card/page.tsx), so
-    // this currently has no effect on anything rendered. Kept, not deleted
-    // — a Phase 6 rewrite that gives pendingPastSla a real non-null value
-    // will want this target-hours figure back immediately, and it costs
-    // nothing to keep it computed and correct in the meantime (Admin Portal
-    // Fix Plan, Phase 1 final review, finding 4).
-    pendingSlaTargetHours: sharedSlaTargetHours(pendingRows),
+    pendingPastDue: deadlines.pastDue,
+    pendingAtRisk: deadlines.atRisk,
   };
-}
-
-/**
- * The SLA target, in hours, that ALL of `rows` share — or null if they do not
- * share one (or there are no rows).
- *
- * The Pending Review tile's caption used to hardcode "past 48h SLA". That
- * figure is really `public_yellow_card_config.processing_time_target_days`
- * (2 days) rendered in hours, and Super Staff can change it through
- * `save_yellow_card_config` — at which point the hardcoded caption would keep
- * claiming 48h while the count beneath it was computed against the new
- * target. `admin_yellow_card_analytics` already carries the applicable target
- * on every row as `sla_target_hours`, so the caption reads it from there.
- *
- * A row keeps the target it was created under, so after a config change a
- * backlog can legitimately hold applications on two different clocks. There
- * is then no single honest number to put in the caption, so this returns null
- * and the caller drops the figure rather than picking one of the two and
- * misdescribing the other.
- */
-function sharedSlaTargetHours(rows: YellowCardRow[]): number | null {
-  let shared: number | null = null;
-
-  for (const row of rows) {
-    if (typeof row.sla_target_hours !== "number") return null;
-    if (shared === null) shared = row.sla_target_hours;
-    else if (shared !== row.sla_target_hours) return null;
-  }
-
-  return shared;
 }
 
 // null when `decided` (approved + rejected) is 0 — e.g. a quiet "Today"
@@ -613,8 +692,6 @@ function decidedRatePct(rows: YellowCardRow[]): number | null {
   return decided > 0 ? round1((approved / decided) * 100) : null;
 }
 
-// Still-open incidents, per admin_incident_analytics.status.
-const INCIDENT_OPEN_STATUSES = new Set(["open", "in_pool", "in_progress"]);
 // Whether a `closed` incident counts as resolved, per closure reason.
 // `invalid` (a refusal, l85_refuse_incident.sql), `duplicate` and
 // `expired_unverified` close a report that was never fixed, so they don't
@@ -636,6 +713,11 @@ function isResolvedIncident(row: IncidentRow): boolean {
   return row.status === "closed" && row.closure_reason !== null && CLOSURE_REASON_IS_RESOLUTION[row.closure_reason];
 }
 
+// Closed as invalid, duplicate or expired: a report that was never fixed.
+function isClosedUnresolved(row: IncidentRow): boolean {
+  return row.status === "closed" && row.closure_reason !== null && !CLOSURE_REASON_IS_RESOLUTION[row.closure_reason];
+}
+
 export type IncidentLevel = NonNullable<IncidentRow["incident_level"]>;
 
 /**
@@ -654,9 +736,8 @@ export type IncidentSlaHours = Partial<Record<IncidentLevel, number>>;
  * of issueRangeStats measured every incident against one hardcoded 72-hour
  * threshold, which is the LOW-priority figure: a critical incident open for
  * ten hours was already 2.5x past its real 4-hour target and still counted as
- * on time. There is no `sla_due_at` on `admin_incident_analytics` to read
- * instead (unlike `responder_incidents`), so the target has to be looked up
- * per level from this config.
+ * on time. Since l112, issueRangeStats reads each report's own `sla_due_at`
+ * from `admin_incident_analytics` instead, so no count reads these targets.
  *
  * A null config row yields null, not an all-zero map: "we could not read the
  * targets" and "every target is zero hours" are opposite claims, and only one
@@ -683,22 +764,18 @@ export function incidentSlaHours(config: IncidentConfigRow | null): IncidentSlaH
 /**
  * KPI-tile figures for the Incident Reports page, computed from `rows` the
  * page has already fetched via listIncidents(). Mirrors yellowCardRangeStats
- * above: `reports`/`resolutionRatePct`/`avgResponseDays` describe `range`
- * (via `getDate`), while `openBacklog`/`backlogPastSla` read ALL of `rows`,
- * since an open backlog is a point-in-time queue, not a per-period count.
+ * above: `reports`/`resolutionRatePct`/`avgTimeToResolveDays` describe `range`
+ * (via `getDate`), while `openBacklog` and its past-due and at-risk counts
+ * read ALL of `rows`, since an open backlog is a point-in-time queue, not a
+ * per-period count.
  *
  * `slaHours` carries the city's per-level response targets, from
- * `public_incident_config` via incidentSlaHours above. It is still a
- * required parameter — kept for signature stability and because a future
- * Phase 6-backed rewrite of `backlogPastSla` may want it again — but as of
- * Task 1.3 it is NOT read by `backlogPastSla`, which is unconditionally
- * null regardless of what is passed here (see its own doc comment below for
- * why).
+ * `public_incident_config` via incidentSlaHours above. Nothing here reads it
+ * any more: past due and at risk come from each report's own clock (l112).
  *
- * `now` similarly defaults to the real current time and is accepted so a
- * future wall-clock-dependent computation stays testable (mirroring
- * presetDateRange's own `now` parameter in src/portals/admin/lib/dates.ts), but nothing in
- * this function currently reads it either, for the same reason.
+ * `now` defaults to the real current time, and is what past due is read
+ * against (mirroring presetDateRange's own `now` parameter in
+ * src/portals/admin/lib/dates.ts).
  */
 export function issueRangeStats(
   rows: IncidentRow[],
@@ -710,92 +787,110 @@ export function issueRangeStats(
   const current = filterByDateRange(rows, getDate, range);
   const previous = filterByDateRange(rows, getDate, previousPeriodRange(range));
 
-  const resolutionRatePct = resolvedRatePct(current);
-  const previousResolutionRatePct = resolvedRatePct(previous);
+  const resolution = resolutionOf(current);
+  const previousResolution = resolutionOf(previous);
 
-  const avgResponseDays = averageResolutionDays(current);
-  const previousAvgResponseDays = averageResolutionDays(previous);
+  const avgTimeToResolveDays = averageResolutionDays(current);
+  const previousAvgTimeToResolveDays = averageResolutionDays(previous);
 
-  const openRows = rows.filter((row) => row.status !== null && INCIDENT_OPEN_STATUSES.has(row.status));
+  const avgTimeToTriageDays = averageTriageDays(current);
+  const previousAvgTimeToTriageDays = averageTriageDays(previous);
 
-  // ⚠️ KNOWN DEFECT (Admin Portal Fix Plan, Task 1.3) — backlogPastSla is
-  // UNCONDITIONALLY null below. It used to compute
-  // `ageHours = now - submitted_at` per open row and compare that against
-  // slaHours[row.incident_level] — i.e. today's LIVE public_incident_config
-  // target, not the target that applied when the row was created. That was
-  // wrong on three counts:
-  //   1. An incident's SLA clock only "arms" once BOTH routing and photo
-  //      verification complete (`sla_armed_at = max(routed_at, verified_at)`,
-  //      l12b_incident_triggers.sql's inc_arm_sla()) — an unverified report
-  //      never armed at all, yet the old math counted it as breached purely
-  //      because it looked old, charging citizen/queue delay as if it were
-  //      department lateness.
-  //   2. Routing delay (l20's route_incident assigns the department; before
-  //      that an incident isn't even this department's clock to keep) got
-  //      folded into the same elapsed-time figure and blamed on the
-  //      department that eventually received it.
-  //   3. `sla_target_hours` is stamped once, at arming, specifically so a
-  //      later `save_incident_config` edit does not retroactively rewrite
-  //      history (l57's lifecycle sweeper relies on this snapshot too) — but
-  //      comparing against `slaHours` (today's config) re-judged old open
-  //      incidents against a target Super Staff may have since changed.
-  //
-  // This is the exact same underlying data gap Task 1.2 hit and documented
-  // in incidentMet's "KNOWN LIMITATION" comment in src/portals/admin/features/sla/lib/sla.ts:
-  // admin_incident_analytics does not expose `sla_due_at`, `sla_armed_at`,
-  // or `is_verified`/`verified_at` — only a real Phase 6 migration adding
-  // those columns unblocks a correct `sla_due_at < now()` computation here.
-  // That comment also already rejected approximating a due date from
-  // `submitted_at`/`routed_at` + config as "materially wrong for the
-  // critical/high tiers" — the same trick this function used to lean on.
-  // See src/portals/admin/features/sla/lib/sla.ts's incidentMet doc comment for the fuller
-  // DB-trigger-level explanation; it is not re-derived here.
-  //
-  // Until that migration lands, there is no honest per-row breach signal to
-  // read, so this KPI reports as unavailable (null) rather than a number
-  // that structurally miscounts unverified/newly-routed incidents as
-  // breached. See IssueRangeStats.backlogPastSla in src/portals/admin/lib/types.ts and its
-  // callers (src/app/(admin)/admin/(shell)/issue-reports/page.tsx,
-  // src/app/(admin)/admin/(shell)/dashboard/page.tsx) for how "null" renders.
-  const backlogPastSla: number | null = null;
+  const openRows = inServiceBacklog(rows, "incidents");
+  const deadlines = incidentBacklogDeadlines(rows, now);
 
   return {
     reports: current.length,
     reportsDelta: percentDelta(current.length, previous.length),
-    resolutionRatePct,
-    resolutionRateDelta: ratePointsDelta(resolutionRatePct, previousResolutionRatePct),
-    avgResponseDays,
-    avgResponseDelta: daysDelta(avgResponseDays, previousAvgResponseDays),
+    resolutionRatePct: resolution.ratePct,
+    resolutionRateDelta: ratePointsDelta(resolution.ratePct, previousResolution.ratePct),
+    resolutionStillOpen: resolution.stillOpen,
+    avgTimeToResolveDays,
+    avgTimeToResolveDelta: daysDelta(avgTimeToResolveDays, previousAvgTimeToResolveDays),
+    avgTimeToTriageDays,
+    avgTimeToTriageDelta: daysDelta(avgTimeToTriageDays, previousAvgTimeToTriageDays),
     openBacklog: openRows.length,
-    backlogPastSla,
+    backlogPastDue: deadlines.pastDue,
+    backlogAtRisk: deadlines.atRisk,
   };
 }
 
-// null when `rows` (the range-filtered incidents) is empty — no incidents
-// filed in range at all, so there is no resolution rate to report. A range
-// with incidents but none yet resolved still returns a real 0%, which is an
-// honest reading of that case; only the empty-denominator case is null.
-// Callers must render null as "—" (via formatRate), never as a literal 0%.
-function resolvedRatePct(rows: IncidentRow[]): number | null {
-  if (rows.length === 0) return null;
-  const resolved = rows.filter(isResolvedIncident).length;
-  return round1((resolved / rows.length) * 100);
+// The Resolution Rate over `rows` (the range-filtered incidents), and how
+// many of its denominator are still open (metrics sheet I2). A report closed
+// as invalid, duplicate or expired was never work to resolve, so it leaves
+// the denominator; a report still open stays in it. `ratePct` is null when
+// nothing is left to divide by — no reports in range, or every one closed
+// for those reasons. A range with real reports but none yet resolved still
+// returns a real 0%; only the empty-denominator case is null. Callers must
+// render null as "—" (via formatRate), never as a literal 0%.
+function resolutionOf(rows: IncidentRow[]): { ratePct: number | null; stillOpen: number } {
+  const real = rows.filter((row) => !isClosedUnresolved(row));
+  const resolved = real.filter(isResolvedIncident).length;
+  return {
+    ratePct: real.length === 0 ? null : round1((resolved / real.length) * 100),
+    stillOpen: real.length - resolved,
+  };
+}
+
+// A confirmed booking: the office accepted it and the event is going ahead
+// or has taken place (Admin CONTEXT.md, "Event day"). A request still being
+// reviewed, quoted or paid for is not one.
+const CONFIRMED_BOOKING_STATUSES = new Set(["confirmed", "fully_paid", "completed"]);
+
+export function isConfirmedBooking(row: BookingRow): boolean {
+  return row.status !== null && CONFIRMED_BOOKING_STATUSES.has(row.status);
+}
+
+/** Event days in a range: how many days had an event, of how many. */
+export interface EventDays {
+  pct: number;
+  days: number;
+  totalDays: number;
+  // "X of Y days had an event", always shown with the figure.
+  note: string;
+}
+
+/**
+ * Event days (metrics sheet D4 and C2): the share of calendar days in
+ * `range` with at least one confirmed booking. The Dashboard and the
+ * Convention Center both show it, from this one function, so they agree.
+ *
+ * It is not utilization: there is no venue capacity NUMBER to divide by
+ * (see bookingRequestsPerVenue's doc comment above), so it counts days with an
+ * event, and one small event and one full-facility event count the same.
+ *
+ * `rows` is the FULL fetched array: this filters by `event_date` itself.
+ * A booking's `submitted_at` (when it was filed) and its `event_date` (when
+ * the event happens) can land in different periods, and this figure is
+ * about which days in `range` had an event on them, whatever date type the
+ * rest of the page reads. Every event day it collects lies within `range`,
+ * so the result is bounded to [0, 100] by construction.
+ */
+export function eventDays(rows: BookingRow[], range: DateRange): EventDays {
+  const totalDays =
+    Math.round((Date.parse(`${range.to}T00:00:00Z`) - Date.parse(`${range.from}T00:00:00Z`)) / 86_400_000) + 1;
+  if (totalDays <= 0) return { pct: 0, days: 0, totalDays: 0, note: "0 of 0 days had an event" };
+
+  const events = filterByDateRange(rows.filter(isConfirmedBooking), (row) => row.event_date, range);
+  const days = new Set(events.map((row) => row.event_date as string)).size;
+  return {
+    pct: round1((days / totalDays) * 100),
+    days,
+    totalDays,
+    note: `${days} of ${totalDays} day${totalDays === 1 ? "" : "s"} had an event`,
+  };
 }
 
 /**
  * KPI-tile figures for the Convention Center page, computed from `rows` the
  * page has already fetched via listBookings().
  *
- * Only `bookings`/`bookingsDelta` are derivable from real data: utilization
- * needs a venue capacity NUMBER (booking_venues.capacity_label is free text,
- * not a figure to divide by — see venueUtilisation's doc comment above), and
- * resident/outside share needs is_resident, which submit_booking never
- * writes origin data for (the generated column is always false, not null —
- * see the Resident Share KPI tile's own gap notice on the page). Those three
- * tiles render a literal "Not tracked" on the page
- * itself, so this returns nothing for them: it used to emit six fields fixed
- * at 0/"Not tracked" that no caller ever read, which invited a future reader
- * to wire a tile to a placeholder zero and believe it.
+ * `bookings`/`bookingsDelta` count booking requests (metrics sheet C1) by
+ * the picked date type, whatever became of them; `confirmed` is how many of
+ * those same requests are confirmed, fully paid or completed. `eventDays`
+ * always reads event dates (see eventDays above). There is no resident or
+ * outside-Lucena share: submit_booking never records where a booker is from
+ * (metrics sheet C3, C4), so the page shows no such figure (#118).
  */
 export function conventionRangeStats(
   rows: BookingRow[],
@@ -807,6 +902,8 @@ export function conventionRangeStats(
 
   return {
     bookings: current.length,
+    confirmed: current.filter(isConfirmedBooking).length,
     bookingsDelta: percentDelta(current.length, previous.length),
+    eventDays: eventDays(rows, range),
   };
 }

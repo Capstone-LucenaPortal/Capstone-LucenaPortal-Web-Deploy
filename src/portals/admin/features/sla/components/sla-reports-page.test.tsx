@@ -87,6 +87,10 @@ function buildIncident(overrides: Partial<IncidentRow> = {}): IncidentRow {
     closed_at: null,
     reopened_count: 0,
     time_to_triage_hours: null,
+    // Resolved and on time by default, so it has a due time: a report with
+    // none never had a clock and is not scored (#125).
+    sla_due_at: defaultSubmittedAt(),
+    sla_at_risk: null,
     sla_met: true,
     ...overrides,
   };
@@ -102,6 +106,8 @@ function buildApplication(overrides: Partial<YellowCardRow> = {}): YellowCardRow
     submitted_at: defaultSubmittedAt(),
     decided_at: defaultSubmittedAt(),
     review_cycles: 1,
+    due_at: null,
+    deadline_state: null,
     sla_breached: false,
     sla_elapsed_seconds: 3600,
     sla_target_hours: 24,
@@ -136,6 +142,14 @@ function sectionFor(heading: string): HTMLElement {
   return screen.getByText(heading).closest("section") as HTMLElement;
 }
 
+// One service's line on a per-service tile (#122): "Yellow Card" or
+// "Incidents" inside the tile labelled `label`.
+function partFor(label: string, service: "Yellow Card" | "Incidents"): HTMLElement {
+  return within(tileFor(label)).getByText(service).closest("div") as HTMLElement;
+}
+
+const TREND_TITLE = "Incidents resolved on time, by month";
+
 describe("SLAReportsPage", () => {
   beforeEach(() => {
     mockListIncidents.mockReset();
@@ -168,7 +182,7 @@ describe("SLAReportsPage", () => {
     expect(screen.getByLabelText("Custom range start")).toHaveValue(`${manilaToday.slice(0, 7)}-01`);
   });
 
-  it("renders the compliance hero with the derived compliance, target and delta", async () => {
+  it("renders each service's compliance with its gap and the project target", async () => {
     mockListIncidents.mockResolvedValue([
       buildIncident({ id: "inc-1", sla_met: true }),
       buildIncident({ id: "inc-2", sla_met: true }),
@@ -179,12 +193,222 @@ describe("SLAReportsPage", () => {
     render(<SLAReportsPage />);
     expect(screen.getByText("Monthly SLA Compliance Report")).toBeInTheDocument();
     // 3 met / 4 = 75%.
-    expect(await within(tileFor("Compliance")).findByText("75%")).toBeInTheDocument();
-    expect(within(tileFor("Compliance")).getByText("Target: 85%")).toBeInTheDocument();
+    expect(await within(partFor("Compliance", "Incidents")).findByText("75%")).toBeInTheDocument();
+    expect(within(partFor("Compliance", "Incidents")).getByText("10 pts below 85% project target")).toBeInTheDocument();
+    // No application in range: nothing scored, never a fabricated 0%.
+    expect(within(partFor("Compliance", "Yellow Card")).getByText("—")).toBeInTheDocument();
+    expect(within(partFor("Compliance", "Yellow Card")).getByText("Nothing scored in range")).toBeInTheDocument();
+    expect(within(tileFor("Compliance")).getByText("Project target: 85%")).toBeInTheDocument();
     // No previous-period rows at all — percentDelta reads "New activity",
     // not a fabricated percentage swing.
-    expect(within(tileFor("Responses")).getByText("New activity vs previous period")).toBeInTheDocument();
+    expect(
+      within(partFor("Requests scored", "Incidents")).getByText("New activity vs previous period")
+    ).toBeInTheDocument();
     await screen.findByText("No department SLA data for this range.");
+  });
+
+  // #119: SLA Reports runs on the Dashboard's scoring rules, so a withdrawn
+  // application leaves its numbers too. Scored, it would read 2 scored,
+  // 1 finished late and 50%.
+  it("does not score a withdrawn application", async () => {
+    mockListApplications.mockResolvedValue([
+      buildApplication({ id: "app-1", status: "approved", sla_breached: false }),
+      buildApplication({ id: "app-2", status: "withdrawn", sla_elapsed_seconds: 45 * 3600, sla_breached: true }),
+    ]);
+
+    render(<SLAReportsPage />);
+
+    expect(await within(partFor("Compliance", "Yellow Card")).findByText("100%")).toBeInTheDocument();
+    expect(within(partFor("Requests scored", "Yellow Card")).getByText("1")).toBeInTheDocument();
+    expect(within(partFor("Finished late", "Yellow Card")).getByText("0")).toBeInTheDocument();
+  });
+
+  // #122: the two services are judged against different clocks (ADR 0001),
+  // so no tile adds them up. Pooled, this fixture would read 3 scored,
+  // 1 finished late and 66.7%.
+  it("shows every tile once per service, with no pooled figure", async () => {
+    mockListApplications.mockResolvedValue([buildApplication({ id: "app-1", sla_breached: false })]);
+    mockListIncidents.mockResolvedValue([
+      buildIncident({ id: "inc-1", sla_met: true }),
+      buildIncident({ id: "inc-2", sla_met: false }),
+    ]);
+
+    render(<SLAReportsPage />);
+
+    expect(await within(partFor("Requests scored", "Yellow Card")).findByText("1")).toBeInTheDocument();
+    expect(within(partFor("Requests scored", "Incidents")).getByText("2")).toBeInTheDocument();
+    expect(within(partFor("Finished late", "Yellow Card")).getByText("0")).toBeInTheDocument();
+    expect(within(partFor("Finished late", "Incidents")).getByText("1")).toBeInTheDocument();
+    expect(within(partFor("Compliance", "Yellow Card")).getByText("100%")).toBeInTheDocument();
+    expect(within(partFor("Compliance", "Incidents")).getByText("50%")).toBeInTheDocument();
+    expect(screen.queryByText("66.7%")).not.toBeInTheDocument();
+    expect(within(tileFor("Requests scored")).queryByText("3")).not.toBeInTheDocument();
+    expect(screen.queryByText("Responses")).not.toBeInTheDocument();
+    expect(screen.queryByText("SLA Violations")).not.toBeInTheDocument();
+  });
+
+  it("states that Booking has no turnaround clock", async () => {
+    render(<SLAReportsPage />);
+
+    expect(
+      await screen.findByText("Booking has no turnaround clock yet (voluntary standard, ADR 0001)")
+    ).toBeInTheDocument();
+  });
+
+  // #126: the waiting work that has already run out of time, per service,
+  // counted the way Pending Review's and Open Backlog's notes count it
+  // (#124). Every fixture was filed 200 days ago, outside the default Month
+  // and the Today preset, because past due describes right now.
+  describe("Past due now", () => {
+    const longAgo = daysAgoIso(200);
+    const dueYesterday = daysAgoIso(1);
+    const dueTomorrow = daysAgoIso(-1);
+
+    function waitingApplications(): YellowCardRow[] {
+      return [
+        buildApplication({ id: "pending-overdue", status: "pending", submitted_at: longAgo, decided_at: null, deadline_state: "overdue" }),
+        buildApplication({ id: "resubmitted-overdue", status: "resubmitted", submitted_at: longAgo, decided_at: null, deadline_state: "overdue" }),
+        buildApplication({ id: "pending-at-risk", status: "pending", submitted_at: longAgo, decided_at: null, deadline_state: "at_risk" }),
+        // Its next move is the resident's: not waiting on the city.
+        buildApplication({ id: "revision-overdue", status: "revision_requested", submitted_at: longAgo, decided_at: null, deadline_state: "overdue" }),
+      ];
+    }
+
+    function waitingIncidents(): IncidentRow[] {
+      return [
+        // Rejected by a responder, so back in Awaiting Triage with its clock
+        // still running (DB l56b): past due once its due time passes (#129).
+        buildIncident({ id: "open-late", status: "open", submitted_at: longAgo, resolved_at: null, sla_due_at: dueYesterday }),
+        buildIncident({ id: "in-progress-late", status: "in_progress", submitted_at: longAgo, resolved_at: null, sla_due_at: dueYesterday }),
+        buildIncident({ id: "in-pool-late", status: "in_pool", submitted_at: longAgo, resolved_at: null, sla_due_at: dueYesterday }),
+        buildIncident({ id: "open-in-time", status: "open", submitted_at: longAgo, resolved_at: null, sla_due_at: dueTomorrow, sla_at_risk: true }),
+        // Never routed and verified: no clock, never past due.
+        buildIncident({ id: "open-no-clock", status: "open", submitted_at: longAgo, resolved_at: null, sla_due_at: null }),
+        // Finished: scored, not waiting.
+        buildIncident({ id: "resolved-late", status: "resolved", submitted_at: longAgo, resolved_at: longAgo, sla_due_at: dueYesterday, sla_met: false }),
+      ];
+    }
+
+    it("counts each service's waiting requests past their due time, and replaces Avg Response", async () => {
+      mockListApplications.mockResolvedValue(waitingApplications());
+      mockListIncidents.mockResolvedValue(waitingIncidents());
+
+      render(<SLAReportsPage />);
+
+      expect(await within(partFor("Past due now", "Yellow Card")).findByText("2")).toBeInTheDocument();
+      expect(within(partFor("Past due now", "Incidents")).getByText("3")).toBeInTheDocument();
+      expect(within(tileFor("Past due now")).getByText("Right now, whatever the date range")).toBeInTheDocument();
+      expect(screen.queryByText("Avg Response")).not.toBeInTheDocument();
+    });
+
+    it("changing the range doesn't change them", async () => {
+      const user = userEvent.setup();
+      mockListApplications.mockResolvedValue(waitingApplications());
+      mockListIncidents.mockResolvedValue(waitingIncidents());
+
+      render(<SLAReportsPage />);
+      expect(await within(partFor("Past due now", "Incidents")).findByText("3")).toBeInTheDocument();
+
+      for (const preset of ["Today", "Annual"]) {
+        await user.click(screen.getByRole("button", { name: preset }));
+        expect(within(partFor("Past due now", "Yellow Card")).getByText("2")).toBeInTheDocument();
+        expect(within(partFor("Past due now", "Incidents")).getByText("3")).toBeInTheDocument();
+      }
+      await user.selectOptions(screen.getByLabelText("Date type"), "resolution");
+      expect(within(partFor("Past due now", "Yellow Card")).getByText("2")).toBeInTheDocument();
+      expect(within(partFor("Past due now", "Incidents")).getByText("3")).toBeInTheDocument();
+    });
+
+    it("reads 0, not a blank, when nothing waiting is past due", async () => {
+      mockListApplications.mockResolvedValue([
+        buildApplication({ id: "pending-on-track", status: "pending", decided_at: null, deadline_state: "on_track" }),
+      ]);
+      mockListIncidents.mockResolvedValue([
+        buildIncident({ id: "open-no-clock", status: "open", resolved_at: null, sla_due_at: null }),
+      ]);
+
+      render(<SLAReportsPage />);
+
+      expect(await within(partFor("Past due now", "Yellow Card")).findByText("0")).toBeInTheDocument();
+      expect(within(partFor("Past due now", "Incidents")).getByText("0")).toBeInTheDocument();
+    });
+  });
+
+  // #127: a Mayor who reads "1 finished late" can see which one. Each
+  // service's part links to its page, narrowed to the requests counted.
+  describe("links to the requests behind Finished late and Past due now", () => {
+    it("links each service's count to its page, with the range and date type for Finished late and none for Past due now", async () => {
+      const user = userEvent.setup();
+      mockListApplications.mockResolvedValue([
+        buildApplication({ id: "app-late", status: "approved", sla_breached: true }),
+        buildApplication({ id: "app-overdue", status: "pending", decided_at: null, deadline_state: "overdue" }),
+      ]);
+      mockListIncidents.mockResolvedValue([
+        buildIncident({ id: "inc-late", sla_met: false }),
+        buildIncident({ id: "inc-late-2", sla_met: false }),
+        buildIncident({ id: "inc-overdue", status: "open", resolved_at: null, sla_due_at: daysAgoIso(1) }),
+      ]);
+
+      render(<SLAReportsPage />);
+      await within(partFor("Finished late", "Incidents")).findByText("2");
+      await user.click(screen.getByRole("button", { name: "Annual" }));
+
+      expect(
+        within(partFor("Finished late", "Yellow Card")).getByRole("link", { name: "See the 1 application" })
+      ).toHaveAttribute("href", "/admin/yellow-card?sla=late&range=Annual&basis=application");
+      expect(
+        within(partFor("Finished late", "Incidents")).getByRole("link", { name: "See the 2 reports" })
+      ).toHaveAttribute("href", "/admin/issue-reports?sla=late&range=Annual&basis=report");
+      expect(
+        within(partFor("Past due now", "Yellow Card")).getByRole("link", { name: "See the 1 application" })
+      ).toHaveAttribute("href", "/admin/yellow-card?sla=past-due");
+      expect(
+        within(partFor("Past due now", "Incidents")).getByRole("link", { name: "See the 1 report" })
+      ).toHaveAttribute("href", "/admin/issue-reports?sla=past-due");
+    });
+
+    it("a custom range on the resolution date carries its dates and the pages' own date type", async () => {
+      const user = userEvent.setup();
+      mockListApplications.mockResolvedValue([
+        buildApplication({ id: "app-late", status: "rejected", submitted_at: "2026-06-02T02:00:00Z", decided_at: "2026-06-08T02:00:00Z", sla_breached: true }),
+      ]);
+      mockListIncidents.mockResolvedValue([
+        buildIncident({ id: "inc-late", submitted_at: "2026-06-02T02:00:00Z", resolved_at: "2026-06-05T02:00:00Z", sla_due_at: "2026-06-03T02:00:00Z", sla_met: false }),
+      ]);
+
+      render(<SLAReportsPage />);
+      await screen.findByText("No department SLA data for this range.");
+      const start = screen.getByLabelText("Custom range start");
+      const end = screen.getByLabelText("Custom range end");
+      await user.clear(start);
+      await user.type(start, "2026-06-01");
+      await user.clear(end);
+      await user.type(end, "2026-06-10");
+      await user.selectOptions(screen.getByLabelText("Date type"), "resolution");
+
+      expect(
+        await within(partFor("Finished late", "Yellow Card")).findByRole("link", { name: "See the 1 application" })
+      ).toHaveAttribute("href", "/admin/yellow-card?sla=late&from=2026-06-01&to=2026-06-10&basis=completion");
+      expect(
+        within(partFor("Finished late", "Incidents")).getByRole("link", { name: "See the 1 report" })
+      ).toHaveAttribute("href", "/admin/issue-reports?sla=late&from=2026-06-01&to=2026-06-10&basis=resolution");
+    });
+
+    it("a count of 0 has no link, and neither does a failed load", async () => {
+      mockListApplications.mockResolvedValue([buildApplication({ id: "app-on-time", sla_breached: false })]);
+
+      const { unmount } = render(<SLAReportsPage />);
+      await within(partFor("Requests scored", "Yellow Card")).findByText("1");
+      expect(within(tileFor("Finished late")).queryByRole("link")).not.toBeInTheDocument();
+      expect(within(tileFor("Past due now")).queryByRole("link")).not.toBeInTheDocument();
+      unmount();
+
+      mockListApplications.mockRejectedValue({ kind: "unknown", message: "boom" });
+      render(<SLAReportsPage />);
+      await screen.findAllByText("Unable to load SLA data: boom");
+      expect(within(tileFor("Finished late")).queryByRole("link")).not.toBeInTheDocument();
+      expect(within(tileFor("Past due now")).queryByRole("link")).not.toBeInTheDocument();
+    });
   });
 
   it("renders the date filter bar with presets and SLA date basis options", async () => {
@@ -208,8 +432,6 @@ describe("SLAReportsPage", () => {
     // Date is faked, so userEvent/waitFor keep their real timers.
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-06-15T12:00:00+08:00"));
-    // hoursAgo(72)/hoursAgo(24) so every incident shares an identical 2-day
-    // response time — avgResponseDays comes out to an exact, assertable "2d".
     const submittedAt = new Date(Date.now() - 72 * 3_600_000).toISOString();
     const resolvedAt = new Date(Date.now() - 24 * 3_600_000).toISOString();
     mockListIncidents.mockResolvedValue([
@@ -222,55 +444,38 @@ describe("SLAReportsPage", () => {
 
     render(<SLAReportsPage />);
 
-    expect(await within(tileFor("Responses")).findByText("5")).toBeInTheDocument();
-    expect(within(tileFor("SLA Violations")).getByText("2")).toBeInTheDocument();
-    expect(within(tileFor("Avg Response")).getByText("2d")).toBeInTheDocument();
-    expect(within(tileFor("Compliance")).getByText("Target: 85%")).toBeInTheDocument();
+    expect(await within(partFor("Requests scored", "Incidents")).findByText("5")).toBeInTheDocument();
+    expect(within(partFor("Finished late", "Incidents")).getByText("2")).toBeInTheDocument();
+    expect(within(tileFor("Compliance")).getByText("Project target: 85%")).toBeInTheDocument();
     await screen.findByText("No department SLA data for this range.");
   });
 
-  // Admin Portal Fix Plan, Phase 1 final review, finding 3: Task 1.1/1.2
-  // each individually excluded pending applications / non-scoreable
-  // incidents from this tile's count, with the only explanation living in a
-  // code comment — an admin comparing this tile against a raw count shown
-  // elsewhere had nothing on screen saying why the two disagree. The
-  // Responses tile now captions the gap when one exists.
-  it("the Responses tile captions the scoreable-vs-total gap when responses is less than totalInRange", async () => {
+  // #122: the old caption read "57 of 122 scoreable", but 122 was every
+  // request filed, not the scoreable ones. Each service now says what its
+  // scored count was out of: the requests of that service in range.
+  it("Requests scored says what each service's count was out of", async () => {
     mockListIncidents.mockResolvedValue([
       buildIncident({ id: "inc-1", sla_met: true }),
       buildIncident({ id: "inc-2", status: "open", resolved_at: null }),
       buildIncident({ id: "inc-3", status: "open", resolved_at: null }),
     ]);
-    mockListApplications.mockResolvedValue([buildApplication({ id: "app-1", status: "pending" })]);
-
-    render(<SLAReportsPage />);
-
-    // 1 scoreable incident, 0 decided applications = 1 response, out of
-    // 3 incidents + 1 application = 4 total in range.
-    expect(await within(tileFor("Responses")).findByText("1")).toBeInTheDocument();
-    expect(
-      within(tileFor("Responses")).getByText("1 of 4 scoreable (pending/unverified excluded)")
-    ).toBeInTheDocument();
-  });
-
-  it("the Responses tile omits the scoreable-vs-total caption once responses equals totalInRange", async () => {
-    mockListIncidents.mockResolvedValue([
-      buildIncident({ id: "inc-1", sla_met: true }),
-      buildIncident({ id: "inc-2", sla_met: false }),
+    mockListApplications.mockResolvedValue([
+      buildApplication({ id: "app-1", status: "approved" }),
+      buildApplication({ id: "app-2", status: "pending" }),
     ]);
 
     render(<SLAReportsPage />);
 
-    expect(await within(tileFor("Responses")).findByText("2")).toBeInTheDocument();
-    expect(
-      within(tileFor("Responses")).queryByText(/scoreable \(pending\/unverified excluded\)/)
-    ).not.toBeInTheDocument();
+    expect(await within(partFor("Requests scored", "Incidents")).findByText("1")).toBeInTheDocument();
+    expect(within(partFor("Requests scored", "Incidents")).getByText("of 3 filed in range")).toBeInTheDocument();
+    expect(within(partFor("Requests scored", "Yellow Card")).getByText("of 2 filed in range")).toBeInTheDocument();
+    expect(screen.queryByText(/scoreable \(pending\/unverified excluded\)/)).not.toBeInTheDocument();
   });
 
-  // Same reconciliation, per row, on the "By department" table's Requests
+  // Same reconciliation, per row, on the "By department" table's Scored
   // column — the other place the review found this same unexplained-gap
   // problem.
-  it("the department table's Requests column shows the scoreable-vs-total gap per row", async () => {
+  it("the department table's Scored column shows the scoreable-vs-total gap per row", async () => {
     mockListDepartments.mockResolvedValue([
       buildDepartment({ code: "waste", label: "Waste Management" }),
       buildDepartment({ code: "engineering", label: "Engineering" }),
@@ -317,8 +522,8 @@ describe("SLAReportsPage", () => {
     await screen.findByText("No department SLA data for this range.");
     await user.click(screen.getByRole("button", { name: "Annual" }));
 
-    expect(await screen.findByText("Compliance trend")).toBeInTheDocument();
-    const trendSection = sectionFor("Compliance trend");
+    expect(await screen.findByText(TREND_TITLE)).toBeInTheDocument();
+    const trendSection = sectionFor(TREND_TITLE);
     const labelA = manilaMonthLabel(monthA);
     const labelB = manilaMonthLabel(monthB);
     const labelC = manilaMonthLabel(monthC);
@@ -331,15 +536,15 @@ describe("SLAReportsPage", () => {
     expect(within(svg).getByText(labelA)).toBeInTheDocument();
     expect(within(svg).getByText(labelB)).toBeInTheDocument();
     expect(within(svg).getByText(labelC)).toBeInTheDocument();
-    // Total violations 3 + 2 + 1 = 6; worst month is monthA with 3.
+    // Finished late 3 + 2 + 1 = 6; worst month is monthA with 3.
     expect(within(trendSection).getByText("6")).toBeInTheDocument();
     expect(within(trendSection).getByText(`${labelA} (3)`)).toBeInTheDocument();
   });
 
-  // #40: the SLA Violations / Compliance tiles count incidents plus Yellow
-  // Card, but the trend buckets incidents only (computeTrendBuckets), so its
-  // total reads lower than the tile's. Every trend label must say so.
-  it('labels the compliance trend "incidents only" beside its total, subtitle and accessible names', async () => {
+  // #40, then #122: the trend buckets incidents only (computeTrendBuckets),
+  // so its title says so, and so do its total and accessible names, rather
+  // than a footnote beside a general "Compliance trend".
+  it("titles the trend as incidents resolved on time, by month, in its total and accessible names", async () => {
     const user = userEvent.setup();
     const monthA = daysAgoIso(90);
     const monthB = daysAgoIso(5);
@@ -353,13 +558,15 @@ describe("SLAReportsPage", () => {
     await screen.findByText("No department SLA data for this range.");
     await user.click(screen.getByRole("button", { name: "Annual" }));
 
-    expect(await screen.findByText("Compliance trend")).toBeInTheDocument();
-    const trendSection = sectionFor("Compliance trend");
-    const total = within(trendSection).getByText("Total violations (incidents only):", { exact: false });
-    expect(total).toHaveTextContent("Total violations (incidents only): 3");
-    expect(within(trendSection).getByText(/^.+ · incidents only$/, { selector: "p" })).toBeInTheDocument();
-    expect(within(trendSection).getByRole("img", { name: /incidents only/ })).toBeInTheDocument();
-    expect(within(trendSection).getByRole("table", { name: /incidents only/ })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: TREND_TITLE })).toBeInTheDocument();
+    expect(screen.queryByText("Compliance trend")).not.toBeInTheDocument();
+    const trendSection = sectionFor(TREND_TITLE);
+    const total = within(trendSection).getByText("Incidents finished late:", { exact: false });
+    expect(total).toHaveTextContent("Incidents finished late: 3");
+    expect(within(trendSection).getByRole("img", { name: new RegExp(TREND_TITLE) })).toBeInTheDocument();
+    // The 85% line is the capstone's project target, not a legal one (S8).
+    expect(within(trendSection).getByText("Project target 85%")).toBeInTheDocument();
+    expect(within(trendSection).getByRole("table", { name: new RegExp(TREND_TITLE) })).toBeInTheDocument();
   });
 
   // Admin Portal Fix Plan, Phase 3 accessibility task: the chart's SVG has
@@ -386,9 +593,9 @@ describe("SLAReportsPage", () => {
     render(<SLAReportsPage />);
     await screen.findByText("No department SLA data for this range.");
     await user.click(screen.getByRole("button", { name: "Annual" }));
-    await screen.findByText("Compliance trend");
+    await screen.findByText(TREND_TITLE);
 
-    const table = screen.getByRole("table", { name: /compliance trend data/i });
+    const table = screen.getByRole("table", { name: new RegExp(`${TREND_TITLE}, data`) });
     const rows = within(table).getAllByRole("row");
     // Header row + one row per trend point (3 months).
     expect(rows.length).toBe(4);
@@ -405,15 +612,15 @@ describe("SLAReportsPage", () => {
   // Admin Portal Fix Plan, Phase 1 final review, finding 1: ComplianceTrendCard
   // is outside every individual task's diff, so a null-compliance point
   // (zero scoreable incidents that month) reaching it as a bare number used
-  // to render "0% compliance" in the tooltip — reading as "everyone violated
+  // to render "0% on time" in the tooltip — reading as "everyone violated
   // SLA" when the true answer is "nothing was scoreable yet." A null point
   // now renders no tooltip/dot at all rather than a fabricated one.
-  it('the compliance trend chart does not render "0% compliance" for a null-compliance point', async () => {
+  it('the compliance trend chart does not render "0% on time" for a null-compliance point', async () => {
     const user = userEvent.setup();
     const nullMonth = daysAgoIso(60);
-    // 1 met / 3 = 33.3% — deliberately NOT a multiple of 10: "0% compliance"
+    // 1 met / 3 = 33.3% — deliberately NOT a multiple of 10: "0% on time"
     // is itself a substring of any percentage ending in a bare "0" (e.g.
-    // "100%", "50%", "80%" all contain the literal substring "0% compliance"
+    // "100%", "50%", "80%" all contain the literal substring "0% on time"
     // ), which would make the "no fabricated 0%" assertion below pass even
     // if the null-point exclusion were broken. 33.3% cannot false-positive
     // that check.
@@ -429,13 +636,16 @@ describe("SLAReportsPage", () => {
     await screen.findByText("No department SLA data for this range.");
     await user.click(screen.getByRole("button", { name: "Annual" }));
 
-    expect(await screen.findByText("Compliance trend")).toBeInTheDocument();
+    expect(await screen.findByText(TREND_TITLE)).toBeInTheDocument();
     const nullLabel = manilaMonthLabel(nullMonth);
     const realLabel = manilaMonthLabel(realMonth);
     const titleTexts = Array.from(container.querySelectorAll("svg title")).map((node) => node.textContent);
     expect(titleTexts.some((text) => text?.includes(nullLabel))).toBe(false);
-    expect(titleTexts.some((text) => text?.includes("0% compliance"))).toBe(false);
-    expect(titleTexts.some((text) => text?.includes(`${realLabel}: 33.3% compliance`))).toBe(true);
+    expect(titleTexts.some((text) => text?.includes("0% on time"))).toBe(false);
+    expect(titleTexts.some((text) => text?.includes(`${realLabel}: 33.3% on time`))).toBe(true);
+    // The data table read "null%" for such a month.
+    const table = screen.getByRole("table", { name: new RegExp(`${TREND_TITLE}, data`) });
+    expect(within(table).getByRole("row", { name: new RegExp(nullLabel) })).toHaveTextContent("—");
   });
 
   it("the compliance trend shows an empty state, not an error, when there are no incidents in range", async () => {
@@ -474,15 +684,16 @@ describe("SLAReportsPage", () => {
 
     await screen.findAllByText(/Unable to load SLA data/);
 
-    for (const label of ["Responses", "SLA Violations", "Compliance", "Avg Response"]) {
-      const tile = screen.getByText(label).closest("div") as HTMLElement;
-      // The value line specifically — not the whole tile, since the
-      // Compliance tile's static "Target: 85%" caption legitimately keeps
-      // showing a digit regardless of fetch status (it names the city's
-      // fixed SLA target, not a value derived from this fetch).
-      const value = tile.querySelector(".text-2xl");
-      expect(value).toHaveTextContent("—");
-      expect(value?.textContent).not.toMatch(/\d/);
+    // The value lines specifically — not the whole tile, since the
+    // Compliance tile's static "Project target: 85%" note legitimately keeps
+    // showing a digit regardless of fetch status (it names the fixed
+    // project target, not a value derived from this fetch).
+    for (const label of ["Requests scored", "Finished late", "Compliance", "Past due now"]) {
+      for (const service of ["Yellow Card", "Incidents"] as const) {
+        const value = partFor(label, service).querySelector(".text-xl");
+        expect(value).toHaveTextContent("—");
+        expect(value?.textContent).not.toMatch(/\d/);
+      }
     }
   });
 
@@ -504,12 +715,12 @@ describe("SLAReportsPage", () => {
     ]);
 
     render(<SLAReportsPage />);
-    expect(await within(tileFor("Compliance")).findByText("50%")).toBeInTheDocument();
+    expect(await within(partFor("Compliance", "Incidents")).findByText("50%")).toBeInTheDocument();
     const callsBeforeClick = mockListIncidents.mock.calls.length;
 
     await user.click(screen.getByRole("button", { name: "Today" }));
 
-    expect(await within(tileFor("Compliance")).findByText("50%")).toBeInTheDocument();
+    expect(await within(partFor("Compliance", "Incidents")).findByText("50%")).toBeInTheDocument();
     expect(mockListIncidents.mock.calls.length).toBe(callsBeforeClick);
   });
 
@@ -523,12 +734,12 @@ describe("SLAReportsPage", () => {
 
     render(<SLAReportsPage />);
     await screen.findAllByText(/Unable to load SLA data/);
-    expect(screen.queryByText(/month average/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Across d+ months?:/)).not.toBeInTheDocument();
     expect(screen.queryByText("Best month:")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Week" }));
 
-    expect(screen.queryByText(/month average/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Across d+ months?:/)).not.toBeInTheDocument();
     expect(screen.queryByText("Best month:")).not.toBeInTheDocument();
   });
 
@@ -597,8 +808,10 @@ describe("SLAReportsPage", () => {
       .getAllByRole("columnheader")
       .map((header) => header.textContent);
 
-    expect(headers).toEqual(["Service area", "Requests", "Compliance", "Status"]);
+    expect(headers).toEqual(["Service area", "Scored", "Compliance", "Status"]);
     expect(headers).not.toContain("Department");
+    // #122: 85% is the capstone's project target, not a city or legal standard.
+    expect(within(section).getByText("Compliance against the 85% project target")).toBeInTheDocument();
   });
 
   it("shows an empty state, not an error, when getSlaByDepartment resolves to []", async () => {
@@ -628,7 +841,7 @@ describe("SLAReportsPage", () => {
 
     // Only the recent incident falls inside "Week" — responses narrows from
     // 2 to 1, purely from the same already-fetched rows.
-    const responsesTile = screen.getByText("Responses").closest("div") as HTMLElement;
+    const responsesTile = partFor("Requests scored", "Incidents");
     await waitFor(() => expect(within(responsesTile).getByText("1")).toBeInTheDocument());
     expect(mockListIncidents.mock.calls.length).toBe(callsBeforeClick);
   });
@@ -665,7 +878,7 @@ describe("SLAReportsPage", () => {
     await user.clear(end);
     await user.type(end, "2026-06-10");
 
-    const responsesTile = screen.getByText("Responses").closest("div") as HTMLElement;
+    const responsesTile = partFor("Requests scored", "Incidents");
     await waitFor(() => expect(within(responsesTile).getByText("1")).toBeInTheDocument());
     expect(mockListIncidents.mock.calls.length).toBe(callsBeforeClick);
   });
@@ -684,34 +897,33 @@ describe("SLAReportsPage", () => {
 
     render(<SLAReportsPage />);
     await screen.findByText("No department SLA data for this range.");
-    const responsesTile = screen.getByText("Responses").closest("div") as HTMLElement;
+    const responsesTile = partFor("Requests scored", "Incidents");
     expect(within(responsesTile).getByText("0")).toBeInTheDocument();
     const callsBeforeClick = mockListIncidents.mock.calls.length;
 
     await user.selectOptions(screen.getByLabelText("Date type"), "resolution");
 
     await waitFor(() => expect(within(responsesTile).getByText("1")).toBeInTheDocument());
+    // Under Resolution Date the count is out of the requests closed in range.
+    expect(within(responsesTile).getByText("of 1 closed in range")).toBeInTheDocument();
     expect(mockListIncidents.mock.calls.length).toBe(callsBeforeClick);
   });
 
   // Two months 40 days apart (always distinct calendar months — see the
-  // trend-chart test above for why), each with a clean, easily-verified
-  // total/onTime/violations/avgResponseDays breakdown. "Annual" is clicked
-  // so both months fall inside the active range.
-  it("renders the monthly compliance history with a real, derived summary footer", async () => {
+  // trend-chart test above for why), of very different sizes. "Annual" is
+  // clicked so both months fall inside the active range.
+  //
+  // #122: the footer divides on time by scored across the months, so a
+  // one-case month can't count as much as a nine-case one. Averaging the
+  // two monthly percentages would read (0 + 100) / 2 = 50%.
+  it("the monthly history footer is weighted by cases and equals the incident compliance tile", async () => {
     const user = userEvent.setup();
     const monthA = daysAgoIso(40);
     const monthB = daysAgoIso(2);
     mockListIncidents.mockResolvedValue([
-      ...Array.from({ length: 9 }, (_, i) =>
-        buildIncident({ id: `a-met-${i}`, submitted_at: monthA, resolved_at: monthA, sla_met: true })
-      ),
       buildIncident({ id: "a-unmet", submitted_at: monthA, resolved_at: monthA, sla_met: false }),
-      ...Array.from({ length: 8 }, (_, i) =>
+      ...Array.from({ length: 9 }, (_, i) =>
         buildIncident({ id: `b-met-${i}`, submitted_at: monthB, resolved_at: monthB, sla_met: true })
-      ),
-      ...Array.from({ length: 2 }, (_, i) =>
-        buildIncident({ id: `b-unmet-${i}`, submitted_at: monthB, resolved_at: monthB, sla_met: false })
       ),
     ]);
 
@@ -725,11 +937,12 @@ describe("SLAReportsPage", () => {
     const historySection = sectionFor("Monthly compliance history");
     expect(within(historySection).getByText(labelA)).toBeInTheDocument();
     expect(within(historySection).getByText(labelB)).toBeInTheDocument();
-    // Month A: 10 total, 9 on time -> 90%. Month B: 10 total, 8 on time -> 80%.
-    // Average (90 + 80) / 2 = 85%. Best month is A at 90%. Total processed 20.
-    expect(within(historySection).getByText(/85% ·/)).toBeInTheDocument();
-    expect(within(historySection).getByText(new RegExp(`${labelA} \\(90%\\)`))).toBeInTheDocument();
-    expect(within(historySection).getByText(/20 incidents/)).toBeInTheDocument();
+    // Month A: 1 scored, 0 on time. Month B: 9 scored, 9 on time. 9 of 10.
+    const footer = within(historySection).getByText("Across 2 months:").closest("div") as HTMLElement;
+    expect(footer).toHaveTextContent("Across 2 months: 90% on time (9 of 10 scored)");
+    expect(footer).toHaveTextContent(`Best month: ${labelB} (100%)`);
+    expect(footer).not.toHaveTextContent("50%");
+    expect(within(partFor("Compliance", "Incidents")).getByText("90%")).toBeInTheDocument();
   });
 
   // Admin Portal Fix Plan, Phase 1 final review, finding 1: a month with
@@ -758,33 +971,106 @@ describe("SLAReportsPage", () => {
     // The null month's Compliance cell reads "—", not "0%".
     expect(within(historySection).getAllByText("—").length).toBeGreaterThan(0);
     expect(within(historySection).queryByText("0%")).not.toBeInTheDocument();
-    // Average/best are derived from the real month alone (100%), not
-    // (0 + 100) / 2 = 50%.
-    expect(within(historySection).getByText(/100% ·/)).toBeInTheDocument();
-    expect(within(historySection).getByText(new RegExp(`${realLabel} \\(100%\\)`))).toBeInTheDocument();
+    // The footer and best month come from the real month alone (100%),
+    // not (0 + 100) / 2 = 50%.
+    const footer = within(historySection).getByText("Across 2 months:").closest("div") as HTMLElement;
+    expect(footer).toHaveTextContent("Across 2 months: 100% on time (1 of 1 scored)");
+    expect(footer).toHaveTextContent(`Best month: ${realLabel} (100%)`);
   });
 
-  // #48: the Avg Response tile printed `${avgResponseDays}d` and the history
-  // column `${avgResponseDays} days`, so a range or month with nothing
-  // resolved read "0d"/"0 days" — "answered at once". Clock pinned
-  // mid-month so the fixtures sit inside the presets on any run date.
-  it("the Avg Response tile reads '—' and 'No comparable data' when no incident in range resolved", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date("2026-06-15T12:00:00+08:00"));
-    mockListIncidents.mockResolvedValue([
-      buildIncident({ id: "inc-1", submitted_at: "2026-06-10T00:00:00Z", status: "open", resolved_at: null }),
-    ]);
+  // #115: an effectiveness delta says which way it moved, in words and in
+  // colour; a volume delta stays grey. Month on 2026-06-15 is Jun 1-15, so
+  // the previous period is May 17-31.
+  describe("Effectiveness deltas say better or worse", () => {
+    // `count` resolved incidents filed on `filedOn`, each resolved
+    // `resolvedAfterHours` later, met or missed as `slaMet` says.
+    function incidents(prefix: string, filedOn: string, count: number, resolvedAfterHours: number, slaMet: boolean): IncidentRow[] {
+      const submittedAt = `${filedOn}T00:00:00Z`;
+      return Array.from({ length: count }, (_, i) =>
+        buildIncident({
+          id: `${prefix}-${i}`,
+          reference_number: `IR-2026-${prefix}-${i}`,
+          submitted_at: submittedAt,
+          resolved_at: new Date(Date.parse(submittedAt) + resolvedAfterHours * 3_600_000).toISOString(),
+          sla_met: slaMet,
+        })
+      );
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-06-15T12:00:00+08:00"));
+    });
+
+    it("more incidents Finished late read 'worse' in red", async () => {
+      mockListIncidents.mockResolvedValue([
+        ...incidents("CUR", "2026-06-10", 2, 1, false),
+        ...incidents("PREV", "2026-05-20", 1, 24, true),
+      ]);
+
+      render(<SLAReportsPage />);
+      await screen.findByText("Monthly compliance history");
+
+      const violations = await within(partFor("Finished late", "Incidents")).findByText("+2 vs previous period · worse");
+      expect(violations).toHaveClass("text-red-700");
+    });
+
+    it("fewer incidents Finished late read 'better' in green", async () => {
+      mockListIncidents.mockResolvedValue([
+        ...incidents("CUR", "2026-06-10", 1, 24, true),
+        ...incidents("PREV", "2026-05-20", 2, 1, false),
+      ]);
+
+      render(<SLAReportsPage />);
+      await screen.findByText("Monthly compliance history");
+
+      const violations = await within(partFor("Finished late", "Incidents")).findByText("-2 vs previous period · better");
+      expect(violations).toHaveClass("text-green-700");
+    });
+
+    // Annual on the Sandbox: 2025 scored nothing, so "+16 · worse" compared
+    // 16 late requests against no figure at all.
+    it("Finished late has nothing to compare when the previous period scored nothing: grey, no word", async () => {
+      mockListIncidents.mockResolvedValue(incidents("CUR", "2026-06-10", 2, 1, false));
+
+      render(<SLAReportsPage />);
+      await screen.findByText("Monthly compliance history");
+
+      const violations = await within(partFor("Finished late", "Incidents")).findByText("No comparable data vs previous period");
+      expect(violations).not.toHaveClass("text-red-700");
+      expect(within(partFor("Finished late", "Incidents")).queryByText(/better|worse/)).not.toBeInTheDocument();
+    });
+
+    it("Requests scored is a volume figure: its delta stays grey with no word", async () => {
+      mockListIncidents.mockResolvedValue([
+        ...incidents("CUR", "2026-06-10", 2, 1, false),
+        ...incidents("PREV", "2026-05-20", 1, 24, true),
+      ]);
+
+      render(<SLAReportsPage />);
+      await screen.findByText("Monthly compliance history");
+
+      const responses = await within(partFor("Requests scored", "Incidents")).findByText("+100% vs previous period");
+      expect(responses).not.toHaveClass("text-green-700");
+      expect(responses).not.toHaveClass("text-red-700");
+      expect(within(partFor("Requests scored", "Incidents")).queryByText(/better|worse/)).not.toBeInTheDocument();
+    });
+  });
+
+  it("names the monthly history's columns in plain words, with Avg time to resolve", async () => {
+    mockListIncidents.mockResolvedValue([buildIncident({ id: "inc-1", sla_met: true })]);
 
     render(<SLAReportsPage />);
     await screen.findByText("Monthly compliance history");
 
-    const tile = tileFor("Avg Response");
-    await waitFor(() => expect(within(tile).getByText("—")).toBeInTheDocument());
-    expect(within(tile).getByText("No comparable data vs previous period")).toBeInTheDocument();
-    expect(within(tile).queryByText("0d")).not.toBeInTheDocument();
+    const historySection = sectionFor("Monthly compliance history");
+    const headers = within(historySection)
+      .getAllByRole("columnheader")
+      .map((header) => header.textContent);
+    expect(headers).toEqual(["Period", "Scored", "On time", "Finished late", "Compliance", "Avg time to resolve"]);
   });
 
-  it("the monthly history's Avg Response reads '—' for a month with nothing resolved, the formatted mean otherwise", async () => {
+  it("the monthly history's Avg time to resolve reads '—' for a month with nothing resolved, the formatted mean otherwise", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-06-15T12:00:00+08:00"));
     const user = userEvent.setup();
@@ -800,7 +1086,7 @@ describe("SLAReportsPage", () => {
     const historySection = sectionFor("Monthly compliance history");
     const mayRow = (await within(historySection).findByText("May 2026")).closest("tr") as HTMLElement;
     const juneRow = within(historySection).getByText("Jun 2026").closest("tr") as HTMLElement;
-    // May: Compliance and Avg Response both "—" (nothing scoreable, nothing resolved).
+    // May: Compliance and Avg time to resolve both "—" (nothing scoreable, nothing resolved).
     expect(within(mayRow).getAllByText("—")).toHaveLength(2);
     expect(within(juneRow).getByText("5.2h")).toBeInTheDocument();
     expect(within(historySection).queryByText(/days$/)).not.toBeInTheDocument();
@@ -819,14 +1105,14 @@ describe("SLAReportsPage", () => {
     mockListIncidents.mockResolvedValue([buildIncident({ id: "inc-1", sla_met: true })]);
 
     render(<SLAReportsPage />);
-    expect(await within(tileFor("Compliance")).findByText("100%")).toBeInTheDocument();
+    expect(await within(partFor("Compliance", "Incidents")).findByText("100%")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "↓ Export report" }));
 
     const label = manilaMonthLabel(defaultSubmittedAt());
     expect(mockDownloadCsv).toHaveBeenCalledWith(
       "sla-report.csv",
-      ["Period", "Compliance %", "Violations"],
+      ["Period", "Incidents resolved on time %", "Incidents finished late"],
       [[label, 100, 0]]
     );
   });
@@ -860,8 +1146,8 @@ describe("SLAReportsPage", () => {
     render(<SLAReportsPage />);
     // buildApplication() is a DECIDED (approved) application, so the
     // synthetic "Yellow Card" department row renders instead of the empty
-    // state — wait on the always-present "Responses" hero tile instead.
-    await screen.findByText("Responses");
+    // state — wait on the always-present "Requests scored" hero tile instead.
+    await screen.findByText("Requests scored");
 
     expect(mockListIncidents).toHaveBeenCalledTimes(1);
     expect(mockListApplications).toHaveBeenCalledTimes(1);

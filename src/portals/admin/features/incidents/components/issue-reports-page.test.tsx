@@ -50,6 +50,16 @@ function hoursAgo(hours: number): string {
   return new Date(Date.now() - hours * 3_600_000).toISOString();
 }
 
+// The page reads SLA Reports' filter from its URL (#127). Each test sets the
+// query string it arrives with; most arrive with none.
+let mockSearchParams = new URLSearchParams();
+const mockReplace = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => mockSearchParams,
+  useRouter: () => ({ replace: mockReplace }),
+}));
+
 vi.mock("../../../lib/csv", () => ({
   downloadCsv: (filename: string, header: string[], rows: unknown[][]) =>
     mockDownloadCsv(filename, header, rows),
@@ -86,6 +96,8 @@ function buildRow(overrides: Partial<IncidentRow> = {}): IncidentRow {
     closed_at: null,
     reopened_count: 0,
     time_to_triage_hours: null,
+    sla_due_at: null,
+    sla_at_risk: null,
     sla_met: null,
     ...overrides,
   };
@@ -124,14 +136,17 @@ describe("IssueReportsPage", () => {
     mockGetIncidentConfig.mockReset();
     mockGetIncidentConfig.mockResolvedValue(buildIncidentConfig());
     mockDownloadCsv.mockReset();
+    mockSearchParams = new URLSearchParams();
+    mockReplace.mockReset();
   });
 
-  // #48: the Avg Response tile printed `${avgResponseDays}d` after rounding
-  // the mean to one decimal in days, so an empty range and a 27-minute mean
-  // both read "0d" — "answered at once". The clock is pinned mid-month so
+  // #48: the Avg time to resolve tile (then "Avg Response") printed
+  // `${avgResponseDays}d` after rounding the mean to one decimal in days, so
+  // an empty range and a 27-minute mean both read "0d" — "answered at once".
+  // The clock is pinned mid-month so
   // the fixtures sit inside the default "Month" preset on any run date; only
   // Date is faked, so findBy keeps its real timers.
-  describe("Avg Response tile", () => {
+  describe("Avg time to resolve tile", () => {
     function tileFor(label: string): HTMLElement {
       const labelEl = screen.getAllByText(label).find((el) => el.tagName === "P")!;
       return labelEl.closest("div") as HTMLElement;
@@ -152,7 +167,7 @@ describe("IssueReportsPage", () => {
       render(<IssueReportsPage />);
       await screen.findByText("IR-2026-000001");
 
-      const tile = tileFor("Avg Response");
+      const tile = tileFor("Avg time to resolve");
       expect(within(tile).getByText("—")).toBeInTheDocument();
       expect(within(tile).getByText("No comparable data vs previous period")).toBeInTheDocument();
       expect(within(tile).queryByText("0d")).not.toBeInTheDocument();
@@ -173,7 +188,167 @@ describe("IssueReportsPage", () => {
       render(<IssueReportsPage />);
       await screen.findByText("IR-2026-000001");
 
-      expect(within(tileFor("Avg Response")).getByText("27 min")).toBeInTheDocument();
+      expect(within(tileFor("Avg time to resolve")).getByText("27 min")).toBeInTheDocument();
+    });
+
+    // #120, sheet I3: it is the resident's whole wait, not the clock, so the
+    // tile says where it is measured from, and the old name is gone.
+    it("is named Avg time to resolve and says it runs from filing, across all levels", async () => {
+      mockListIncidents.mockResolvedValue([
+        buildRow({ status: "resolved", submitted_at: "2026-06-10T00:00:00Z", resolved_at: "2026-06-11T12:00:00Z" }),
+      ]);
+
+      render(<IssueReportsPage />);
+      await screen.findByText("IR-2026-000001");
+
+      const tile = tileFor("Avg time to resolve");
+      expect(within(tile).getByText("1.5d")).toBeInTheDocument();
+      expect(within(tile).getByText("From filing, across all levels")).toBeInTheDocument();
+      expect(screen.queryByText("Avg Response")).not.toBeInTheDocument();
+    });
+  });
+
+  // #120, sheet I2: a report closed as invalid, duplicate or expired was
+  // never real work, so it leaves the denominator; a report still open
+  // stays in it, and the caption says how many there are.
+  describe("Resolution Rate", () => {
+    function tileFor(label: string): HTMLElement {
+      const labelEl = screen.getAllByText(label).find((el) => el.tagName === "P")!;
+      return labelEl.closest("div") as HTMLElement;
+    }
+
+    function report(id: string, overrides: Partial<IncidentRow>): IncidentRow {
+      return buildRow({ id, reference_number: `IR-2026-${id}`, submitted_at: "2026-06-10T00:00:00Z", ...overrides });
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-06-15T12:00:00+08:00"));
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("leaves a duplicate out of the denominator", async () => {
+      mockListIncidents.mockResolvedValue([
+        report("RES", { status: "resolved", resolved_at: "2026-06-11T00:00:00Z" }),
+        report("DUP", { status: "closed", closure_reason: "duplicate", closed_at: "2026-06-10T06:00:00Z" }),
+      ]);
+
+      render(<IssueReportsPage />);
+      await screen.findByText("IR-2026-RES");
+
+      expect(within(tileFor("Resolution Rate")).getByText("100%")).toBeInTheDocument();
+    });
+
+    it("leaves invalid and expired reports out too, and keeps an open report in", async () => {
+      mockListIncidents.mockResolvedValue([
+        report("RES", { status: "resolved", resolved_at: "2026-06-11T00:00:00Z" }),
+        report("CONF", { status: "closed", closure_reason: "citizen_confirmed", resolved_at: "2026-06-11T00:00:00Z" }),
+        report("INV", { status: "closed", closure_reason: "invalid" }),
+        report("EXP", { status: "closed", closure_reason: "expired_unverified" }),
+        report("OPEN", { status: "open" }),
+        report("WORK", { status: "in_progress" }),
+      ]);
+
+      render(<IssueReportsPage />);
+      await screen.findByText("IR-2026-RES");
+
+      const tile = tileFor("Resolution Rate");
+      expect(within(tile).getByText("50%")).toBeInTheDocument();
+      expect(within(tile).getByText("resolved so far · 2 still open")).toBeInTheDocument();
+    });
+
+    it("says nothing is still open when every real report is resolved", async () => {
+      mockListIncidents.mockResolvedValue([report("RES", { status: "resolved", resolved_at: "2026-06-11T00:00:00Z" })]);
+
+      render(<IssueReportsPage />);
+      await screen.findByText("IR-2026-RES");
+
+      expect(within(tileFor("Resolution Rate")).getByText("resolved so far · 0 still open")).toBeInTheDocument();
+    });
+  });
+
+  // #115: an effectiveness delta says which way it moved, in words and in
+  // colour; a volume delta stays grey. Month on 2026-06-15 is Jun 1-15, so
+  // the previous period is May 17-31.
+  describe("Effectiveness deltas say better or worse", () => {
+    function tileFor(label: string): HTMLElement {
+      const labelEl = screen.getAllByText(label).find((el) => el.tagName === "P")!;
+      return labelEl.closest("div") as HTMLElement;
+    }
+
+    // `count` reports filed on `filedOn`, the first resolved `resolvedAfterHours`
+    // later and the rest still open.
+    function filedReports(prefix: string, filedOn: string, count: number, resolvedAfterHours: number): IncidentRow[] {
+      const submittedAt = `${filedOn}T00:00:00Z`;
+      return Array.from({ length: count }, (_, i) =>
+        buildRow({
+          id: `${prefix}-${i}`,
+          reference_number: `IR-2026-${prefix}-${i}`,
+          submitted_at: submittedAt,
+          ...(i === 0
+            ? { status: "resolved" as const, resolved_at: new Date(Date.parse(submittedAt) + resolvedAfterHours * 3_600_000).toISOString() }
+            : {}),
+        })
+      );
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-06-15T12:00:00+08:00"));
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("a rising Resolution Rate and a falling Avg time to resolve read 'better' in green", async () => {
+      mockListIncidents.mockResolvedValue([...filedReports("CUR", "2026-06-10", 2, 1), ...filedReports("PREV", "2026-05-20", 4, 24)]);
+
+      render(<IssueReportsPage />);
+      await screen.findByText("IR-2026-CUR-0");
+
+      const rate = within(tileFor("Resolution Rate")).getByText("+25 pts vs previous period · better");
+      expect(rate).toHaveClass("text-green-700");
+      const response = within(tileFor("Avg time to resolve")).getByText("23h faster vs previous period · better");
+      expect(response).toHaveClass("text-green-700");
+    });
+
+    it("a falling Resolution Rate and a rising Avg time to resolve read 'worse' in red", async () => {
+      mockListIncidents.mockResolvedValue([...filedReports("CUR", "2026-06-10", 4, 24), ...filedReports("PREV", "2026-05-20", 2, 1)]);
+
+      render(<IssueReportsPage />);
+      await screen.findByText("IR-2026-CUR-0");
+
+      const rate = within(tileFor("Resolution Rate")).getByText("-25 pts vs previous period · worse");
+      expect(rate).toHaveClass("text-red-700");
+      const response = within(tileFor("Avg time to resolve")).getByText("23h slower vs previous period · worse");
+      expect(response).toHaveClass("text-red-700");
+    });
+
+    it("the Reports count is a volume figure: its delta stays grey with no word", async () => {
+      mockListIncidents.mockResolvedValue([...filedReports("CUR", "2026-06-10", 2, 1), ...filedReports("PREV", "2026-05-20", 4, 24)]);
+
+      render(<IssueReportsPage />);
+      await screen.findByText("IR-2026-CUR-0");
+
+      const note = within(tileFor("Reports")).getByText("-50% vs previous period");
+      expect(note).not.toHaveClass("text-green-700");
+      expect(note).not.toHaveClass("text-red-700");
+      expect(within(tileFor("Reports")).queryByText(/better|worse/)).not.toBeInTheDocument();
+    });
+
+    it("an effectiveness delta with nothing to compare stays grey with no word", async () => {
+      mockListIncidents.mockResolvedValue(filedReports("CUR", "2026-06-10", 2, 1));
+
+      render(<IssueReportsPage />);
+      await screen.findByText("IR-2026-CUR-0");
+
+      const rate = within(tileFor("Resolution Rate")).getByText("No comparable data vs previous period");
+      expect(rate).not.toHaveClass("text-green-700");
+      expect(rate).not.toHaveClass("text-red-700");
     });
   });
 
@@ -224,40 +399,210 @@ describe("IssueReportsPage", () => {
     expect(screen.getByLabelText("Custom range start")).toHaveValue(`${manilaToday.slice(0, 7)}-01`);
   });
 
-  // Admin Portal Fix Plan, Task 1.3: Open Backlog's "past SLA" figure used to
-  // measure each open incident's age (now - submitted_at) against its
-  // level's target from public_incident_config. That counted never-armed
-  // (unverified) incidents as breached, charged routing/verification delay
-  // against the department, and re-judged old incidents against a target
-  // that may have since changed — see backlogPastSla's doc comment in
-  // src/portals/admin/lib/aggregate.ts. The tile now always reads "unavailable" rather
-  // than a computed count, regardless of how old or severe the open rows
-  // are, until a Phase 6 migration adds a real armed due date.
-  describe("Open Backlog past-SLA is unavailable, not a submitted_at-derived count", () => {
-    it("reads 'unavailable' even for a critical incident well past its 4h target, config included", async () => {
-      mockListIncidents.mockResolvedValue([
-        buildRow({ id: "inc-1", reference_number: "IR-2026-000001", status: "open", incident_level: "critical", submitted_at: hoursAgo(5) }),
-        buildRow({ id: "inc-2", reference_number: "IR-2026-000002", status: "open", incident_level: "low", submitted_at: hoursAgo(5) }),
-      ]);
+  // #125, sheet I9. The shared scoring rules (#119): a resolved report is
+  // scored against its own level's due time; one closed as invalid,
+  // duplicate or expired is not, and neither is one that never had a clock.
+  describe("Resolved on time", () => {
+    function tileFor(label: string): HTMLElement {
+      const labelEl = screen.getAllByText(label).find((el) => el.tagName === "P")!;
+      return labelEl.closest("div") as HTMLElement;
+    }
 
-      render(<IssueReportsPage />);
-      await screen.findByText("IR-2026-000001");
+    // Filed on `filedOn`; due a day later, resolved `resolvedAfterHours` after filing.
+    function resolvedReport(id: string, filedOn: string, resolvedAfterHours: number): IncidentRow {
+      const filed = Date.parse(`${filedOn}T00:00:00Z`);
+      const resolvedAt = new Date(filed + resolvedAfterHours * 3_600_000).toISOString();
+      const dueAt = new Date(filed + 24 * 3_600_000).toISOString();
+      return buildRow({
+        id,
+        reference_number: `IR-2026-${id}`,
+        status: "resolved",
+        submitted_at: new Date(filed).toISOString(),
+        routed_at: new Date(filed).toISOString(),
+        resolved_at: resolvedAt,
+        sla_due_at: dueAt,
+        sla_met: resolvedAt <= dueAt,
+      });
+    }
 
-      expect(await screen.findByText(/SLA breach count unavailable/)).toBeInTheDocument();
-      expect(screen.queryByText(/past their level's SLA target/)).not.toBeInTheDocument();
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-06-15T12:00:00+08:00"));
     });
 
-    it("stays 'unavailable' the same way when the config cannot be read too", async () => {
-      mockGetIncidentConfig.mockRejectedValue({ kind: "unknown", message: "boom" });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("scores resolved reports against their level's due time and leaves out a report that never had a clock", async () => {
       mockListIncidents.mockResolvedValue([
-        buildRow({ id: "inc-1", reference_number: "IR-2026-000001", status: "open", incident_level: "critical", submitted_at: hoursAgo(5) }),
+        resolvedReport("A", "2026-06-10", 3),
+        resolvedReport("B", "2026-06-10", 30),
+        // Resolved, but never routed and verified: no clock, so nothing to miss.
+        buildRow({ id: "C", reference_number: "IR-2026-C", status: "resolved", submitted_at: "2026-06-10T00:00:00Z", resolved_at: "2026-06-13T00:00:00Z", sla_due_at: null, sla_met: false }),
+        buildRow({ id: "D", reference_number: "IR-2026-D", status: "closed", closure_reason: "duplicate", submitted_at: "2026-06-10T00:00:00Z", resolved_at: "2026-06-13T00:00:00Z", sla_due_at: "2026-06-11T00:00:00Z", sla_met: false }),
+        buildRow({ id: "E", reference_number: "IR-2026-E", status: "open", submitted_at: "2026-06-10T00:00:00Z", sla_due_at: "2026-06-11T00:00:00Z", sla_met: false }),
+      ]);
+
+      render(<IssueReportsPage />);
+      await screen.findByText("IR-2026-A");
+
+      const tile = tileFor("Resolved on time");
+      expect(within(tile).getByText("50%")).toBeInTheDocument();
+      expect(
+        within(tile).getByText("1 of 2 within their level's target · 35 pts below 85% project target")
+      ).toBeInTheDocument();
+    });
+
+    it("follows the page's date type", async () => {
+      const user = userEvent.setup();
+      mockListIncidents.mockResolvedValue([
+        resolvedReport("A", "2026-06-10", 3),
+        // Filed in May, resolved late in June.
+        resolvedReport("B", "2026-05-31", 48),
+      ]);
+
+      render(<IssueReportsPage />);
+      await screen.findByText("IR-2026-A");
+
+      expect(within(tileFor("Resolved on time")).getByText("100%")).toBeInTheDocument();
+
+      await user.selectOptions(screen.getByLabelText("Date type"), "resolution");
+      expect(within(tileFor("Resolved on time")).getByText("50%")).toBeInTheDocument();
+    });
+
+    it("its delta says better when more were resolved on time than in the previous period", async () => {
+      mockListIncidents.mockResolvedValue([resolvedReport("A", "2026-06-10", 3), resolvedReport("B", "2026-05-20", 30)]);
+
+      render(<IssueReportsPage />);
+      await screen.findByText("IR-2026-A");
+
+      const note = within(tileFor("Resolved on time")).getByText("+100 pts vs previous period · better");
+      expect(note).toHaveClass("text-green-700");
+    });
+
+    it("reads a dash, not 0%, when nothing in range was scored", async () => {
+      mockListIncidents.mockResolvedValue([buildRow({ submitted_at: "2026-06-10T00:00:00Z" })]);
+
+      render(<IssueReportsPage />);
+      await screen.findByText("IR-2026-000001");
+
+      const tile = tileFor("Resolved on time");
+      expect(within(tile).getByText("—")).toBeInTheDocument();
+      expect(within(tile).getByText("Nothing scored in range")).toBeInTheDocument();
+    });
+  });
+
+  // #121, sheet I10: triage sits before the clock, so it gets its own
+  // figure. A reopened report's routed time was reset when it reopened, so it
+  // is left out. Month on 2026-06-15 is Jun 1-15; the previous period is
+  // May 17-31.
+  describe("Avg time to triage", () => {
+    function tileFor(label: string): HTMLElement {
+      const labelEl = screen.getAllByText(label).find((el) => el.tagName === "P")!;
+      return labelEl.closest("div") as HTMLElement;
+    }
+
+    function triaged(id: string, filedOn: string, hours: number, reopenedCount = 0): IncidentRow {
+      return buildRow({
+        id,
+        reference_number: `IR-2026-${id}`,
+        submitted_at: `${filedOn}T00:00:00Z`,
+        time_to_triage_hours: hours,
+        reopened_count: reopenedCount,
+      });
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-06-15T12:00:00+08:00"));
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("averages filing to routing over reports never reopened, and says it is the wait before the clock starts", async () => {
+      mockListIncidents.mockResolvedValue([
+        triaged("A", "2026-06-10", 4),
+        triaged("B", "2026-06-11", 8),
+        triaged("R", "2026-06-12", 336, 1),
+        // Still awaiting triage: nothing to average.
+        buildRow({ id: "C", reference_number: "IR-2026-C", submitted_at: "2026-06-13T00:00:00Z" }),
+      ]);
+
+      render(<IssueReportsPage />);
+      await screen.findByText("IR-2026-A");
+
+      const tile = tileFor("Avg time to triage");
+      expect(within(tile).getByText("6h")).toBeInTheDocument();
+      expect(within(tile).getByText("Filing to routing, before the clock starts")).toBeInTheDocument();
+    });
+
+    it("lower is better: a shorter wait than the previous period reads 'better' in green", async () => {
+      mockListIncidents.mockResolvedValue([triaged("A", "2026-06-10", 2), triaged("P", "2026-05-20", 10)]);
+
+      render(<IssueReportsPage />);
+      await screen.findByText("IR-2026-A");
+
+      const note = within(tileFor("Avg time to triage")).getByText("8h faster vs previous period · better");
+      expect(note).toHaveClass("text-green-700");
+    });
+
+    it("reads '—' when no report in range was routed", async () => {
+      mockListIncidents.mockResolvedValue([triaged("R", "2026-06-10", 30, 2)]);
+
+      render(<IssueReportsPage />);
+      await screen.findByText("IR-2026-R");
+
+      const tile = tileFor("Avg time to triage");
+      expect(within(tile).getByText("—")).toBeInTheDocument();
+      expect(within(tile).queryByText("30h")).not.toBeInTheDocument();
+    });
+  });
+
+  // Past due is now past the report's own due time, and at risk is the view's
+  // flag (l112), so nothing is recomputed from submitted_at and catalog hours
+  // (#124, metrics sheet I4).
+  describe("Open Backlog's note says how many are past due and at risk", () => {
+    function getOpenBacklogTile(): HTMLElement {
+      return screen.getByText("Open Backlog", { selector: "p" }).closest("div")!;
+    }
+
+    it("counts open reports past their due time, and those the view flags at risk", async () => {
+      mockListIncidents.mockResolvedValue([
+        // A rejected report back in Awaiting Triage keeps its clock (DB l56b, #129).
+        buildRow({ id: "inc-1", reference_number: "IR-2026-000001", status: "open", sla_due_at: hoursAgo(2) }),
+        buildRow({ id: "inc-2", reference_number: "IR-2026-000002", status: "in_progress", sla_due_at: hoursAgo(30) }),
+        buildRow({ id: "inc-3", reference_number: "IR-2026-000003", status: "in_pool", sla_due_at: hoursAgo(-1), sla_at_risk: true }),
+        buildRow({ id: "inc-4", reference_number: "IR-2026-000004", status: "open", sla_due_at: hoursAgo(-20), sla_at_risk: false }),
+        // Finished, so no longer waiting: not past due, however late it was.
+        buildRow({ id: "inc-5", reference_number: "IR-2026-000005", status: "resolved", sla_due_at: hoursAgo(50) }),
       ]);
 
       render(<IssueReportsPage />);
       await screen.findByText("IR-2026-000001");
 
-      expect(await screen.findByText(/SLA breach count unavailable/)).toBeInTheDocument();
-      expect(screen.queryByText(/past their level's SLA target/)).not.toBeInTheDocument();
+      const tile = getOpenBacklogTile();
+      expect(within(tile).getByText("4")).toBeInTheDocument();
+      expect(within(tile).getByText("2 past due · 1 at risk")).toBeInTheDocument();
+      expect(screen.queryByText(/SLA breach count unavailable/)).not.toBeInTheDocument();
+    });
+
+    it("never counts an open report with no due time as past due, however old it is", async () => {
+      // Never routed and verified: its clock has not started.
+      mockListIncidents.mockResolvedValue([
+        buildRow({ id: "inc-1", reference_number: "IR-2026-000001", status: "open", incident_level: "critical", submitted_at: hoursAgo(500), sla_due_at: null }),
+      ]);
+
+      render(<IssueReportsPage />);
+      // Filed before the default Month preset, so the table doesn't list it;
+      // the backlog ignores the range.
+      await screen.findByText("0 past due · 0 at risk");
+
+      const tile = getOpenBacklogTile();
+      expect(within(tile).getByText("1")).toBeInTheDocument();
+      expect(within(tile).getByText("0 past due · 0 at risk")).toBeInTheDocument();
     });
   });
 
@@ -309,6 +654,7 @@ describe("IssueReportsPage", () => {
         reopened_count: 2,
         time_to_triage_hours: 3.456,
       }),
+      buildRow({ id: "inc-2", reference_number: "IR-2026-000002", time_to_triage_hours: 3.456 }),
     ]);
 
     render(<IssueReportsPage />);
@@ -325,8 +671,11 @@ describe("IssueReportsPage", () => {
     // table shows — a spreadsheet column called "Reopened" holding a number
     // is more useful than a UI-shaped string.
     expect(row).toContain(2);
+    // Reopening reset its routed time, so its triage reads "—", as in the
+    // table (#121).
+    expect(row[row.length - 1]).toBe("—");
     // Same rounding the table's formatTriageHours applies.
-    expect(row).toContain("3.5h");
+    expect(rows[1][rows[1].length - 1]).toBe("3.5h");
   });
 
   it("shows \"—\" for closure reason, reopened count, and time-to-triage in the export when a row has none of them", async () => {
@@ -566,9 +915,29 @@ describe("IssueReportsPage", () => {
       render(<IssueReportsPage />);
       await screen.findByText("IR-2026-000001");
 
-      expect(screen.getByText("3.5h")).toBeInTheDocument();
+      const row1 = screen.getByText("IR-2026-000001").closest("tr")!;
+      expect(within(row1).getByText("3.5h")).toBeInTheDocument();
       const row2 = screen.getByText("IR-2026-000002").closest("tr")!;
       expect(within(row2).getAllByText("—").length).toBeGreaterThan(0);
+    });
+
+    // #121, sheet I8: reopening resets routed_at, so the view's figure is
+    // filing to reopening, not triage.
+    it("shows '—' for Time to Triage on a reopened report, not the reset figure", async () => {
+      mockListIncidents.mockResolvedValue([
+        buildRow({ id: "inc-1", reference_number: "IR-2026-000001", reopened_count: 1, time_to_triage_hours: 336 }),
+        buildRow({ id: "inc-2", reference_number: "IR-2026-000002", time_to_triage_hours: 3.456 }),
+      ]);
+
+      render(<IssueReportsPage />);
+      await screen.findByText("IR-2026-000001");
+
+      const headers = within(getRecentReportsSection()).getAllByRole("columnheader").map((th) => th.textContent);
+      const triageColumn = headers.indexOf("Time to Triage");
+      const triageCell = (reference: string) =>
+        within(screen.getByText(reference).closest("tr")!).getAllByRole("cell")[triageColumn];
+      expect(triageCell("IR-2026-000001")).toHaveTextContent(/^—$/);
+      expect(triageCell("IR-2026-000002")).toHaveTextContent(/^3\.5h$/);
     });
   });
 
@@ -988,6 +1357,106 @@ describe("IssueReportsPage", () => {
 
       expect(await screen.findByText("Unable to load reports: boom")).toBeInTheDocument();
       expect(screen.queryByText(/^Updated /)).not.toBeInTheDocument();
+    });
+  });
+  // #127: SLA Reports' Finished late and Past due now link here, and the
+  // Recent reports table narrows to exactly the reports they counted.
+  describe("Arriving from SLA Reports", () => {
+    function tableReferences(): string[] {
+      return within(getRecentReportsSection())
+        .queryAllByRole("row")
+        .slice(1)
+        .map((row) => within(row).getAllByRole("cell")[0].textContent ?? "");
+    }
+
+    function juneReports(): IncidentRow[] {
+      const resolved = { status: "resolved" as const, sla_due_at: "2026-06-30T00:00:00Z" };
+      return [
+        buildRow({ ...resolved, id: "late", reference_number: "IR-LATE", submitted_at: "2026-06-05T02:00:00Z", resolved_at: "2026-06-09T02:00:00Z", sla_due_at: "2026-06-06T02:00:00Z", sla_met: false }),
+        buildRow({ ...resolved, id: "late-2", reference_number: "IR-LATE-2", submitted_at: "2026-06-20T02:00:00Z", resolved_at: "2026-06-25T02:00:00Z", sla_due_at: "2026-06-21T02:00:00Z", sla_met: false }),
+        buildRow({ ...resolved, id: "on-time", reference_number: "IR-ON-TIME", submitted_at: "2026-06-10T02:00:00Z", resolved_at: "2026-06-10T08:00:00Z", sla_met: true }),
+        // Resolved with no clock ever started: not scored, so not late (#125).
+        buildRow({ ...resolved, id: "no-clock", reference_number: "IR-NO-CLOCK", submitted_at: "2026-06-10T02:00:00Z", resolved_at: "2026-06-18T02:00:00Z", sla_due_at: null, sla_met: false }),
+        // Closed as a duplicate: not scored.
+        buildRow({ id: "duplicate", reference_number: "IR-DUPLICATE", status: "closed", closure_reason: "duplicate", submitted_at: "2026-06-11T02:00:00Z", resolved_at: "2026-06-18T02:00:00Z", sla_due_at: "2026-06-12T02:00:00Z", sla_met: false }),
+        // Late, but filed after the range.
+        buildRow({ ...resolved, id: "late-july", reference_number: "IR-LATE-JULY", submitted_at: "2026-07-05T02:00:00Z", resolved_at: "2026-07-09T02:00:00Z", sla_due_at: "2026-07-06T02:00:00Z", sla_met: false }),
+      ];
+    }
+
+    it("Finished late narrows the table and its export to the late reports of the linked range, and the filter clears", async () => {
+      const user = userEvent.setup();
+      mockSearchParams = new URLSearchParams("sla=late&from=2026-06-01&to=2026-06-30&basis=report");
+      mockListIncidents.mockResolvedValue(juneReports());
+
+      render(<IssueReportsPage />);
+
+      await screen.findByText("IR-LATE");
+      expect(screen.getByLabelText("Custom range start")).toHaveValue("2026-06-01");
+      expect(screen.getByLabelText("Custom range end")).toHaveValue("2026-06-30");
+      expect(tableReferences()).toEqual(["IR-LATE", "IR-LATE-2"]);
+      expect(screen.getByText("Showing only reports that finished late in the selected range")).toBeInTheDocument();
+
+      // The export is the table's rows.
+      await user.click(within(getRecentReportsSection()).getByRole("button", { name: "↓ Export" }));
+      const exported = mockDownloadCsv.mock.calls[0][2] as unknown[][];
+      expect(exported.map((row) => row[0])).toEqual(["IR-LATE", "IR-LATE-2"]);
+
+      await user.click(screen.getByRole("button", { name: "Clear filter" }));
+
+      expect(screen.queryByText(/^Showing only reports/)).not.toBeInTheDocument();
+      expect(tableReferences()).toHaveLength(5);
+      expect(mockReplace).toHaveBeenCalledWith("/admin/issue-reports", { scroll: false });
+    });
+
+    it("Finished late on the resolution date reads the resolved date", async () => {
+      mockSearchParams = new URLSearchParams("sla=late&from=2026-06-01&to=2026-06-30&basis=resolution");
+      mockListIncidents.mockResolvedValue([
+        buildRow({ id: "filed-may", reference_number: "IR-FILED-MAY", status: "resolved", submitted_at: "2026-05-30T02:00:00Z", resolved_at: "2026-06-03T02:00:00Z", sla_due_at: "2026-05-31T02:00:00Z", sla_met: false }),
+        buildRow({ id: "resolved-july", reference_number: "IR-RESOLVED-JULY", status: "resolved", submitted_at: "2026-06-28T02:00:00Z", resolved_at: "2026-07-03T02:00:00Z", sla_due_at: "2026-06-29T02:00:00Z", sla_met: false }),
+      ]);
+
+      render(<IssueReportsPage />);
+
+      await screen.findByText("IR-FILED-MAY");
+      expect(tableReferences()).toEqual(["IR-FILED-MAY"]);
+      expect(screen.getByLabelText("Date type")).toHaveValue("resolution");
+    });
+
+    it("Past due now lists the open reports past their due time, whatever the date range", async () => {
+      const user = userEvent.setup();
+      mockSearchParams = new URLSearchParams("sla=past-due");
+      const longAgo = hoursAgo(200 * 24);
+      mockListIncidents.mockResolvedValue([
+        // Rejected by a responder, so back in Awaiting Triage with its clock
+        // still running (DB l56b): past due once its due time passes (#129).
+        buildRow({ id: "open-late", reference_number: "IR-OPEN-LATE", status: "open", submitted_at: longAgo, sla_due_at: hoursAgo(24) }),
+        buildRow({ id: "in-progress-late", reference_number: "IR-IN-PROGRESS-LATE", status: "in_progress", submitted_at: longAgo, sla_due_at: hoursAgo(24) }),
+        buildRow({ id: "open-in-time", reference_number: "IR-OPEN-IN-TIME", status: "open", sla_due_at: hoursAgo(-24), sla_at_risk: true }),
+        // Never routed and verified: no clock, never past due.
+        buildRow({ id: "open-no-clock", reference_number: "IR-OPEN-NO-CLOCK", status: "open", sla_due_at: null }),
+        buildRow({ id: "resolved-late", reference_number: "IR-RESOLVED-LATE", status: "resolved", resolved_at: defaultSubmittedAt(), sla_due_at: hoursAgo(24), sla_met: false }),
+      ]);
+
+      render(<IssueReportsPage />);
+
+      await screen.findByText("IR-OPEN-LATE");
+      expect(tableReferences()).toEqual(["IR-OPEN-LATE", "IR-IN-PROGRESS-LATE"]);
+      expect(screen.getByText("Showing only reports past due now, whatever the date range")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Today" }));
+      expect(tableReferences()).toEqual(["IR-OPEN-LATE", "IR-IN-PROGRESS-LATE"]);
+    });
+
+    it("an unknown filter is ignored", async () => {
+      mockSearchParams = new URLSearchParams("sla=everything");
+      mockListIncidents.mockResolvedValue([buildRow({ id: "inc-1", reference_number: "IR-2026-000001" })]);
+
+      render(<IssueReportsPage />);
+
+      await screen.findByText("IR-2026-000001");
+      expect(screen.queryByText(/^Showing only reports/)).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Clear filter" })).not.toBeInTheDocument();
     });
   });
 });

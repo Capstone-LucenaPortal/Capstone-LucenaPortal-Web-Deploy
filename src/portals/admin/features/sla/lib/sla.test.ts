@@ -4,8 +4,13 @@ import {
   getSlaRangeStats,
   getSlaTrend,
   departmentStatus,
+  incidentsResolvedOnTime,
+  slaCompliance,
+  summarizeMonthlyHistory,
   SLA_TARGET_PCT,
+  yellowCardDecidedOnTime,
 } from "@/portals/admin/features/sla/lib/sla";
+import { executiveRangeStats } from "@/portals/admin/features/dashboard/lib/dashboard";
 import type { IncidentRow } from "@/portals/admin/features/incidents/lib/incidents";
 import type { YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yellow-card";
 import type { DepartmentRow } from "@/portals/admin/lib/supabase/catalogs";
@@ -38,6 +43,10 @@ function buildIncident(overrides: Partial<IncidentRow> = {}): IncidentRow {
     closed_at: null,
     reopened_count: 0,
     time_to_triage_hours: 1,
+    // Routed (and verified) at 05:00, plus medium's 24 hours. sla_met is
+    // only ever true for a report that has a due time.
+    sla_due_at: "2026-07-11T05:00:00Z",
+    sla_at_risk: null,
     sla_met: true,
     ...overrides,
   };
@@ -53,6 +62,8 @@ function buildApplication(overrides: Partial<YellowCardRow> = {}): YellowCardRow
     submitted_at: "2026-07-10T04:00:00Z",
     decided_at: "2026-07-11T04:00:00Z",
     review_cycles: 1,
+    due_at: null,
+    deadline_state: null,
     sla_breached: false,
     sla_elapsed_seconds: 3600,
     sla_target_hours: 24,
@@ -110,12 +121,11 @@ describe("getSlaByDepartment", () => {
   // Boundary: in_pool/in_progress are just as "still open" as "open" for
   // this purpose — resolved_at is what incidentMet actually keys on, not a
   // specific pre-resolution status. A very old routed_at does NOT flip this
-  // to "breached": admin_incident_analytics exposes no sla_due_at, so an
-  // armed-and-overdue incident cannot be told apart from one that is still
-  // genuinely unverified (never armed at all) — see the "KNOWN LIMITATION"
-  // section of incidentMet's doc comment. This pins that deliberate choice
-  // so a future change that starts guessing a due date from routed_at alone
-  // has to consciously break this test, not silently drift past it.
+  // to "breached": compliance scores finished requests only, and an open
+  // report past its due time is counted as past due instead (I4, S4) — see
+  // incidentMet's doc comment. This pins that deliberate choice so a future
+  // change that scores open reports has to consciously break this test, not
+  // silently drift past it.
   it("a still-open incident is excluded regardless of age or status (in_pool/in_progress), not counted as a live breach", () => {
     const incidents = [
       buildIncident({
@@ -702,10 +712,99 @@ describe("departmentStatus", () => {
   });
 });
 
+describe("slaCompliance", () => {
+  // #119: a withdrawal is not scoreable. The resident ended it, not the
+  // city, so even one that sat on the clock for five working days (45h
+  // against a 27h target) is neither on time nor finished late.
+  it("does not score a withdrawal with a long elapsed time", () => {
+    const applications = [
+      buildApplication({ id: "app-1", status: "approved", sla_breached: false }),
+      buildApplication({
+        id: "app-2",
+        status: "withdrawn",
+        sla_target_hours: 27,
+        sla_elapsed_seconds: 45 * 3600,
+        sla_breached: true,
+      }),
+    ];
+
+    const { yellowCard } = slaCompliance(applications, []);
+
+    expect(yellowCard).toEqual({
+      scored: 1,
+      onTime: 1,
+      finishedLate: 0,
+      compliancePct: 100,
+      gapToTargetPts: 15,
+    });
+  });
+
+  // #125: a report the city never routed and verified had no clock, so it
+  // had nothing to miss. The view reads sla_met false for it, the same as
+  // a late one; only the missing due time tells them apart.
+  it("does not score a resolved incident with no due time", () => {
+    const incidents = [
+      buildIncident({ id: "inc-1", sla_met: true }),
+      buildIncident({ id: "inc-2", routed_at: null, sla_due_at: null, sla_met: false }),
+    ];
+
+    const { incidents: scored } = slaCompliance([], incidents);
+
+    expect(scored).toEqual({
+      scored: 1,
+      onTime: 1,
+      finishedLate: 0,
+      compliancePct: 100,
+      gapToTargetPts: 15,
+    });
+  });
+});
+
+describe("incidentsResolvedOnTime", () => {
+  // #125: on the filing-date basis, the Incident Reports page's Resolved on
+  // time is the Dashboard's incident SLA compliance for the same range.
+  it("equals the Dashboard's incident SLA compliance on the filing date", () => {
+    const range = { from: "2026-07-01", to: "2026-07-31" };
+    const incidents = [
+      buildIncident({ id: "inc-1", sla_met: true }),
+      buildIncident({ id: "inc-2", resolved_at: "2026-07-13T04:00:00Z", sla_met: false }),
+      buildIncident({ id: "inc-3", sla_due_at: null, sla_met: false }),
+      buildIncident({ id: "inc-4", status: "closed", closure_reason: "duplicate", sla_met: false }),
+      buildIncident({ id: "inc-5", submitted_at: "2026-06-20T04:00:00Z", sla_met: true }),
+    ];
+
+    const resolved = incidentsResolvedOnTime(incidents, range, (row) => row.submitted_at);
+
+    expect(resolved).toEqual(executiveRangeStats([], incidents, [], range).sla.incidents);
+    expect(resolved.compliancePct).toBe(50);
+  });
+});
+
+describe("yellowCardDecidedOnTime", () => {
+  // #123: on the filing-date basis, the Yellow Card page's Decided on time
+  // is the Dashboard's Yellow Card SLA compliance for the same range.
+  it("equals the Dashboard's Yellow Card SLA compliance on the filing date", () => {
+    const range = { from: "2026-07-01", to: "2026-07-31" };
+    const applications = [
+      buildApplication({ id: "app-1", status: "approved", sla_breached: false }),
+      buildApplication({ id: "app-2", status: "rejected", sla_breached: true }),
+      buildApplication({ id: "app-3", status: "withdrawn", sla_breached: true }),
+      buildApplication({ id: "app-4", status: "approved", submitted_at: "2026-06-20T04:00:00Z", sla_breached: false }),
+    ];
+
+    const decided = yellowCardDecidedOnTime(applications, range, (row) => row.submitted_at);
+
+    expect(decided).toEqual(executiveRangeStats(applications, [], [], range).sla.yellowCard);
+    expect(decided.compliancePct).toBe(50);
+  });
+});
+
 describe("getSlaRangeStats", () => {
   const range = { from: "2026-07-01", to: "2026-07-31" };
 
-  it("pools incidents and applications into responses/violations/compliancePct", () => {
+  // #122: SLA Reports shows each tile once per service, so nothing here
+  // adds the two services up. Pooled, this would read 3 scored and 66.7%.
+  it("scores incidents and applications apart, never pooled", () => {
     const incidents = [
       buildIncident({ id: "inc-1", submitted_at: "2026-07-05T04:00:00Z", sla_met: true }),
       buildIncident({ id: "inc-2", submitted_at: "2026-07-06T04:00:00Z", sla_met: false }),
@@ -716,9 +815,10 @@ describe("getSlaRangeStats", () => {
 
     const stats = getSlaRangeStats(incidents, applications, range);
 
-    expect(stats.responses).toBe(3);
-    expect(stats.violations).toBe(1);
-    expect(stats.compliancePct).toBe(round1((2 / 3) * 100));
+    expect(stats.incidents).toMatchObject({ scored: 2, onTime: 1, finishedLate: 1, compliancePct: 50, inRange: 2 });
+    expect(stats.yellowCard).toMatchObject({ scored: 1, onTime: 1, finishedLate: 0, compliancePct: 100, inRange: 1 });
+    expect(stats).not.toHaveProperty("responses");
+    expect(stats).not.toHaveProperty("compliancePct");
   });
 
   // Regression guard for the sla_breached-for-pending fix: a pending/
@@ -729,7 +829,7 @@ describe("getSlaRangeStats", () => {
   // two non-terminal applications leaked in and were (wrongly) treated as
   // met, compliancePct would read 100/100%; if treated as unmet, it would
   // read 2/4 (50%). Only the one decided, met application counts.
-  it("excludes pending/resubmitted applications from responses/violations/compliancePct in the current period", () => {
+  it("excludes pending/resubmitted applications from Yellow Card's scored figures in the current period", () => {
     const incidents = [buildIncident({ id: "inc-1", submitted_at: "2026-07-05T04:00:00Z", sla_met: true })];
     const applications = [
       buildApplication({ id: "app-1", submitted_at: "2026-07-06T04:00:00Z", status: "approved", sla_breached: false }),
@@ -744,14 +844,12 @@ describe("getSlaRangeStats", () => {
 
     const stats = getSlaRangeStats(incidents, applications, range);
 
-    expect(stats.responses).toBe(2);
-    expect(stats.violations).toBe(0);
-    expect(stats.compliancePct).toBe(100);
-    // totalInRange counts every filed row (1 incident + 3 applications),
-    // BEFORE the scoreable-only filter responses applies — the gap (4 vs 2)
-    // is what the Responses tile's caption surfaces on screen (Phase 1 final
-    // review, finding 3).
-    expect(stats.totalInRange).toBe(4);
+    expect(stats.yellowCard.scored).toBe(1);
+    expect(stats.yellowCard.finishedLate).toBe(0);
+    expect(stats.yellowCard.compliancePct).toBe(100);
+    // inRange counts every application in range, BEFORE the scoreable-only
+    // filter: the "of 3 filed in range" caption on Requests scored.
+    expect(stats.yellowCard.inRange).toBe(3);
   });
 
   // Admin Portal Fix Plan, Task 1.5: zero SLA-scoreable requests in range at
@@ -762,8 +860,10 @@ describe("getSlaRangeStats", () => {
   it("compliancePct is null, not 0, when there are zero SLA-scoreable requests in range", () => {
     const stats = getSlaRangeStats([], [], range);
 
-    expect(stats.responses).toBe(0);
-    expect(stats.compliancePct).toBeNull();
+    expect(stats.yellowCard.scored).toBe(0);
+    expect(stats.yellowCard.compliancePct).toBeNull();
+    expect(stats.incidents.scored).toBe(0);
+    expect(stats.incidents.compliancePct).toBeNull();
   });
 
   // The mirror-image path Task 1.1/1.2 already exercise elsewhere: rows
@@ -781,23 +881,21 @@ describe("getSlaRangeStats", () => {
 
     const stats = getSlaRangeStats(incidents, applications, range);
 
-    expect(stats.responses).toBe(0);
-    expect(stats.compliancePct).toBeNull();
+    expect(stats.yellowCard.compliancePct).toBeNull();
+    expect(stats.incidents.compliancePct).toBeNull();
   });
 
-  // Same rule, applied to the PREVIOUS period this time: previousResponses/
-  // previousViolations (which feed responsesDelta/violationsDelta) must
-  // exclude non-decided applications too, not just the current period's.
-  // Fixture: current period has 1 incident + 1 decided (met) application =
-  // 2 responses, 0 violations. Previous period has 1 decided (unmet)
-  // application plus 1 resubmitted application that must be excluded — if
-  // the resubmitted row leaked into previousResponses/previousViolations,
-  // responsesDelta would read "+0%" (2 -> 2) instead of "+100%" (1 -> 2),
-  // and violationsDelta would read "-2" instead of "-1".
-  it("excludes pending/resubmitted applications from responses/violations in the previous period too", () => {
-    const incidents = [buildIncident({ id: "inc-1", submitted_at: "2026-07-05T04:00:00Z", sla_met: true })];
+  // Same rule, applied to the PREVIOUS period this time: the previous
+  // period's Yellow Card scored and finished late (which feed its deltas)
+  // must exclude non-decided applications too. Fixture: current period has
+  // 2 decided (met) applications, 0 late. Previous period has 1 decided
+  // (unmet) application plus 1 resubmitted one that must be excluded — if
+  // it leaked in, scoredDelta would read "+0%" (2 -> 2) instead of "+100%"
+  // (1 -> 2), and finishedLateDelta "-2" instead of "-1".
+  it("excludes pending/resubmitted applications from Yellow Card's deltas in the previous period too", () => {
     const applications = [
       buildApplication({ id: "app-1", submitted_at: "2026-07-06T04:00:00Z", status: "approved", sla_breached: false }),
+      buildApplication({ id: "app-4", submitted_at: "2026-07-09T04:00:00Z", status: "approved", sla_breached: false }),
       buildApplication({ id: "app-2", submitted_at: "2026-06-10T04:00:00Z", status: "rejected", sla_breached: true }),
       buildApplication({
         id: "app-3",
@@ -807,52 +905,29 @@ describe("getSlaRangeStats", () => {
       }),
     ];
 
-    const stats = getSlaRangeStats(incidents, applications, range);
+    const stats = getSlaRangeStats([], applications, range);
 
-    expect(stats.responsesDelta).toBe("+100% vs previous period");
-    expect(stats.violationsDelta).toBe("-1 vs previous period");
+    expect(stats.yellowCard.scoredDelta.text).toBe("+100% vs previous period");
+    expect(stats.yellowCard.finishedLateDelta.text).toBe("-1 vs previous period");
   });
 
-  // Averaging incidents' continuous clock together with Yellow Card's
-  // pauses-while-with-citizen clock would not be a faithful reading of
-  // either (see getSlaTrend's doc comment); avgResponseDays must come from
-  // incidents alone. This fixture is chosen so an accidentally-blended
-  // implementation would produce a visibly different number: the one
-  // resolved incident took 2 days; if the Yellow Card application's (much
-  // longer) decided_at - submitted_at span were folded in, the average would
-  // shift.
-  it("avgResponseDays is incidents-only, not blended with Yellow Card", () => {
-    const incidents = [
-      buildIncident({
-        id: "inc-1",
-        submitted_at: "2026-07-05T00:00:00Z",
-        resolved_at: "2026-07-07T00:00:00Z",
-        sla_met: true,
-      }),
-    ];
+  // Each service compares with its own previous period: incidents scored
+  // nothing last period, so their Finished late has no comparison, whatever
+  // Yellow Card did (#115's rule, per service).
+  it("Finished late has nothing to compare for a service that scored nothing in the previous period", () => {
+    const incidents = [buildIncident({ id: "inc-1", submitted_at: "2026-07-05T04:00:00Z", sla_met: false })];
     const applications = [
-      buildApplication({
-        id: "app-1",
-        submitted_at: "2026-07-01T00:00:00Z",
-        decided_at: "2026-07-20T00:00:00Z",
-        sla_breached: false,
-      }),
+      buildApplication({ id: "app-1", submitted_at: "2026-07-06T04:00:00Z", sla_breached: true }),
+      buildApplication({ id: "app-2", submitted_at: "2026-06-10T04:00:00Z", sla_breached: false }),
     ];
 
     const stats = getSlaRangeStats(incidents, applications, range);
 
-    expect(stats.avgResponseDays).toBe(2);
-  });
-
-  it("avgResponseDays is null, and its delta has nothing to compare, when no incident in range resolved", () => {
-    const incidents = [
-      buildIncident({ id: "inc-1", submitted_at: "2026-07-05T00:00:00Z", status: "open", resolved_at: null }),
-    ];
-
-    const stats = getSlaRangeStats(incidents, [], range);
-
-    expect(stats.avgResponseDays).toBeNull();
-    expect(stats.avgResponseDelta).toBe("No comparable data vs previous period");
+    expect(stats.incidents.finishedLateDelta).toEqual({
+      text: "No comparable data vs previous period",
+      movement: null,
+    });
+    expect(stats.yellowCard.finishedLateDelta.text).toBe("+1 vs previous period");
   });
 
   it("trend matches getSlaTrend's own output for the same range", () => {
@@ -883,13 +958,51 @@ describe("getSlaRangeStats", () => {
     ];
 
     const requestBasis = getSlaRangeStats(incidents, [], range, "request");
-    expect(requestBasis.responses).toBe(0);
+    expect(requestBasis.incidents.scored).toBe(0);
 
     const resolutionBasis = getSlaRangeStats(incidents, [], range, "resolution");
-    expect(resolutionBasis.responses).toBe(1);
+    expect(resolutionBasis.incidents.scored).toBe(1);
+  });
+});
+
+describe("summarizeMonthlyHistory", () => {
+  function month(label: string, totalRequests: number, onTime: number) {
+    return {
+      label,
+      totalRequests,
+      onTime,
+      violations: totalRequests - onTime,
+      compliancePct: totalRequests > 0 ? Math.round((onTime / totalRequests) * 1000) / 10 : null,
+      avgResponseDays: null,
+    };
+  }
+
+  // #122: months of very different sizes. Averaging the monthly percentages
+  // gives (0 + 100) / 2 = 50%, as if the one late case weighed as much as
+  // the 99 on time. Weighted by cases it is 99 of 100.
+  it("weights each month by its cases, not by its percentage", () => {
+    const summary = summarizeMonthlyHistory([month("Jan 2026", 1, 0), month("Feb 2026", 99, 99)]);
+
+    expect(summary).toEqual({
+      scored: 100,
+      onTime: 99,
+      compliancePct: 99,
+      best: { label: "Feb 2026", compliancePct: 100 },
+    });
   });
 
-  function round1(value: number): number {
-    return Math.round(value * 10) / 10;
-  }
+  it("skips a month with nothing scored, and reads null when no month scored anything", () => {
+    expect(summarizeMonthlyHistory([month("Jan 2026", 0, 0), month("Feb 2026", 3, 2)])).toEqual({
+      scored: 3,
+      onTime: 2,
+      compliancePct: 66.7,
+      best: { label: "Feb 2026", compliancePct: 66.7 },
+    });
+    expect(summarizeMonthlyHistory([month("Jan 2026", 0, 0)])).toEqual({
+      scored: 0,
+      onTime: 0,
+      compliancePct: null,
+      best: null,
+    });
+  });
 });

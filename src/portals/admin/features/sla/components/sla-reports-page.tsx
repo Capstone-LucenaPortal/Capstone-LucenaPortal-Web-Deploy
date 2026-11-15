@@ -1,30 +1,46 @@
 // src/portals/admin/features/sla/components/sla-reports-page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import {
   departmentStatus,
+  formatTargetGap,
   getSlaByDepartment,
   getSlaMonthlyHistory,
+  getSlaPastDueNow,
   getSlaRangeStats,
   getSlaTrend,
+  SLA_SERVICES,
   SLA_TARGET_PCT,
+  summarizeMonthlyHistory,
 } from "@/portals/admin/features/sla/lib/sla";
 import { formatDuration, formatRate } from "@/portals/admin/lib/aggregate";
 import { formatManilaTimestamp, presetDateRange } from "@/portals/admin/lib/dates";
 import type { PortalError } from "@/portals/admin/lib/supabase/errors";
-import { SlaDateBasis, SlaDepartmentRow, SlaDepartmentStatus, SlaTrendRow } from "@/portals/admin/features/sla/types";
+import {
+  ServiceRangeStats,
+  SlaDateBasis,
+  SlaDepartmentRow,
+  SlaDepartmentStatus,
+  SlaTrendRow,
+} from "@/portals/admin/features/sla/types";
 import { Button } from "@/portals/admin/components/ui/button";
 import { DataTable } from "@/portals/admin/components/ui/data-table";
 import { DateFilterBar, DateFilterPreset } from "@/portals/admin/components/ui/date-filter-bar";
-import { KpiTile } from "@/portals/admin/components/ui/kpi-tile";
+import { SplitKpiTile } from "@/portals/admin/components/ui/kpi-tile";
 import { PageHero } from "@/portals/admin/components/layout/page-hero";
 import { LoadingStatus, Skeleton } from "@/portals/admin/components/ui/skeleton";
-import { ComplianceTrendCard } from "@/portals/admin/features/sla/components/compliance-trend-card";
+import { ComplianceTrendCard, TREND_TITLE } from "@/portals/admin/features/sla/components/compliance-trend-card";
 import { downloadCsv } from "@/portals/admin/lib/csv";
 import { listIncidents, IncidentRow } from "@/portals/admin/features/incidents/lib/incidents";
 import { listApplications, YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yellow-card";
 import { listDepartments, DepartmentRow } from "@/portals/admin/lib/supabase/catalogs";
+import {
+  finishedLateHref,
+  INCIDENT_REPORTS_PATH,
+  pastDueHref,
+  YELLOW_CARD_PATH,
+} from "@/portals/admin/features/sla/lib/sla-links";
 
 const DEPARTMENT_STATUS_CLASSES: Record<SlaDepartmentStatus, string> = {
   "Meeting target": "text-gray-600",
@@ -33,10 +49,38 @@ const DEPARTMENT_STATUS_CLASSES: Record<SlaDepartmentStatus, string> = {
   "Needs attention": "text-red-600",
 };
 
+type SlaServiceKey = (typeof SLA_SERVICES)[number]["key"];
+
 const BASIS_OPTIONS: { value: SlaDateBasis; label: string }[] = [
   { value: "request", label: "Request Date" },
   { value: "resolution", label: "Resolution Date" },
 ];
+
+// Where each service's Finished late and Past due now link to (#127), what
+// that page lists, and its own name for each of this page's date types.
+const SERVICE_PAGES: Record<
+  SlaServiceKey,
+  { path: string; noun: [string, string]; basis: Record<SlaDateBasis, string> }
+> = {
+  yellowCard: {
+    path: YELLOW_CARD_PATH,
+    noun: ["application", "applications"],
+    basis: { request: "application", resolution: "completion" },
+  },
+  incidents: {
+    path: INCIDENT_REPORTS_PATH,
+    noun: ["report", "reports"],
+    basis: { request: "report", resolution: "resolution" },
+  },
+};
+
+// "See the 8 reports": the link under a count, only once there is something
+// to see. Nothing while loading or after a failed fetch.
+function seeTheRequests(key: SlaServiceKey, count: number, href: string): { href: string; label: string } | undefined {
+  if (count === 0) return undefined;
+  const [one, many] = SERVICE_PAGES[key].noun;
+  return { href, label: `See the ${count.toLocaleString()} ${count === 1 ? one : many}` };
+}
 
 export function SLAReportsPage() {
   const [preset, setPreset] = useState<DateFilterPreset>("Month");
@@ -75,11 +119,12 @@ export function SLAReportsPage() {
   // "Date type" toggle) is passed to all four too: "request" filters every
   // row by submitted_at, "resolution" filters incidents by resolved_at and
   // Yellow Card applications by decided_at (see src/portals/admin/features/sla/lib/sla.ts's
-  // incidentDateAccessor/applicationDateAccessor). avgResponseDays stays
-  // incidents-only regardless of basis — the two SLA clocks are not
-  // comparable (see getSlaTrend's doc comment) — and getSlaByDepartment/
-  // getSlaTrend/getSlaMonthlyHistory pool incidents with Yellow Card the
-  // same way getSlaRangeStats does (see its own doc comment).
+  // incidentDateAccessor/applicationDateAccessor). Nothing on this page
+  // pools the two services: the two SLA clocks are not comparable (see
+  // getSlaTrend's doc comment), so getSlaRangeStats gives each its own
+  // figures, getSlaByDepartment gives Yellow Card its own row, and
+  // getSlaTrend and getSlaMonthlyHistory are incidents-only. getSlaPastDueNow
+  // alone takes no range: it describes right now.
   const dateRange = useMemo(
     () => (preset === "Custom" ? { from: customStart, to: customEnd } : presetDateRange(preset)),
     [preset, customStart, customEnd]
@@ -185,6 +230,12 @@ export function SLAReportsPage() {
     () => getSlaRangeStats(incidentRows, applicationRows, dateRange, dateBasis),
     [incidentRows, applicationRows, dateRange, dateBasis]
   );
+  // No dateRange or dateBasis in its deps: past due is right now, whatever
+  // the range, so a filter change leaves it alone (#126).
+  const pastDueNow = useMemo(
+    () => getSlaPastDueNow(incidentRows, applicationRows),
+    [incidentRows, applicationRows]
+  );
   const monthlyHistory = useMemo(
     () => getSlaMonthlyHistory(incidentRows, dateRange, dateBasis),
     [incidentRows, dateRange, dateBasis]
@@ -192,40 +243,26 @@ export function SLAReportsPage() {
 
   // Real, derived from monthlyHistory — not the old mock's fixed
   // always-10-months array. Incidents-only (see getSlaMonthlyHistory's doc
-  // comment) and range-bounded: under Today/Week this is one row's worth of
-  // "average," which is the honest answer for a window that short, not a
-  // defect to paper over with a wider hardcoded lookback.
-  //
-  // averageCompliancePct/best are derived only from `scoredMonths` — the
-  // months whose compliancePct is non-null (see SlaTrendRow.compliancePct's
-  // doc comment in src/portals/admin/lib/types.ts) — not all of `monthlyHistory`. A month with
-  // zero scoreable incidents has no compliance figure to average in or
-  // crown "best"; folding its null in as 0 would drag the average down and
-  // could even crown a no-data month "worst" (Admin Portal Fix Plan, Phase 1
-  // final review, finding 1). totalRequests is unaffected: it sums
-  // totalRequests (scoreable counts, 0 for a no-data month), which is
-  // already honest at 0.
-  const monthlySummary = useMemo(() => {
-    if (monthlyHistory.length === 0) return null;
-    const totalRequests = monthlyHistory.reduce((sum, row) => sum + row.totalRequests, 0);
-    const scoredMonths = monthlyHistory.filter(
-      (row): row is typeof row & { compliancePct: number } => row.compliancePct !== null
-    );
-    const averageCompliancePct =
-      scoredMonths.length > 0
-        ? Math.round((scoredMonths.reduce((sum, row) => sum + row.compliancePct, 0) / scoredMonths.length) * 10) /
-          10
-        : null;
-    const best =
-      scoredMonths.length > 0 ? scoredMonths.reduce((a, b) => (b.compliancePct > a.compliancePct ? b : a)) : null;
-    return { totalRequests, averageCompliancePct, best };
-  }, [monthlyHistory]);
+  // comment) and range-bounded. On time ÷ scored across the months, so it
+  // equals the Incidents compliance tile (#122); see summarizeMonthlyHistory.
+  const monthlySummary = useMemo(
+    () => (monthlyHistory.length === 0 ? null : summarizeMonthlyHistory(monthlyHistory)),
+    [monthlyHistory]
+  );
+
+  // One service's value on a per-service tile: the figure once loaded, a
+  // skeleton while loading, and "—" after a failed fetch, never a stale or
+  // fabricated 0 (Admin Portal Fix Plan, Task 1.5).
+  function tileValue(read: (service: ServiceRangeStats) => string, key: SlaServiceKey): ReactNode {
+    if (status === "ready" && stats) return read(stats[key]);
+    return status === "loading" ? <Skeleton className="h-6 w-14" /> : "—";
+  }
 
   function handleExport() {
     if (!stats) return;
     downloadCsv(
       "sla-report.csv",
-      ["Period", "Compliance %", "Violations"],
+      ["Period", "Incidents resolved on time %", "Incidents finished late"],
       // point.compliancePct is null for a bucket with zero scoreable
       // incidents (see SlaTrendPoint's doc comment) — "—", the same glyph
       // formatRate renders on screen, not a blank/0 a spreadsheet reader
@@ -278,67 +315,82 @@ export function SLAReportsPage() {
           all start and finish loading together. */}
       {isLoading && <LoadingStatus label="Loading SLA data…" />}
 
+      {/* Every SLA tile is shown once per service and never pooled: the
+          Yellow Card clock and the incident clocks make different promises
+          (ADR 0001, #122). */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiTile
-          label="Responses"
-          value={
-            status === "ready" && stats
-              ? stats.responses.toLocaleString()
-              : status === "loading"
-                ? <Skeleton className="h-7 w-16" />
-                : "—"
-          }
-          // Explains the scoreable-vs-total gap ON the tile itself, rather
-          // than leaving an admin to notice this figure disagrees with a raw
-          // count shown elsewhere (e.g. Issue Reports' total report count)
-          // with nothing on screen saying why (Admin Portal Fix Plan, Phase
-          // 1 final review, finding 3). Only shown when there IS a gap to
-          // explain — omitted once responses === totalInRange.
-          caption={
-            status === "ready" && stats && stats.totalInRange > stats.responses
-              ? `${stats.responses.toLocaleString()} of ${stats.totalInRange.toLocaleString()} scoreable (pending/unverified excluded)`
-              : undefined
-          }
-          note={status === "ready" && compare ? stats?.responsesDelta : undefined}
+        <SplitKpiTile
+          label="Requests scored"
+          parts={SLA_SERVICES.map(({ name, key }) => ({
+            name,
+            value: tileValue((service) => service.scored.toLocaleString(), key),
+            // What the scored count was out of: this service's requests in
+            // range, before pending, withdrawn, open and invalid ones are
+            // left out of scoring.
+            caption:
+              status === "ready" && stats
+                ? `of ${stats[key].inRange.toLocaleString()} ${dateBasis === "request" ? "filed" : "closed"} in range`
+                : undefined,
+            note: status === "ready" && compare ? stats?.[key].scoredDelta : undefined,
+          }))}
+          direction="neutral"
           noteTone="positive"
         />
-        <KpiTile
-          label="SLA Violations"
-          value={
-            status === "ready" && stats
-              ? stats.violations.toLocaleString()
-              : status === "loading"
-                ? <Skeleton className="h-7 w-16" />
-                : "—"
-          }
-          note={status === "ready" && compare ? stats?.violationsDelta : undefined}
+        <SplitKpiTile
+          label="Finished late"
+          parts={SLA_SERVICES.map(({ name, key }) => ({
+            name,
+            value: tileValue((service) => service.finishedLate.toLocaleString(), key),
+            note: status === "ready" && compare ? stats?.[key].finishedLateDelta : undefined,
+            // The same range and date type, so the table lists exactly the
+            // requests counted here.
+            link:
+              status === "ready" && stats
+                ? seeTheRequests(
+                    key,
+                    stats[key].finishedLate,
+                    finishedLateHref(SERVICE_PAGES[key].path, preset, dateRange, SERVICE_PAGES[key].basis[dateBasis])
+                  )
+                : undefined,
+          }))}
+          direction="lower-is-better"
           noteTone="negative"
         />
-        <KpiTile
+        <SplitKpiTile
           label="Compliance"
-          value={
-            status === "ready" && stats
-              ? formatRate(stats.compliancePct)
-              : status === "loading"
-                ? <Skeleton className="h-7 w-16" />
-                : "—"
-          }
-          note={`Target: ${SLA_TARGET_PCT}%`}
+          parts={SLA_SERVICES.map(({ name, key }) => ({
+            name,
+            value: tileValue((service) => formatRate(service.compliancePct), key),
+            caption: status === "ready" && stats ? formatTargetGap(stats[key].gapToTargetPts) : undefined,
+          }))}
+          footnote={`Project target: ${SLA_TARGET_PCT}%`}
+          direction="higher-is-better"
           noteTone="neutral"
         />
-        <KpiTile
-          label="Avg Response"
-          value={
-            status === "ready" && stats
-              ? formatDuration(stats.avgResponseDays)
-              : status === "loading"
-                ? <Skeleton className="h-7 w-16" />
-                : "—"
-          }
-          note={status === "ready" && compare ? stats?.avgResponseDelta : undefined}
-          noteTone="positive"
+        {/* Past due now replaced Avg Response, which repeated the incident
+            time to resolve and was not on the clock (#126, metrics sheet
+            S4). It describes right now, so it has no delta. */}
+        <SplitKpiTile
+          label="Past due now"
+          parts={SLA_SERVICES.map(({ name, key }) => ({
+            name,
+            value:
+              status === "ready"
+                ? pastDueNow[key].toLocaleString()
+                : status === "loading"
+                  ? <Skeleton className="h-6 w-14" />
+                  : "—",
+            link: status === "ready" ? seeTheRequests(key, pastDueNow[key], pastDueHref(SERVICE_PAGES[key].path)) : undefined,
+          }))}
+          footnote="Right now, whatever the date range"
+          direction="lower-is-better"
+          noteTone="negative"
         />
       </div>
+      {/* The third service's absence is a stated choice, not an oversight:
+          SCRUM-131's booking clock was cut, and the Charter's booking times
+          are voluntary standards (ADR 0001, amendment 2026-10-06). */}
+      <p className="text-xs text-gray-500">Booking has no turnaround clock yet (voluntary standard, ADR 0001)</p>
 
       {isLoading ? (
         <div className="rounded-none border border-gray-200 bg-white px-6 py-8">
@@ -357,7 +409,7 @@ export function SLAReportsPage() {
         </div>
       ) : trendPoints.length === 0 ? (
         <section className="rounded-none border border-gray-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-gray-900">Compliance trend</h2>
+          <h2 className="text-lg font-semibold text-gray-900">{TREND_TITLE}</h2>
           <p className="mt-2 text-sm text-gray-500">No SLA data for this range.</p>
         </section>
       ) : (
@@ -372,17 +424,18 @@ export function SLAReportsPage() {
         <div className="px-6 pt-6">
           <h2 className="text-lg font-semibold text-gray-900">By department</h2>
           <p className="text-sm text-gray-500">
-            Performance against the {SLA_TARGET_PCT}% city standard
+            Compliance against the {SLA_TARGET_PCT}% project target
           </p>
-          {/* "Requests" only counts SLA-scoreable rows — the same scoreable-
-              vs-total gap the Responses hero tile above explains. A row's
+          {/* "Scored" only counts SLA-scoreable rows — the same scoreable-
+              vs-total gap the Requests scored tile above captions. A row's
               "of N total" sub-line (when it differs) reconciles the two
               rather than leaving an admin to notice a raw count elsewhere
               disagrees with no explanation why (Admin Portal Fix Plan, Phase
               1 final review, finding 3). */}
           <p className="text-xs text-gray-500">
-            Requests counts SLA-scoreable rows only — pending Yellow Card reviews and still-open/unverified
-            incidents are excluded (see the &quot;of N total&quot; note under a row&apos;s count).
+            Scored counts decided Yellow Card applications and resolved incidents only — pending reviews,
+            withdrawals, and open, invalid, duplicate or expired reports are not scored (see the &quot;of N
+            total&quot; note under a row&apos;s count).
           </p>
         </div>
         <div className="mt-2">
@@ -426,7 +479,7 @@ export function SLAReportsPage() {
                   render: (row: SlaDepartmentRow) => row.department,
                 },
                 {
-                  header: "Requests",
+                  header: "Scored",
                   headerClassName: "text-right",
                   className: "text-right tabular-nums",
                   render: (row: SlaDepartmentRow) => (
@@ -504,19 +557,19 @@ export function SLAReportsPage() {
               columns={[
                 { header: "Period", render: (row: SlaTrendRow) => row.label },
                 {
-                  header: "Total",
+                  header: "Scored",
                   headerClassName: "text-right",
                   className: "text-right tabular-nums",
                   render: (row: SlaTrendRow) => row.totalRequests,
                 },
                 {
-                  header: "On Time",
+                  header: "On time",
                   headerClassName: "text-right",
                   className: "text-right tabular-nums",
                   render: (row: SlaTrendRow) => row.onTime,
                 },
                 {
-                  header: "Late",
+                  header: "Finished late",
                   headerClassName: "text-right",
                   className: "text-right tabular-nums",
                   render: (row: SlaTrendRow) => row.violations,
@@ -528,7 +581,9 @@ export function SLAReportsPage() {
                   render: (row: SlaTrendRow) => formatRate(row.compliancePct),
                 },
                 {
-                  header: "Avg Response",
+                  // From filing to resolution, not the clock: the Admin
+                  // glossary's "Time to resolve".
+                  header: "Avg time to resolve",
                   headerClassName: "text-right",
                   className: "text-right tabular-nums",
                   render: (row: SlaTrendRow) => formatDuration(row.avgResponseDays),
@@ -549,15 +604,15 @@ export function SLAReportsPage() {
             Plan, Phase 1 final review, finding 2). */}
         {status === "ready" && monthlySummary && (
           <div className="m-6 border border-gray-100 bg-gray-50 px-4 py-3 text-xs text-gray-600">
-            <strong className="text-gray-900">{monthlyHistory.length}-month average:</strong>{" "}
-            {formatRate(monthlySummary.averageCompliancePct)} ·{" "}
+            <strong className="text-gray-900">
+              Across {monthlyHistory.length} month{monthlyHistory.length === 1 ? "" : "s"}:
+            </strong>{" "}
+            {formatRate(monthlySummary.compliancePct)} on time ({monthlySummary.onTime.toLocaleString()} of{" "}
+            {monthlySummary.scored.toLocaleString()} scored) ·{" "}
             <strong className="text-gray-900">Best month:</strong>{" "}
             {monthlySummary.best
               ? `${monthlySummary.best.label} (${formatRate(monthlySummary.best.compliancePct)})`
-              : "no scoreable month in range"}{" "}
-            ·{" "}
-            <strong className="text-gray-900">Total processed:</strong>{" "}
-            {monthlySummary.totalRequests.toLocaleString()} incidents
+              : "no scoreable month in range"}
           </div>
         )}
       </section>

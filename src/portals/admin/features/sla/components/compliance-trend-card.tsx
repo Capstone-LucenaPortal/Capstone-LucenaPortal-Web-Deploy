@@ -1,5 +1,10 @@
 // src/portals/admin/features/sla/components/compliance-trend-card.tsx
 import { SlaTrendPoint } from "@/portals/admin/features/sla/types";
+import { formatRate } from "@/portals/admin/lib/aggregate";
+
+// Incidents only (computeTrendBuckets keeps Yellow Card's pausable clock
+// out), so the title says so rather than a footnote (#40, #122).
+export const TREND_TITLE = "Incidents resolved on time, by month";
 
 const WIDTH = 640;
 const HEIGHT = 200;
@@ -71,24 +76,18 @@ export function ComplianceTrendCard({
 
   const labelStep = Math.max(1, Math.ceil(points.length / 8));
 
-  // The trend buckets incidents only (computeTrendBuckets keeps Yellow
-  // Card's pausable clock out), while the SLA Violations and Compliance
-  // tiles above count both — so every label here says so, or the two
-  // violation totals read as a contradiction (#40).
-  const incidentsOnlySubtitle = `${subtitle} · incidents only`;
-
   return (
     <section className="rounded-none border border-gray-200 bg-white p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-lg font-semibold text-gray-900">Compliance trend</h2>
-        <p className="text-sm text-gray-500">{incidentsOnlySubtitle}</p>
+        <h2 className="text-lg font-semibold text-gray-900">{TREND_TITLE}</h2>
+        <p className="text-sm text-gray-500">{subtitle}</p>
       </div>
 
       <svg
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         className="mt-4 h-52 w-full"
         role="img"
-        aria-label={`SLA compliance trend, ${incidentsOnlySubtitle}`}
+        aria-label={`${TREND_TITLE}, ${subtitle}`}
       >
         {gridLevels.map((level) => (
           <g key={level}>
@@ -126,7 +125,7 @@ export function ComplianceTrendCard({
           textAnchor="end"
           className="fill-gray-500 text-[10px] font-medium"
         >
-          Target {targetPct}%
+          Project target {targetPct}%
         </text>
 
         {segments.map((segment, segmentIndex) => (
@@ -151,7 +150,7 @@ export function ComplianceTrendCard({
               fill={point.compliancePct < targetPct ? "#dc2626" : "#1e40af"}
             />
             <title>
-              {`${point.label}: ${point.compliancePct}% compliance · ${point.violations} violation${point.violations === 1 ? "" : "s"}`}
+              {`${point.label}: ${point.compliancePct}% on time · ${point.violations} finished late`}
             </title>
           </g>
         ))}
@@ -178,19 +177,20 @@ export function ComplianceTrendCard({
           already used elsewhere in this codebase (see
           src/portals/admin/features/incidents/components/barangay-reports-table.tsx). */}
       <table className="sr-only">
-        <caption>{`Compliance trend data, ${incidentsOnlySubtitle}`}</caption>
+        <caption>{`${TREND_TITLE}, data, ${subtitle}`}</caption>
         <thead>
           <tr>
             <th scope="col">Period</th>
-            <th scope="col">Compliance</th>
-            <th scope="col">Violations</th>
+            <th scope="col">On time</th>
+            <th scope="col">Finished late</th>
           </tr>
         </thead>
         <tbody>
           {points.map((point) => (
             <tr key={point.label}>
               <th scope="row">{point.label}</th>
-              <td>{`${point.compliancePct}%`}</td>
+              {/* "—", not "null%", for a month with nothing scored. */}
+              <td>{formatRate(point.compliancePct)}</td>
               <td>{point.violations}</td>
             </tr>
           ))}
@@ -199,10 +199,10 @@ export function ComplianceTrendCard({
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 pt-3 text-xs text-gray-600">
         <span>
-          Total violations (incidents only): <strong className="text-gray-900">{totalViolations}</strong>
+          Incidents finished late: <strong className="text-gray-900">{totalViolations}</strong>
         </span>
         <span>
-          Worst: <strong className="text-gray-900">{worstLabel}</strong>
+          Worst month: <strong className="text-gray-900">{worstLabel}</strong>
         </span>
       </div>
     </section>

@@ -2,12 +2,33 @@ import { MANILA_TIME_ZONE } from "@/shared/dates/manila";
 import type { IncidentRow } from "@/portals/admin/features/incidents/lib/incidents";
 import type { YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yellow-card";
 import type { DepartmentRow } from "@/portals/admin/lib/supabase/catalogs";
-import { averageResolutionDays, countDelta, daysDelta, percentDelta, previousPeriodRange } from "@/portals/admin/lib/aggregate";
+import {
+  averageResolutionDays,
+  countDelta,
+  incidentBacklogDeadlines,
+  percentDelta,
+  previousPeriodRange,
+  ratePointsDelta,
+  yellowCardBacklogDeadlines,
+} from "@/portals/admin/lib/aggregate";
+import type { Delta } from "@/portals/admin/lib/aggregate";
 // formatManilaRangeLabel used to be a private formatRangeLabel in this file;
 // it moved to src/portals/admin/lib/dates.ts so the three analytics pages' panel subtitles
 // share the one implementation. See its doc comment there.
 import { filterByDateRange, formatManilaRangeLabel } from "@/portals/admin/lib/dates";
-import type { SlaDateBasis, SlaDepartmentRow, SlaDepartmentStatus, SlaRangeStats, SlaTrendPoint, SlaTrendRow } from "@/portals/admin/features/sla/types";
+import type {
+  ServiceCompliance,
+  ServiceRangeStats,
+  SlaCompliance,
+  SlaDateBasis,
+  SlaDepartmentRow,
+  SlaDepartmentStatus,
+  SlaMonthlySummary,
+  SlaPastDueNow,
+  SlaRangeStats,
+  SlaTrendPoint,
+  SlaTrendRow,
+} from "@/portals/admin/features/sla/types";
 
 export type DateRange = { from: string; to: string } | null;
 
@@ -48,6 +69,13 @@ const YELLOW_CARD_DEPARTMENT_LABEL = "Yellow Card";
 export const SLA_TARGET_PCT = 85;
 const SLA_NEAR_TARGET_PCT = 75;
 export const SLA_NEEDS_ATTENTION_PCT = 65;
+
+// The services with a turnaround clock, in the order every per-service tile
+// and card shows them. Booking has no clock (ADR 0001).
+export const SLA_SERVICES = [
+  { name: "Yellow Card", key: "yellowCard" },
+  { name: "Incidents", key: "incidents" },
+] as const;
 
 export function departmentStatus(compliancePct: number): SlaDepartmentStatus {
   if (compliancePct >= SLA_TARGET_PCT) return "Meeting target";
@@ -105,35 +133,18 @@ const NON_SCOREABLE_CLOSURE_REASONS = new Set<IncidentClosureReason>([
  * when it happens to carry a resolved_at, because that closure reason means
  * the report itself was never a legitimate SLA case.
  *
- * ⚠️ KNOWN LIMITATION — admin_incident_analytics does NOT expose
- * `sla_due_at`, `sla_armed_at`, or `verified_at` as columns (confirmed
- * against l42_admin_analytics_widen.sql's view source and the live schema);
- * only the pre-computed `sla_met` boolean is readable from here. The Admin
- * Portal Fix Plan's Task 1.2 brief asks for a THIRD outcome beyond
- * super_metrics' own rule — an open-and-overdue incident counted as a live
- * breach, not merely excluded — but that requires comparing `now()` against
- * a due date this view does not carry, and a still-open incident cannot be
- * told apart from a still-open, NEVER-ARMED one without it either: both
- * read `status in (open, in_pool, in_progress)` and `resolved_at = null`.
- * Approximating a due date from `routed_at` + the per-level target hours in
- * `incident_config` (the same trick issueRangeStats' backlogPastSla USED TO
- * lean on in src/portals/admin/lib/aggregate.ts, for a different, point-in-time-only KPI
- * — Admin Portal Fix Plan Task 1.3 later rejected it there too, for this
- * identical reason, and replaced it with an unconditional null; see
- * backlogPastSla's own doc comment) was considered and rejected here: it
- * would risk exactly the bug this
- * function exists to fix, just moved one step over — flagging a report that
- * is routed but still genuinely unverified (and so has never armed at all)
- * as a "live breach" purely because it looks old, which is materially wrong
- * for the critical/high tiers (4h/8h targets, far shorter than the ~3-day
- * expired_unverified sweep window that would eventually exclude it anyway).
- * Until the view exposes a real due date, an open incident of any age is
- * treated as not-yet-scoreable — the same choice super_metrics already
- * makes — so this keeps Admin's incident compliance figure verifiably
- * correct rather than merely closer to the brief's letter.
+ * "Armed" is read from `sla_due_at` (l112): a resolved report the city never
+ * routed and verified has no due time, so it had no clock to miss, and is
+ * not scored (#125). Before l112 the view carried only `sla_met`, which
+ * reads false for that report exactly as for a late one, so both were
+ * scored as late.
+ *
+ * An open report is not scored, however far past its due time: compliance
+ * judges finished requests, and an open one past its due time is counted as
+ * past due instead (Open Backlog's note, metrics sheet I4 and S4).
  *
  * Returns `true` (met), `false` (breached — resolved late), or `null`
- * (not-yet-scoreable: still open, or closed for a reason in
+ * (not scoreable: still open, never had a clock, or closed for a reason in
  * NON_SCOREABLE_CLOSURE_REASONS). Every caller must exclude `null` from
  * both the numerator and denominator of any compliance ratio it computes —
  * the same contract applicationMet already establishes for Yellow Card
@@ -142,16 +153,15 @@ const NON_SCOREABLE_CLOSURE_REASONS = new Set<IncidentClosureReason>([
 export function incidentMet(row: IncidentRow): boolean | null {
   if (row.closure_reason !== null && NON_SCOREABLE_CLOSURE_REASONS.has(row.closure_reason)) return null;
   if (row.resolved_at === null) return null;
+  if (row.sla_due_at === null) return null;
   return row.sla_met === true;
 }
 
-// The only statuses admin_yellow_card_analytics.decided_at is ever set for —
-// the point past which sla_elapsed_seconds stops accruing and sla_breached
-// stops changing. Kept in sync with YELLOW_CARD_PENDING_STATUSES in
-// aggregate.ts and YELLOW_CARD_BACKLOG_STATUSES in dashboard.ts, which each
-// name the complementary (non-terminal) set for their own point-in-time
-// backlog reads.
-const YELLOW_CARD_TERMINAL_STATUSES = new Set(["approved", "rejected", "withdrawn"]);
+// The statuses a Yellow Card application is scored in: the city decided it.
+// A withdrawn application is decided too (decided_at is set and its clock
+// stops), but the resident ended it, not the city, so it is never scored
+// for or against the city (#119; the Admin glossary's "Scoreable request").
+const YELLOW_CARD_SCOREABLE_STATUSES = new Set(["approved", "rejected"]);
 
 /**
  * admin_yellow_card_analytics.sla_breached is defined as
@@ -168,12 +178,94 @@ const YELLOW_CARD_TERMINAL_STATUSES = new Set(["approved", "rejected", "withdraw
  * a real due-date/armed-clock (tracked for Phase 6) — this returns `null`
  * for those rows rather than guessing, and callers must exclude `null` from
  * both the numerator and denominator of any compliance ratio they compute.
- * Only for a DECIDED row (approved/rejected/withdrawn, per
- * YELLOW_CARD_TERMINAL_STATUSES) does sla_breached mean what it says.
+ * Only for an approved or rejected row (YELLOW_CARD_SCOREABLE_STATUSES) does
+ * sla_breached count. A withdrawn row returns `null` too, however long it
+ * sat: the resident withdrew it, so it is not scoreable.
  */
 export function applicationMet(row: YellowCardRow): boolean | null {
-  if (row.status === null || !YELLOW_CARD_TERMINAL_STATUSES.has(row.status)) return null;
+  if (row.status === null || !YELLOW_CARD_SCOREABLE_STATUSES.has(row.status)) return null;
   return !row.sla_breached;
+}
+
+function serviceCompliance<T>(rows: T[], met: (row: T) => boolean | null): ServiceCompliance {
+  let scored = 0;
+  let onTime = 0;
+  for (const row of rows) {
+    const outcome = met(row);
+    if (outcome === null) continue;
+    scored += 1;
+    if (outcome) onTime += 1;
+  }
+  const compliancePct = scored > 0 ? round1((onTime / scored) * 100) : null;
+  return {
+    scored,
+    onTime,
+    finishedLate: scored - onTime,
+    compliancePct,
+    gapToTargetPts: compliancePct === null ? null : round1(compliancePct - SLA_TARGET_PCT),
+  };
+}
+
+/**
+ * The scoring rules every Admin page shares, applied to rows the caller has
+ * already filtered to its range: each service's scored, on time, finished
+ * late, compliance and gap to the 85% project target. A Yellow Card
+ * application is scored per applicationMet, an incident per incidentMet.
+ * The two services are returned apart and never pooled, because their
+ * clocks make different promises (ADR 0001): 3 working days that pause for
+ * the applicant, against 4-72 calendar hours that never pause.
+ */
+export function slaCompliance(applications: YellowCardRow[], incidents: IncidentRow[]): SlaCompliance {
+  return {
+    yellowCard: serviceCompliance(applications, applicationMet),
+    incidents: serviceCompliance(incidents, incidentMet),
+  };
+}
+
+/**
+ * The Yellow Card page's Decided on time (metrics sheet Y7, #123): the
+ * Yellow Card half of slaCompliance over the applications whose `getDate`
+ * falls in `range`, and its change since the previous period (higher is
+ * better). `getDate` is the page's date type, so on the filing date this is
+ * the Dashboard's Yellow Card SLA compliance for the same range.
+ */
+export function yellowCardDecidedOnTime(
+  applications: YellowCardRow[],
+  range: NonNullable<DateRange>,
+  getDate: (row: YellowCardRow) => string | null
+): ServiceCompliance & { delta: Delta } {
+  const current = slaCompliance(filterByDateRange(applications, getDate, range), []).yellowCard;
+  const previous = slaCompliance(filterByDateRange(applications, getDate, previousPeriodRange(range)), []).yellowCard;
+  return { ...current, delta: ratePointsDelta(current.compliancePct, previous.compliancePct) };
+}
+
+/**
+ * The Incident Reports page's Resolved on time (metrics sheet I9, #125): the
+ * incident half of slaCompliance over the reports whose `getDate` falls in
+ * `range`, and its change since the previous period (higher is better).
+ * `getDate` is the page's date type, so on the filing date this is the
+ * Dashboard's incident SLA compliance for the same range.
+ */
+export function incidentsResolvedOnTime(
+  incidents: IncidentRow[],
+  range: NonNullable<DateRange>,
+  getDate: (row: IncidentRow) => string | null
+): ServiceCompliance & { delta: Delta } {
+  const current = slaCompliance([], filterByDateRange(incidents, getDate, range)).incidents;
+  const previous = slaCompliance([], filterByDateRange(incidents, getDate, previousPeriodRange(range))).incidents;
+  return { ...current, delta: ratePointsDelta(current.compliancePct, previous.compliancePct) };
+}
+
+/**
+ * A service's gap to the project target, as a tile caption: "9 pts below
+ * 85% project target". The 85% is our capstone's success line, not a legal
+ * tolerance, so the words say "project target".
+ */
+export function formatTargetGap(gapToTargetPts: number | null): string {
+  if (gapToTargetPts === null) return "Nothing scored in range";
+  if (gapToTargetPts === 0) return `On the ${SLA_TARGET_PCT}% project target`;
+  const side = gapToTargetPts < 0 ? "below" : "above";
+  return `${Math.abs(gapToTargetPts)} pts ${side} ${SLA_TARGET_PCT}% project target`;
 }
 
 /**
@@ -229,7 +321,7 @@ function applicationDateAccessor(basis: SlaDateBasis): (row: YellowCardRow) => s
  * `totalInRange` is each row's full group size (incident count for a real
  * department, `filteredApplications.length` for the synthetic Yellow Card
  * row) BEFORE the scoreable-only filter `requests` applies — the per-row
- * twin of SlaRangeStats.totalInRange, so the table can caption "X of Y
+ * twin of ServiceRangeStats.inRange, so the table can caption "X of Y
  * scoreable" instead of showing `requests` with no explanation for why it
  * disagrees with a raw count shown elsewhere (Admin Portal Fix Plan, Phase 1
  * final review, finding 3). A row is only pushed once `requests` (scoreable)
@@ -275,8 +367,8 @@ export function getSlaByDepartment(
     });
   }
 
-  // Only DECIDED applications have a scoreable applicationMet (see its own
-  // doc comment) — a pending one is excluded from both requests and
+  // Only approved or rejected applications have a scoreable applicationMet
+  // (see its own doc comment) — a pending or withdrawn one is excluded from both requests and
   // compliancePct's denominator here, not counted as met or unmet, the same
   // "zero rows in range is omitted, not shown at 0%" convention this
   // function already applies per-department above, extended to "zero
@@ -448,8 +540,8 @@ export function getSlaTrend(
  *
  * `avgResponseDays` is computed per bucket via averageResolutionDays over
  * just that bucket's rows — a month with no resolved incidents in it gets
- * `null` (rendered "—" via formatDuration), the same "no data" convention
- * averageResolutionDays already uses range-wide in getSlaRangeStats.
+ * `null` (rendered "—" via formatDuration), averageResolutionDays' own "no
+ * data" convention.
  *
  * Range-bounded like every other converted panel in this portal: under a
  * narrow preset (Today/Week) this collapses to at most one row, which is
@@ -477,53 +569,81 @@ export function getSlaMonthlyHistory(
 }
 
 /**
- * KPI-tile figures for the SLA Reports page's hero tiles — the citywide
- * total across both incidents and Yellow Card applications, unlike
- * getSlaByDepartment's per-department rows above.
+ * The footer under the Monthly compliance history: on time ÷ scored summed
+ * across `history`'s months, so a month weighs as much as its cases. The old
+ * footer averaged the monthly percentages, so a one-case month at 0% pulled
+ * as hard as a hundred-case month at 100% (#122). Over the same range and
+ * date basis this equals the Incidents compliance tile, because both count
+ * the same scoreable incidents.
+ *
+ * `best` is the month with the highest compliance; a month with nothing
+ * scored has no compliance and is never best.
+ */
+export function summarizeMonthlyHistory(history: SlaTrendRow[]): SlaMonthlySummary {
+  const scored = history.reduce((sum, row) => sum + row.totalRequests, 0);
+  const onTime = history.reduce((sum, row) => sum + row.onTime, 0);
+  let best: SlaMonthlySummary["best"] = null;
+  for (const row of history) {
+    if (row.compliancePct === null) continue;
+    if (best === null || row.compliancePct > best.compliancePct) {
+      best = { label: row.label, compliancePct: row.compliancePct };
+    }
+  }
+  return { scored, onTime, compliancePct: scored > 0 ? round1((onTime / scored) * 100) : null, best };
+}
+
+// One service's tile figures: its compliance, what its scored count was out
+// of, and how scored and finished late moved since the previous period.
+function serviceRangeStats(
+  current: ServiceCompliance,
+  previous: ServiceCompliance,
+  inRange: number
+): ServiceRangeStats {
+  return {
+    ...current,
+    inRange,
+    scoredDelta: percentDelta(current.scored, previous.scored),
+    // With nothing scored in the previous period there is no late count to
+    // compare against: 0 there means "nothing to judge", not "none late",
+    // so the delta must not read "+16 · worse" (#115).
+    finishedLateDelta:
+      previous.scored === 0
+        ? { text: "No comparable data vs previous period", movement: null }
+        : countDelta(current.finishedLate, previous.finishedLate),
+  };
+}
+
+/**
+ * KPI-tile figures for the SLA Reports page's hero tiles.
  *
  * `incidents`/`applications` are the caller's already-fetched
  * listIncidents()/listApplications() arrays, the same convention every other
  * function in this file follows as of Task 4.2 (see getSlaByDepartment's doc
  * comment) — this does no fetching of its own.
  *
- * `responses`/`violations`/`compliancePct` pool incidents and Yellow Card
- * applications into one count, the same thing getSlaByDepartment already
- * does per-department (see its own doc comment) — a citywide total request
- * count is a legitimate top-line figure to sum across services.
- *
- * `avgResponseDays` is incidents-only, not pooled: it is a TIME duration,
- * and the two SLA clocks are not comparable (see getSlaTrend's doc comment
- * above) — averaging a paused-while-with-citizen clock together with a
- * continuously-running one would not be a faithful reading of either. It
- * is `null` when no incident in range resolved (render via formatDuration,
- * never `${value}d`), and its delta reads "No comparable data" then.
+ * `yellowCard`/`incidents` are each service's own figures, scored by
+ * slaCompliance, the rules the Dashboard uses too, and never pooled: the two
+ * clocks make different promises (ADR 0001, #122). Each compares with the
+ * same service in the previous period.
  *
  * `trend` reuses getSlaTrend(incidents, range, dateBasis) directly rather
  * than re-deriving it, so the CSV export (which reads `stats.trend`) and the
  * chart (which reads the page's separately-computed trend state, over the
  * SAME fetched `incidents` array) always agree.
  *
- * `responses`/`violations`/`compliancePct` only pool SCOREABLE rows on both
- * sides: DECIDED Yellow Card applications (see applicationMet's doc
- * comment) and RESOLVED, non-excluded incidents (see incidentMet's doc
- * comment) — a pending/resubmitted/revision_requested application, or a
+ * Each service's `scored` counts SCOREABLE rows only: approved or rejected
+ * Yellow Card applications (see applicationMet's doc comment) and RESOLVED,
+ * non-excluded incidents (see incidentMet's doc comment) — a withdrawn
+ * application, a pending/resubmitted/revision_requested application, or a
  * still-open/non-scoreable-closure incident, in range is real volume, but
  * its SLA status is genuinely unknown or not applicable, not "met" or "not
- * met", so each is excluded from this ratio's numerator AND denominator
- * rather than guessed. This can make `responses` here read lower than
- * "every incident + application filed this period" while a backlog of
- * undecided applications or still-open incidents exists in `range` — an
- * honest gap, not a bug, until Phase 6 gives pending applications a
- * scoreable due date and admin_incident_analytics exposes one for
- * incidents.
+ * met", so each is excluded from the ratio's numerator AND denominator
+ * rather than guessed.
  *
- * `totalInRange` is that "every incident + application filed this period"
- * figure `responses` deliberately excludes rows from — i.e.
- * `filteredIncidents.length + filteredApplications.length`, before the
- * scoreable-only filter. It exists so the page can caption the gap on
- * screen ("12 of 340 scoreable") instead of leaving an admin to notice two
- * different-looking totals with no explanation (Admin Portal Fix Plan,
- * Phase 1 final review, finding 3).
+ * Each service's `inRange` is every request of that service in range,
+ * before that filter, so the Requests scored tile can say what its count
+ * was out of ("25 of 47 filed in range"). The old caption pooled both
+ * services' totals and called them all scoreable, which they were not.
  */
 export function getSlaRangeStats(
   incidents: IncidentRow[],
@@ -539,47 +659,41 @@ export function getSlaRangeStats(
 
   const filteredIncidents = filterByDateRange(incidents, incidentDateAccessor(dateBasis), range);
   const filteredApplications = filterByDateRange(applications, applicationDateAccessor(dateBasis), range);
-  const scoreableIncidents = filteredIncidents.filter((row) => incidentMet(row) !== null);
-  const decidedApplications = filteredApplications.filter((row) => applicationMet(row) !== null);
+  const current = slaCompliance(filteredApplications, filteredIncidents);
 
   const previousRange = previousPeriodRange(range);
   const previousIncidents = filterByDateRange(incidents, incidentDateAccessor(dateBasis), previousRange);
   const previousApplications = filterByDateRange(applications, applicationDateAccessor(dateBasis), previousRange);
-  const previousScoreableIncidents = previousIncidents.filter((row) => incidentMet(row) !== null);
-  const previousDecidedApplications = previousApplications.filter((row) => applicationMet(row) !== null);
-
-  const responses = scoreableIncidents.length + decidedApplications.length;
-  const met =
-    scoreableIncidents.filter((row) => incidentMet(row) === true).length +
-    decidedApplications.filter((row) => applicationMet(row) === true).length;
-  const violations = responses - met;
-  // null when there are zero SLA-scoreable requests in range at all (e.g. a
-  // quiet "Today" preset) — not the same as met === 0, which is a genuine 0%
-  // compliance figure. The old `: 0` fallback here read as an alarming
-  // "SLA Compliance 0%" hero tile on a period with nothing to score (Admin
-  // Portal Fix Plan, Task 1.5). Render via formatRate (lib/aggregate.ts)
-  // aggregate.ts), never `${value}%` or `?? 0`.
-  const compliancePct = responses > 0 ? round1((met / responses) * 100) : null;
-
-  const previousResponses = previousScoreableIncidents.length + previousDecidedApplications.length;
-  const previousMet =
-    previousScoreableIncidents.filter((row) => incidentMet(row) === true).length +
-    previousDecidedApplications.filter((row) => applicationMet(row) === true).length;
-  const previousViolations = previousResponses - previousMet;
-
-  const avgResponseDays = averageResolutionDays(filteredIncidents);
-  const previousAvgResponseDays = averageResolutionDays(previousIncidents);
+  const previous = slaCompliance(previousApplications, previousIncidents);
 
   return {
     rangeLabel: formatManilaRangeLabel(range),
-    responses,
-    responsesDelta: percentDelta(responses, previousResponses),
-    violations,
-    violationsDelta: countDelta(violations, previousViolations),
-    compliancePct,
-    avgResponseDays,
-    avgResponseDelta: daysDelta(avgResponseDays, previousAvgResponseDays),
+    yellowCard: serviceRangeStats(current.yellowCard, previous.yellowCard, filteredApplications.length),
+    incidents: serviceRangeStats(current.incidents, previous.incidents, filteredIncidents.length),
     trend,
-    totalInRange: filteredIncidents.length + filteredApplications.length,
+  };
+}
+
+/**
+ * SLA Reports' Past due now (metrics sheet S4): per service, the requests
+ * waiting on the city right now whose promised time has already run out. It
+ * replaced Avg Response, which repeated the incident time to resolve and was
+ * not on the clock (#126).
+ *
+ * The same counting as Pending Review's and Open Backlog's past-due notes
+ * (#124), not a second copy: Yellow Card applications pending or
+ * resubmitted whose deadline state is overdue, and incident reports open, in
+ * pool or in progress whose due time `now` has reached. A report with no due
+ * time has no clock yet and never counts. It takes no range: past due
+ * describes right now, whatever the page's filter.
+ */
+export function getSlaPastDueNow(
+  incidents: IncidentRow[],
+  applications: YellowCardRow[],
+  now: Date = new Date()
+): SlaPastDueNow {
+  return {
+    yellowCard: yellowCardBacklogDeadlines(applications).pastDue,
+    incidents: incidentBacklogDeadlines(incidents, now).pastDue,
   };
 }

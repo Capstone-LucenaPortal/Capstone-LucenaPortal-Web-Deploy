@@ -8,6 +8,7 @@ import {
   formatRate,
   recentMonthlyCounts,
   yellowCardDateAccessor,
+  yellowCardPastDueRows,
   yellowCardRangeStats,
 } from "@/portals/admin/lib/aggregate";
 import {
@@ -20,7 +21,10 @@ import {
 } from "@/portals/admin/lib/dates";
 import { YellowCardDateBasis } from "@/portals/admin/features/yellow-card/types";
 import { exportApplications, listApplications, YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yellow-card";
-import { applicationMet } from "@/portals/admin/features/sla/lib/sla";
+import { applicationMet, formatTargetGap, yellowCardDecidedOnTime } from "@/portals/admin/features/sla/lib/sla";
+import { YELLOW_CARD_PATH } from "@/portals/admin/features/sla/lib/sla-links";
+import { useSlaRowFilter } from "@/portals/admin/features/sla/hooks/use-sla-row-filter";
+import { SlaRowFilterBanner } from "@/portals/admin/features/sla/components/sla-row-filter-banner";
 import { listBarangays } from "@/portals/admin/lib/supabase/catalogs";
 import type { PortalError } from "@/portals/admin/lib/supabase/errors";
 import { YELLOW_CARD_STATUS_LABELS, YELLOW_CARD_STATUS_ORDER, YellowCardStatusValue } from "@/portals/admin/lib/status-labels";
@@ -43,6 +47,7 @@ const BASIS_OPTIONS: { value: YellowCardDateBasis; label: string }[] = [
   { value: "application", label: "Application Date" },
   { value: "completion", label: "Approval/Completion Date" },
 ];
+const BASIS_VALUES = BASIS_OPTIONS.map((option) => option.value);
 
 // The table's date column and the monthly chart's subtitle name the date the
 // picked date type reads. The default (submitted) date type keeps the
@@ -82,15 +87,18 @@ function filterRows(rows: YellowCardRow[], tab: (typeof STATUS_TABS)[number]["va
 }
 
 export function YellowCardPage() {
-  const [preset, setPreset] = useState<DateFilterPreset>("Month");
+  // Arriving from SLA Reports' Finished late or Past due now (#127): the link
+  // seeds the range and date type, and narrows the Recent applications table.
+  const { link, filter: slaFilter, clear: clearSlaFilter } = useSlaRowFilter(YELLOW_CARD_PATH, BASIS_VALUES);
+  const [preset, setPreset] = useState<DateFilterPreset>(link?.preset ?? "Month");
   // Seeded from the current Manila month rather than from literals written
   // the day this page was authored: a hardcoded "2026-05-01"/"2026-05-31"
   // silently ages into an offer to filter by a window months in the past.
   // Lazy initialisers, so presetDateRange runs once on mount instead of on
   // every render.
-  const [customStart, setCustomStart] = useState(() => presetDateRange("Month").from);
-  const [customEnd, setCustomEnd] = useState(() => presetDateRange("Month").to);
-  const [dateBasis, setDateBasis] = useState<YellowCardDateBasis>("application");
+  const [customStart, setCustomStart] = useState(() => link?.from ?? presetDateRange("Month").from);
+  const [customEnd, setCustomEnd] = useState(() => link?.to ?? presetDateRange("Month").to);
+  const [dateBasis, setDateBasis] = useState<YellowCardDateBasis>(link?.basis ?? "application");
   const [compare, setCompare] = useState(true);
   const [activeTab, setActiveTab] = useState<(typeof STATUS_TABS)[number]["value"]>("all");
   const [reviewingId, setReviewingId] = useState<string | null>(null);
@@ -210,6 +218,10 @@ export function YellowCardPage() {
     () => yellowCardRangeStats(rows, dateRange, getDate, barangayCount),
     [rows, dateRange, getDate, barangayCount]
   );
+  // Scored by the rules every page shares (slaCompliance), on the page's
+  // date type, so on the filing date it is the Dashboard's Yellow Card SLA
+  // compliance for the same range (metrics sheet Y7).
+  const decidedOnTime = useMemo(() => yellowCardDecidedOnTime(rows, dateRange, getDate), [rows, dateRange, getDate]);
   const filtered = useMemo(
     () => filterByDateRange(filterRows(rows, activeTab), getDate, dateRange),
     [rows, activeTab, getDate, dateRange]
@@ -220,6 +232,15 @@ export function YellowCardPage() {
   // the active filter would be worse than a stale KPI number, since a stale
   // chart doesn't visually look wrong the way a stale number does.
   const coverage = useMemo(() => barangayCoverage(filtered), [filtered]);
+  // The table alone narrows to SLA Reports' filter; the tiles and panels
+  // still describe the range. Finished late is the applications in range
+  // scored late by the rule SLA Reports counts with (applicationMet). Past
+  // due now is the waiting applications past due, whatever the range.
+  const tableRows = useMemo(() => {
+    if (slaFilter === "past-due") return filterRows(yellowCardPastDueRows(rows), activeTab);
+    if (slaFilter === "late") return filtered.filter((row) => applicationMet(row) === false);
+    return filtered;
+  }, [slaFilter, rows, activeTab, filtered]);
   const topBarangays = useMemo(
     () =>
       [...coverage]
@@ -327,17 +348,40 @@ export function YellowCardPage() {
           they start and finish loading together. */}
       {isLoading && <LoadingStatus label="Loading applications…" />}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <KpiTile
           label="Applications"
           value={isLoading ? <Skeleton className="h-7 w-16" /> : error ? "—" : stats.applications.toLocaleString()}
           note={isLoading ? <Skeleton className="h-3 w-24" /> : error || !compare ? undefined : stats.applicationsDelta}
+          direction="neutral"
           noteTone="positive"
         />
+        {/* The page's effectiveness figure: approved and rejected
+            applications decided within the clock. A withdrawal is not
+            scored. The words say "3-working-day", never "27h", which reads
+            like 27 clock hours. */}
+        <KpiTile
+          label="Decided on time"
+          value={isLoading ? <Skeleton className="h-7 w-16" /> : error ? "—" : formatRate(decidedOnTime.compliancePct)}
+          caption={
+            isLoading || error
+              ? undefined
+              : decidedOnTime.scored === 0
+                ? "Nothing decided in range"
+                : `${decidedOnTime.onTime} of ${decidedOnTime.scored} within the 3-working-day target · ${formatTargetGap(decidedOnTime.gapToTargetPts)}`
+          }
+          note={isLoading ? <Skeleton className="h-3 w-24" /> : error || !compare ? undefined : decidedOnTime.delta}
+          direction="higher-is-better"
+          noteTone="negative"
+        />
+        {/* An outcome mix with no good direction (metrics sheet Y2): a high
+            rate is not success, so its delta stays neutral. */}
         <KpiTile
           label="Approval Rate"
           value={isLoading ? <Skeleton className="h-7 w-16" /> : error ? "—" : formatRate(stats.approvalRatePct)}
+          caption={isLoading || error ? undefined : "Outcome mix · not a target"}
           note={isLoading ? <Skeleton className="h-3 w-24" /> : error || !compare ? undefined : stats.approvalRateDelta}
+          direction="neutral"
           noteTone="positive"
         />
         <KpiTile
@@ -368,44 +412,21 @@ export function YellowCardPage() {
           }
           noteTone="neutral"
         />
-        {/* The hour figure is the one the pending rows actually carry
-            (sla_target_hours), not a literal: it is set by
-            public_yellow_card_config.processing_time_target_days and is
-            Super Staff-editable. When a config change leaves the backlog on
-            two different clocks there is no single figure to name, so the
-            caption drops it rather than misdescribe half the queue.
-
-            pendingPastSla is null until Phase 6 lands a real due-date column
-            — admin_yellow_card_analytics.sla_breached is only meaningful for
-            DECIDED applications (see applicationMet's doc comment in
-            src/portals/admin/features/sla/lib/sla.ts), so there is no honest count of "how many of
-            these pending applications are overdue" yet. The caption says so
-            rather than showing a number that structurally always reads too
-            low.
-
-            stats.pendingPastSla is UNCONDITIONALLY null right now, so the
-            ternary below always takes the "unavailable" branch — the
-            pendingSlaTargetHours-dependent branches underneath are dead
-            code today. They are kept, not collapsed to the single reachable
-            branch: once Phase 6 gives pendingPastSla a real non-null value,
-            the note should immediately pick the right target-hours wording
-            back up, with no further edit needed here (Admin Portal Fix
-            Plan, Phase 1 final review, finding 4). */}
+        {/* Past due and at risk are the Staff queue's own deadline state
+            (metrics sheet Y4). The words say "3-working-day", never "27h",
+            which reads like 27 clock hours. */}
         <KpiTile
           label="Pending Review"
           value={isLoading ? <Skeleton className="h-7 w-16" /> : error ? "—" : stats.pendingReview}
+          caption={isLoading || error ? undefined : "Past due = past 3-working-day target"}
           note={
             isLoading ? (
               <Skeleton className="h-3 w-24" />
-            ) : error ? undefined : stats.pendingPastSla === null ? (
-              "SLA status unavailable for pending applications"
-            ) : stats.pendingSlaTargetHours === null ? (
-              `${stats.pendingPastSla} past SLA`
-            ) : (
-              `${stats.pendingPastSla} past ${stats.pendingSlaTargetHours}h SLA`
+            ) : error ? undefined : (
+              `${stats.pendingPastDue} past due · ${stats.pendingAtRisk} at risk`
             )
           }
-          noteTone={stats.pendingPastSla === null ? "neutral" : "negative"}
+          noteTone={stats.pendingPastDue > 0 ? "negative" : "neutral"}
         />
       </div>
 
@@ -433,9 +454,21 @@ export function YellowCardPage() {
         <div className="flex flex-wrap items-center justify-between gap-3 px-6 pt-6">
           <h2 className="text-lg font-semibold text-gray-900">Recent applications</h2>
           <div className="flex flex-col items-end gap-1">
-            <Button variant="secondary" onClick={handleExportApplications}>
+            {/* The audited export RPC can't narrow to SLA Reports' filter, so
+                while it is on, a CSV would not match the table (#128). */}
+            <Button
+              variant="secondary"
+              onClick={handleExportApplications}
+              disabled={slaFilter !== null}
+              aria-describedby={slaFilter ? "yellow-card-export-hint" : undefined}
+            >
               ↓ Export
             </Button>
+            {slaFilter && (
+              <p id="yellow-card-export-hint" className="text-xs text-gray-500">
+                Export can&apos;t narrow to this filter. Clear it to export every application in the range.
+              </p>
+            )}
             {exportError && <p className="text-xs text-red-700">{exportError}</p>}
           </div>
         </div>
@@ -449,6 +482,7 @@ export function YellowCardPage() {
             }}
           />
         </div>
+        {slaFilter && <SlaRowFilterBanner filter={slaFilter} noun="applications" onClear={clearSlaFilter} />}
 
         {isLoading ? (
           <div className="space-y-2 px-6 py-8">
@@ -467,7 +501,7 @@ export function YellowCardPage() {
               Retry
             </Button>
           </div>
-        ) : filtered.length === 0 ? (
+        ) : tableRows.length === 0 ? (
           <p className="px-6 py-8 text-center text-sm text-gray-500">No applications match this filter.</p>
         ) : (
           <DataTable
@@ -515,7 +549,7 @@ export function YellowCardPage() {
                   ),
               },
             ]}
-            rows={filtered}
+            rows={tableRows}
             rowKey={(row) => row.id ?? row.reference_number ?? ""}
           />
         )}

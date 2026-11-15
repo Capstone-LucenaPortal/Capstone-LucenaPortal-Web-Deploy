@@ -1,9 +1,10 @@
 // src/portals/admin/features/booking/components/convention-center-page.test.tsx
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ConventionCenterPage, { metadata } from "@/app/(admin)/admin/(shell)/convention-center/page";
 import type { BookingRow, BookingPii } from "@/portals/admin/features/booking/lib/bookings";
 import type { VenueRow, BookingEventTypeRow } from "@/portals/admin/lib/supabase/catalogs";
+import { presetDateRange } from "@/portals/admin/lib/dates";
 import { vi } from "vitest";
 
 // vi.mock's first argument is a plain string, not an import specifier, so it
@@ -441,15 +442,6 @@ describe("ConventionCenterPage", () => {
     }
   });
 
-  // THE PANEL THAT MUST STATE ITS OWN GAP. submit_booking never writes
-  // origin_barangay_code or origin_locality, so origin_barangay_code is
-  // always null and the generated is_resident column (origin_barangay_code
-  // is not null) always evaluates to false, not null — this is not a bug the
-  // panel can fix by deriving origin from something else. Bookings are
-  // deliberately present in this fixture (not []) to
-  // prove the explanation is not merely an empty-data state: even with rows
-  // on screen, the origin breakdown must say why it cannot be shown rather
-  // than rendering a blank table that reads as "no bookings exist".
   // Issue #24: the date type used to reach the KPI tiles only; the table, the
   // Export and the monthly chart stayed on submitted_at. b-1 was booked this
   // month for an event in October (still ahead), b-2 was booked in June for
@@ -512,7 +504,11 @@ describe("ConventionCenterPage", () => {
     }
   });
 
-  it("the Booking Origins panel states its own gap even when bookings are present", async () => {
+  // #118 (metrics sheet C3, C4, C8): submit_booking never records where a
+  // booker is from, so Resident Share, Outside Lucena and Bookings by origin
+  // could only ever say "Not tracked". They are gone, with the subtitle that
+  // promised them. Utilization went in #117: Event days replaces it.
+  it("shows no origin panels and no \"Not tracked\" text, under the subtitle \"Demand, event days and venue mix\"", async () => {
     mockListBookings.mockResolvedValue([
       buildRow({ id: "b-1", reference_number: "CC-2026-000001" }),
       buildRow({ id: "b-2", reference_number: "CC-2026-000002" }),
@@ -521,31 +517,100 @@ describe("ConventionCenterPage", () => {
     render(<ConventionCenterPage />);
     await screen.findByText("CC-2026-000001");
 
-    expect(
-      screen.getByText(/booking origin is not yet collected/i)
-    ).toBeInTheDocument();
-    expect(screen.getByText("submit_booking")).toBeInTheDocument();
-    expect(screen.getByText("origin_barangay_code")).toBeInTheDocument();
-    expect(screen.getByText("origin_locality")).toBeInTheDocument();
-    // Not a "no bookings" empty-table message — the rows are on screen above.
-    expect(screen.queryByText(/no origin matches/i)).not.toBeInTheDocument();
+    expect(screen.getByText("Demand, event days and venue mix")).toBeInTheDocument();
+    expect(screen.queryByText(/resident/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Outside Lucena")).not.toBeInTheDocument();
+    expect(screen.queryByText("Bookings by origin")).not.toBeInTheDocument();
+    expect(screen.queryByText(/not tracked/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/not yet collected/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Utilization")).not.toBeInTheDocument();
   });
 
-  // Utilization, Resident Share and Outside Lucena all share the same
-  // underlying data gap (no venue capacity figure, no origin/residency
-  // data) and so all three now state it honestly rather than showing a
-  // fabricated number — "Not tracked" therefore appears three times, once
-  // per tile, not once.
-  it("the Utilization, Resident Share and Outside Lucena KPI tiles all state their gap instead of a fabricated number", async () => {
-    mockListBookings.mockResolvedValue([buildRow()]);
+  // #118 (metrics sheet C1): the tile counts demand, whatever became of each
+  // request, and its caption says how many are confirmed (confirmed, fully
+  // paid or completed: the glossary's "Event day" set).
+  it("\"Booking requests\" counts every request in range, with the caption \"N confirmed\"", async () => {
+    const statuses: BookingRow["status"][] = [
+      "confirmed",
+      "fully_paid",
+      "completed",
+      "awaiting_quote",
+      "awaiting_payment",
+      "cancelled",
+    ];
+    mockListBookings.mockResolvedValue(
+      statuses.map((status, index) => buildRow({ id: `b-${index}`, reference_number: `CC-2026-00000${index}`, status }))
+    );
 
     render(<ConventionCenterPage />);
-    await screen.findByText("CC-2026-000001");
+    await screen.findByText("CC-2026-000000");
 
-    expect(screen.getByText("Utilization")).toBeInTheDocument();
-    expect(screen.getByText("Resident Share")).toBeInTheDocument();
-    expect(screen.getByText("Outside Lucena")).toBeInTheDocument();
-    expect(screen.getAllByText("Not tracked")).toHaveLength(3);
+    const tile = screen.getByText("Booking requests").closest("div") as HTMLElement;
+    expect(within(tile).getByText("6")).toBeInTheDocument();
+    expect(within(tile).getByText("3 confirmed")).toBeInTheDocument();
+    expect(screen.queryByText("Bookings")).not.toBeInTheDocument();
+  });
+
+  // Event days replaces Utilization: the share of days in range with a
+  // confirmed, fully paid or completed booking, the same figure as the
+  // Dashboard's "Days with an event" (#117, metrics sheet C2 and D4). The
+  // Dashboard's page test pins the same two cases against the same values.
+  describe("Event days (#117)", () => {
+    async function eventDaysTile(): Promise<HTMLElement> {
+      await screen.findByText("Event days");
+      return screen.getByText("Event days").closest("div") as HTMLElement;
+    }
+
+    it("a booking awaiting a quote, review or payment makes no event day", async () => {
+      const user = userEvent.setup();
+      const { to: today } = presetDateRange("Today");
+      const waiting: BookingRow["status"][] = [
+        "pending",
+        "awaiting_tier_review",
+        "awaiting_resubmission",
+        "awaiting_quote",
+        "awaiting_payment",
+        "payment_verification",
+        "cancelled",
+      ];
+      mockListBookings.mockResolvedValue(
+        waiting.map((status, index) => buildRow({ id: `b-${index}`, status, event_date: today }))
+      );
+
+      render(<ConventionCenterPage />);
+      const tile = await eventDaysTile();
+      await user.click(screen.getByRole("button", { name: "Today" }));
+
+      await waitFor(() => expect(within(tile).getByText("0%")).toBeInTheDocument());
+      expect(within(tile).getByText("0 of 1 day had an event")).toBeInTheDocument();
+    });
+
+    // The two bookings on `from` were filed a year earlier, outside the
+    // range: an event day is about when the event is, whatever the date type
+    // picked for the rest of the page.
+    it("two confirmed bookings on one day make one event day, on Annual, by event date", async () => {
+      const user = userEvent.setup();
+      const { from, to } = presetDateRange("Annual");
+      const lastYear = `${Number(from.slice(0, 4)) - 1}-06-01T00:00:00Z`;
+      mockListBookings.mockResolvedValue([
+        buildRow({ id: "b-1", status: "confirmed", event_date: from, submitted_at: lastYear }),
+        buildRow({ id: "b-2", status: "confirmed", event_date: from, submitted_at: lastYear }),
+        buildRow({ id: "b-3", status: "fully_paid", event_date: to }),
+        buildRow({ id: "b-4", status: "completed", event_date: to }),
+        buildRow({ id: "b-5", status: "awaiting_payment", event_date: `${from.slice(0, 8)}02` }),
+      ]);
+      const days = new Set([from, to]).size;
+      const totalDays = (Date.parse(to) - Date.parse(from)) / 86_400_000 + 1;
+
+      render(<ConventionCenterPage />);
+      const tile = await eventDaysTile();
+      await user.click(screen.getByRole("button", { name: "Annual" }));
+
+      await waitFor(() =>
+        expect(within(tile).getByText(`${days} of ${totalDays} day${totalDays === 1 ? "" : "s"} had an event`)).toBeInTheDocument()
+      );
+      expect(within(tile).getByText(`${Math.round((days / totalDays) * 1000) / 10}%`)).toBeInTheDocument();
+    });
   });
 
   // Handoff regression guard: the row's `id` (the booking PK, distinct from
@@ -714,7 +779,10 @@ describe("ConventionCenterPage", () => {
     // THE PINNED EDGE CASE: a venue nobody booked is still a real venue and
     // must still appear, with bookings: 0 — the mirror image of
     // barangayCoverage dropping a barangay with zero applications.
-    it("the venue utilization panel lists every venue from listVenues(), including one with zero bookings", async () => {
+    // #118 (metrics sheet C7): no venue capacity number exists, so the fill
+    // column could only ever read "—" / "no cap tracking". It is gone, with
+    // the "Utilization across facility options" subtitle.
+    it("the venue panel lists every venue from listVenues(), including one with zero requests, with no fill column", async () => {
       mockListBookings.mockResolvedValue([buildRow({ id: "b-1", venue_code: "ATRIUM" })]);
       mockListVenues.mockResolvedValue([
         buildVenue({ code: "ATRIUM", label: "Atrium", capacity_label: "Capacity: 1,000 pax" }),
@@ -723,20 +791,20 @@ describe("ConventionCenterPage", () => {
 
       render(<ConventionCenterPage />);
 
-      const section = screen.getByText("Bookings by venue").closest("section")!;
+      const section = screen.getByText("Booking requests per venue").closest("section")!;
       expect(await within(section).findByText("Sports Arena")).toBeInTheDocument();
       expect(within(section).getByText("Capacity: 3,500 pax")).toBeInTheDocument();
-      // avgFillPct has no source (booking_venues.capacity_label is free text,
-      // not a number) — the component's own "no cap tracking" gap state must
-      // show for every venue, not a fabricated percentage.
-      expect(within(section).getAllByText("no cap tracking").length).toBe(2);
+      expect(within(section).getByRole("img", { name: "Sports Arena: 0 booking requests" })).toBeInTheDocument();
+      expect(within(section).queryByText("no cap tracking")).not.toBeInTheDocument();
+      expect(within(section).queryByText("avg fill")).not.toBeInTheDocument();
+      expect(within(section).queryByText("—")).not.toBeInTheDocument();
+      expect(screen.queryByText("Utilization across facility options")).not.toBeInTheDocument();
+      expect(screen.queryByText("Bookings by venue")).not.toBeInTheDocument();
     });
 
-    // Task 3.4: VenueUtilizationCard already showed each venue's booking
-    // count as visible text, but the bar itself carried no accessible
-    // pairing between the venue and its value. It now exposes both together
-    // via a role="img" aria-label on the bar.
-    it("the venue utilization panel's bars carry a data-bearing aria-label per venue", async () => {
+    // Task 3.4: the bar carries the venue and its count together, for
+    // assistive tech.
+    it("the venue panel's bars carry a data-bearing aria-label per venue", async () => {
       mockListBookings.mockResolvedValue([buildRow({ id: "b-1", venue_code: "ATRIUM" })]);
       mockListVenues.mockResolvedValue([
         buildVenue({ code: "ATRIUM", label: "Atrium", capacity_label: "Capacity: 1,000 pax" }),
@@ -744,9 +812,56 @@ describe("ConventionCenterPage", () => {
 
       render(<ConventionCenterPage />);
 
-      const section = screen.getByText("Bookings by venue").closest("section")!;
+      const section = screen.getByText("Booking requests per venue").closest("section")!;
       expect(await within(section).findByText("Atrium")).toBeInTheDocument();
-      expect(within(section).getByRole("img", { name: "Atrium: 1 bookings" })).toBeInTheDocument();
+      expect(within(section).getByRole("img", { name: "Atrium: 1 booking request" })).toBeInTheDocument();
+    });
+
+    // #118 (metrics sheet C7): "I picked this month. Why does the venue panel
+    // show last year's numbers?" It reads the rows the range already filters.
+    it("a booking outside the range is not in the venue panel", async () => {
+      vi.useFakeTimers().setSystemTime(new Date("2026-08-15T04:00:00Z")); // 2026-08-15 12:00 Manila
+      try {
+        const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+        mockListBookings.mockResolvedValue([
+          buildRow({ id: "b-1", reference_number: "CC-2026-000001", venue_code: "ATRIUM", submitted_at: "2026-08-05T04:00:00Z" }),
+          buildRow({ id: "b-2", reference_number: "CC-2026-000002", venue_code: "ATRIUM", submitted_at: "2026-05-10T04:00:00Z" }),
+        ]);
+        mockListVenues.mockResolvedValue([buildVenue({ code: "ATRIUM", label: "Atrium" })]);
+
+        render(<ConventionCenterPage />);
+        const section = screen.getByText("Booking requests per venue").closest("section")!;
+
+        await user.click(screen.getByRole("button", { name: "Annual" }));
+        expect(await within(section).findByRole("img", { name: "Atrium: 2 booking requests" })).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", { name: "Month" }));
+        expect(within(section).getByRole("img", { name: "Atrium: 1 booking request" })).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("the venue panel follows the status tab", async () => {
+      const user = userEvent.setup();
+      mockListBookings.mockResolvedValue([
+        buildRow({ id: "b-1", reference_number: "CC-2026-000001", venue_code: "ATRIUM", status: "confirmed" }),
+        buildRow({ id: "b-2", reference_number: "CC-2026-000002", venue_code: "ARENA", status: "cancelled" }),
+      ]);
+      mockListVenues.mockResolvedValue([
+        buildVenue({ code: "ATRIUM", label: "Atrium" }),
+        buildVenue({ code: "ARENA", label: "Sports Arena" }),
+      ]);
+
+      render(<ConventionCenterPage />);
+      const section = screen.getByText("Booking requests per venue").closest("section")!;
+      expect(await within(section).findByRole("img", { name: "Atrium: 1 booking request" })).toBeInTheDocument();
+      expect(within(section).getByRole("img", { name: "Sports Arena: 1 booking request" })).toBeInTheDocument();
+
+      await user.click(screen.getByRole("tab", { name: "Cancelled" }));
+
+      expect(within(section).getByRole("img", { name: "Atrium: 0 booking requests" })).toBeInTheDocument();
+      expect(within(section).getByRole("img", { name: "Sports Arena: 1 booking request" })).toBeInTheDocument();
     });
   });
 

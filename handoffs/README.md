@@ -6,9 +6,10 @@ Each file is a prompt to paste into a new session. `todo/` holds the ones not ru
 
 | Hand-off | What it is | Note |
 |---|---|---|
-| [`todo/admin-metrics-re-evaluation.md`](todo/admin-metrics-re-evaluation.md) | For Arjel: judge every metric on the five Admin pages, then write the metric sheet, the spec and the tickets | Written 2026-11-05. Grill and tickets by about 2026-11-10, freeze about 2026-11-17, defense about 2026-11-22 to 27. Stops at filed tickets. Joaquin reviews the verdict table before `/to-tickets` |
+| [`todo/admin-metrics-tickets.md`](todo/admin-metrics-tickets.md) | For Arjel: work SCRUM-260's children (Web #115–#127, DB#62), one ticket per fresh session, onto `admin-metrics-batch` | Written 2026-11-13. Freeze about 2026-11-17. Move it to `done/` when the last ticket lands |
 
 ## Done
 
 | Hand-off | What it was | Result |
 |---|---|---|
+| [`done/admin-metrics-re-evaluation.md`](done/admin-metrics-re-evaluation.md) | For Arjel: judge every metric on the five Admin pages, then write the metric sheet, the spec and the tickets | Done 2026-11-13. 36 figures judged and 5 added; the sheet is `src/portals/admin/docs/metrics.md` and the glossary `src/portals/admin/CONTEXT.md`. Joaquin approved the verdicts; the spec is SCRUM-260 [S8-08]. Its children are Web #115–#127 and DB#62, landing on `admin-metrics-batch`. The Sandbox seed rows stay open in DB#61 |

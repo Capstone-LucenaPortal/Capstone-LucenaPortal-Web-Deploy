@@ -35,6 +35,16 @@ vi.mock("../lib/yellow-card", () => ({
   exportApplications: (filter: unknown) => mockExportApplications(filter),
 }));
 
+// The page reads SLA Reports' filter from its URL (#127). Each test sets the
+// query string it arrives with; most arrive with none.
+let mockSearchParams = new URLSearchParams();
+const mockReplace = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => mockSearchParams,
+  useRouter: () => ({ replace: mockReplace }),
+}));
+
 vi.mock("../../../lib/csv", () => ({
   downloadCsv: (filename: string, header: string[], rows: unknown[][]) =>
     mockDownloadCsv(filename, header, rows),
@@ -67,6 +77,8 @@ function buildRow(overrides: Partial<YellowCardRow> = {}): YellowCardRow {
     sla_elapsed_seconds: 1000,
     sla_breached: false,
     review_cycles: 0,
+    due_at: null,
+    deadline_state: null,
     ...overrides,
   };
 }
@@ -107,6 +119,8 @@ describe("YellowCardPage", () => {
     mockListBarangays.mockReset();
     mockListBarangays.mockResolvedValue(buildBarangays(33));
     mockDownloadCsv.mockReset();
+    mockSearchParams = new URLSearchParams();
+    mockReplace.mockReset();
   });
 
   // The Custom date inputs used to be seeded with literals written the day
@@ -128,25 +142,46 @@ describe("YellowCardPage", () => {
     expect(screen.getByLabelText("Custom range start")).toHaveValue(`${manilaToday.slice(0, 7)}-01`);
   });
 
-  // The caption used to read a hardcoded "past 48h SLA" — a copy of
-  // public_yellow_card_config.processing_time_target_days that would keep
-  // claiming 48h after Super Staff changed the real target. It has since
-  // been replaced entirely: admin_yellow_card_analytics.sla_breached is only
-  // meaningful for DECIDED applications (see applicationMet's doc comment in
-  // src/portals/admin/features/sla/lib/sla.ts), so there is no honest "N past SLA" count for the
-  // pending backlog until Phase 6 adds a real due date. The caption reads
-  // "unavailable" instead of a number, hardcoded or otherwise.
-  it("reads SLA status as unavailable for the pending backlog, not a count derived from sla_breached", async () => {
+  // Past due and at risk are the database's deadline_state, the one the Staff
+  // queue shows (l80, l112), never sla_breached, which a pending row never
+  // sets (#124, metrics sheet Y4).
+  it("Pending Review's note says how many are past due and at risk, from the database's deadline state", async () => {
     mockListApplications.mockResolvedValue([
-      buildRow({ status: "pending", sla_breached: true, sla_target_hours: 72 }),
+      buildRow({ id: "app-1", reference_number: "YC-2026-000001", status: "pending", deadline_state: "overdue" }),
+      buildRow({ id: "app-2", reference_number: "YC-2026-000002", status: "resubmitted", deadline_state: "overdue" }),
+      buildRow({ id: "app-3", reference_number: "YC-2026-000003", status: "pending", deadline_state: "at_risk" }),
+      buildRow({ id: "app-4", reference_number: "YC-2026-000004", status: "pending", deadline_state: "on_track", sla_breached: true }),
+      // Waiting on the applicant: not in Pending Review, so not past due either.
+      buildRow({ id: "app-5", reference_number: "YC-2026-000005", status: "revision_requested", deadline_state: "overdue" }),
     ]);
 
     render(<YellowCardPage />);
     await screen.findByText("YC-2026-000001");
 
-    expect(await screen.findByText("SLA status unavailable for pending applications")).toBeInTheDocument();
-    expect(screen.queryByText(/48h SLA/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/72h SLA/)).not.toBeInTheDocument();
+    const tile = screen.getByText("Pending Review", { selector: "p" }).closest("div")!;
+    expect(within(tile).getByText("4")).toBeInTheDocument();
+    expect(within(tile).getByText("2 past due · 1 at risk")).toBeInTheDocument();
+    expect(within(tile).getByText("Past due = past 3-working-day target")).toBeInTheDocument();
+    expect(screen.queryByText(/27h/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/SLA status unavailable/)).not.toBeInTheDocument();
+  });
+
+  // Pending Review is the Yellow Card part of the Dashboard's Service backlog:
+  // work waiting on the review desk (#116, metrics sheet Y4).
+  it("Pending Review counts pending and resubmitted applications, not one in revision", async () => {
+    mockListApplications.mockResolvedValue([
+      buildRow({ id: "app-1", reference_number: "YC-2026-000001", status: "pending" }),
+      buildRow({ id: "app-2", reference_number: "YC-2026-000002", status: "resubmitted" }),
+      buildRow({ id: "app-3", reference_number: "YC-2026-000003", status: "revision_requested" }),
+      buildRow({ id: "app-4", reference_number: "YC-2026-000004", status: "approved" }),
+    ]);
+
+    render(<YellowCardPage />);
+    await screen.findByText("YC-2026-000001");
+
+    // "Pending Review" is also a status tab and a row badge; the tile's label is the <p>.
+    const tile = screen.getByText("Pending Review", { selector: "p" }).closest("div")!;
+    expect(within(tile).getByText("2")).toBeInTheDocument();
   });
 
   // The "Barangays Reached — N / TOTAL" denominator used to be a literal 33
@@ -561,6 +596,124 @@ describe("YellowCardPage", () => {
     }
   });
 
+  // #115: Approval Rate is an outcome mix with no good direction (sheet Y2),
+  // so even a 100-point swing stays grey with no better/worse word.
+  it("Approval Rate's delta stays neutral: grey, with no 'better' or 'worse'", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-15T12:00:00+08:00"));
+    try {
+      mockListApplications.mockResolvedValue([
+        buildRow({ id: "app-1", reference_number: "YC-2026-000001", status: "approved", submitted_at: "2026-08-05T04:00:00Z", decided_at: "2026-08-06T04:00:00Z" }),
+        buildRow({ id: "app-2", reference_number: "YC-2026-000002", status: "rejected", submitted_at: "2026-07-20T04:00:00Z", decided_at: "2026-07-21T04:00:00Z" }),
+      ]);
+
+      render(<YellowCardPage />);
+      await screen.findByText("YC-2026-000001");
+
+      const tile = getKpiTile("Approval Rate");
+      const note = within(tile).getByText("+100 pts vs previous period");
+      expect(note).not.toHaveClass("text-green-700");
+      expect(note).not.toHaveClass("text-red-700");
+      expect(within(tile).queryByText(/better|worse/)).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // #123, sheet Y2: a high approval rate is not success, so the tile says
+  // what it is on screen.
+  it("Approval Rate is captioned as an outcome mix, not a target", async () => {
+    mockListApplications.mockResolvedValue([buildRow({ status: "approved", decided_at: defaultSubmittedAt() })]);
+
+    render(<YellowCardPage />);
+    await screen.findByText("YC-2026-000001");
+
+    expect(within(getKpiTile("Approval Rate")).getByText("Outcome mix · not a target")).toBeInTheDocument();
+  });
+
+  // #123, sheet Y7. The shared scoring rules (#119): approved and rejected
+  // applications are scored, a withdrawal is not, however long it sat.
+  describe("Decided on time", () => {
+    it("scores approved and rejected applications against the 3-working-day target and leaves a withdrawal out", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-08-15T12:00:00+08:00"));
+      try {
+        mockListApplications.mockResolvedValue([
+          buildRow({ id: "app-1", reference_number: "YC-2026-000001", status: "approved", submitted_at: "2026-08-03T01:00:00Z", decided_at: "2026-08-04T01:00:00Z", sla_target_hours: 27, sla_breached: false }),
+          buildRow({ id: "app-2", reference_number: "YC-2026-000002", status: "rejected", submitted_at: "2026-08-03T02:00:00Z", decided_at: "2026-08-05T02:00:00Z", sla_target_hours: 27, sla_breached: false }),
+          buildRow({ id: "app-3", reference_number: "YC-2026-000003", status: "approved", submitted_at: "2026-08-03T03:00:00Z", decided_at: "2026-08-12T03:00:00Z", sla_target_hours: 27, sla_breached: true }),
+          // Sat for weeks before the resident withdrew it: not the city's to score.
+          buildRow({ id: "app-4", reference_number: "YC-2026-000004", status: "withdrawn", submitted_at: "2026-08-01T03:00:00Z", decided_at: "2026-08-14T03:00:00Z", sla_target_hours: 27, sla_elapsed_seconds: 900_000, sla_breached: true }),
+          buildRow({ id: "app-5", reference_number: "YC-2026-000005", status: "pending", submitted_at: "2026-08-13T03:00:00Z", sla_target_hours: 27 }),
+        ]);
+
+        render(<YellowCardPage />);
+        await screen.findByText("YC-2026-000001");
+
+        const tile = getKpiTile("Decided on time");
+        expect(within(tile).getByText("66.7%")).toBeInTheDocument();
+        expect(
+          within(tile).getByText("2 of 3 within the 3-working-day target · 18.3 pts below 85% project target")
+        ).toBeInTheDocument();
+        expect(screen.queryByText(/27h/)).not.toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("follows the page's date type", async () => {
+      vi.useFakeTimers().setSystemTime(new Date("2026-08-15T04:00:00Z")); // 2026-08-15 12:00 Manila
+      try {
+        const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+        mockListApplications.mockResolvedValue([
+          buildRow({ id: "app-1", reference_number: "YC-2026-000001", status: "approved", submitted_at: "2026-08-03T01:00:00Z", decided_at: "2026-08-04T01:00:00Z", sla_breached: false }),
+          // Filed in July, decided late in August.
+          buildRow({ id: "app-2", reference_number: "YC-2026-000002", status: "rejected", submitted_at: "2026-07-28T01:00:00Z", decided_at: "2026-08-06T01:00:00Z", sla_breached: true }),
+        ]);
+
+        render(<YellowCardPage />);
+        await screen.findByText("YC-2026-000001");
+
+        expect(within(getKpiTile("Decided on time")).getByText("100%")).toBeInTheDocument();
+
+        await user.selectOptions(screen.getByLabelText("Date type"), "completion");
+        expect(within(getKpiTile("Decided on time")).getByText("50%")).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("its delta says better when more were decided on time than in the previous period", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-08-15T12:00:00+08:00"));
+      try {
+        mockListApplications.mockResolvedValue([
+          buildRow({ id: "app-1", reference_number: "YC-2026-000001", status: "approved", submitted_at: "2026-08-05T04:00:00Z", decided_at: "2026-08-06T04:00:00Z", sla_breached: false }),
+          buildRow({ id: "app-2", reference_number: "YC-2026-000002", status: "approved", submitted_at: "2026-07-20T04:00:00Z", decided_at: "2026-07-28T04:00:00Z", sla_breached: true }),
+        ]);
+
+        render(<YellowCardPage />);
+        await screen.findByText("YC-2026-000001");
+
+        const note = within(getKpiTile("Decided on time")).getByText("+100 pts vs previous period · better");
+        expect(note).toHaveClass("text-green-700");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("reads a dash, not 0%, when nothing was decided in range", async () => {
+      mockListApplications.mockResolvedValue([buildRow({ status: "pending" })]);
+
+      render(<YellowCardPage />);
+      await screen.findByText("YC-2026-000001");
+
+      const tile = getKpiTile("Decided on time");
+      expect(within(tile).getByText("—")).toBeInTheDocument();
+      expect(within(tile).getByText("Nothing decided in range")).toBeInTheDocument();
+    });
+  });
+
   it("picking a custom date range derives the Applications KPI for that exact span", async () => {
     // Pinned so the page's default "Month" preset covers all three fixture
     // rows below (the KPI assertion only starts to discriminate once the
@@ -938,6 +1091,150 @@ describe("YellowCardPage", () => {
 
       expect(await screen.findByText("Unable to load applications: boom")).toBeInTheDocument();
       expect(screen.queryByText(/^Updated /)).not.toBeInTheDocument();
+    });
+  });
+  // #127: SLA Reports' Finished late and Past due now link here, and the
+  // Recent applications table narrows to exactly the requests they counted.
+  describe("Arriving from SLA Reports", () => {
+    function tableReferences(): string[] {
+      const section = screen.getByText("Recent applications").closest("section")!;
+      return within(section)
+        .queryAllByRole("row")
+        .slice(1)
+        .map((row) => within(row).getAllByRole("cell")[0].textContent ?? "");
+    }
+
+    const daysAgoIso = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+
+    function juneApplications(): YellowCardRow[] {
+      return [
+        buildRow({ id: "late-approved", reference_number: "YC-LATE-APPROVED", status: "approved", submitted_at: "2026-06-05T02:00:00Z", decided_at: "2026-06-12T02:00:00Z", sla_breached: true }),
+        buildRow({ id: "late-rejected", reference_number: "YC-LATE-REJECTED", status: "rejected", submitted_at: "2026-06-20T02:00:00Z", decided_at: "2026-06-29T02:00:00Z", sla_breached: true }),
+        buildRow({ id: "on-time", reference_number: "YC-ON-TIME", status: "approved", submitted_at: "2026-06-10T02:00:00Z", decided_at: "2026-06-11T02:00:00Z", sla_breached: false }),
+        // The resident withdrew it: never scored, so never finished late.
+        buildRow({ id: "withdrawn", reference_number: "YC-WITHDRAWN", status: "withdrawn", submitted_at: "2026-06-10T02:00:00Z", decided_at: "2026-06-25T02:00:00Z", sla_breached: true }),
+        buildRow({ id: "pending", reference_number: "YC-PENDING", status: "pending", submitted_at: "2026-06-15T02:00:00Z" }),
+        // Late, but filed after the range.
+        buildRow({ id: "late-july", reference_number: "YC-LATE-JULY", status: "approved", submitted_at: "2026-07-05T02:00:00Z", decided_at: "2026-07-14T02:00:00Z", sla_breached: true }),
+      ];
+    }
+
+    it("Finished late narrows the table to the late applications of the linked range, and the filter clears", async () => {
+      const user = userEvent.setup();
+      mockSearchParams = new URLSearchParams("sla=late&from=2026-06-01&to=2026-06-30&basis=application");
+      mockListApplications.mockResolvedValue(juneApplications());
+
+      render(<YellowCardPage />);
+
+      await screen.findByText("YC-LATE-APPROVED");
+      expect(screen.getByLabelText("Custom range start")).toHaveValue("2026-06-01");
+      expect(screen.getByLabelText("Custom range end")).toHaveValue("2026-06-30");
+      expect(tableReferences()).toEqual(["YC-LATE-APPROVED", "YC-LATE-REJECTED"]);
+      expect(screen.getByText("Showing only applications that finished late in the selected range")).toBeInTheDocument();
+      // Only the table narrows: the tiles still describe every application in range.
+      expect(within(getKpiTile("Applications")).getByText("5")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Clear filter" }));
+
+      expect(screen.queryByText(/^Showing only applications/)).not.toBeInTheDocument();
+      expect(tableReferences()).toHaveLength(5);
+      expect(mockReplace).toHaveBeenCalledWith("/admin/yellow-card", { scroll: false });
+    });
+
+    it("Finished late on the decision date reads the decided date, as SLA Reports' Resolution Date does", async () => {
+      mockSearchParams = new URLSearchParams("sla=late&from=2026-06-01&to=2026-06-30&basis=completion");
+      mockListApplications.mockResolvedValue([
+        buildRow({ id: "filed-may", reference_number: "YC-FILED-MAY", status: "approved", submitted_at: "2026-05-28T02:00:00Z", decided_at: "2026-06-04T02:00:00Z", sla_breached: true }),
+        buildRow({ id: "decided-july", reference_number: "YC-DECIDED-JULY", status: "approved", submitted_at: "2026-06-26T02:00:00Z", decided_at: "2026-07-03T02:00:00Z", sla_breached: true }),
+      ]);
+
+      render(<YellowCardPage />);
+
+      await screen.findByText("YC-FILED-MAY");
+      expect(tableReferences()).toEqual(["YC-FILED-MAY"]);
+      expect(screen.getByLabelText("Date type")).toHaveValue("completion");
+    });
+
+    // The clock is pinned mid-June so a February row is in Annual but not in
+    // the default Month; only Date is faked, so findBy keeps its real timers.
+    it("Finished late on a named preset opens that preset", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-06-15T12:00:00+08:00"));
+      try {
+        mockSearchParams = new URLSearchParams("sla=late&range=Annual&basis=application");
+        mockListApplications.mockResolvedValue([
+          buildRow({ id: "late-february", reference_number: "YC-LATE-FEBRUARY", status: "approved", submitted_at: "2026-02-10T02:00:00Z", decided_at: "2026-02-18T02:00:00Z", sla_breached: true }),
+          buildRow({ id: "on-time-june", reference_number: "YC-ON-TIME-JUNE", status: "approved", submitted_at: "2026-06-10T02:00:00Z", decided_at: "2026-06-11T02:00:00Z", sla_breached: false }),
+          buildRow({ id: "late-last-year", reference_number: "YC-LATE-LAST-YEAR", status: "approved", submitted_at: "2025-11-10T02:00:00Z", decided_at: "2025-11-18T02:00:00Z", sla_breached: true }),
+        ]);
+
+        render(<YellowCardPage />);
+
+        await screen.findByText("YC-LATE-FEBRUARY");
+        expect(tableReferences()).toEqual(["YC-LATE-FEBRUARY"]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("Past due now lists the overdue waiting applications, whatever the date range", async () => {
+      const user = userEvent.setup();
+      mockSearchParams = new URLSearchParams("sla=past-due");
+      mockListApplications.mockResolvedValue([
+        buildRow({ id: "pending-overdue", reference_number: "YC-PENDING-OVERDUE", status: "pending", submitted_at: daysAgoIso(200), deadline_state: "overdue" }),
+        buildRow({ id: "resubmitted-overdue", reference_number: "YC-RESUBMITTED-OVERDUE", status: "resubmitted", submitted_at: daysAgoIso(200), deadline_state: "overdue" }),
+        buildRow({ id: "pending-at-risk", reference_number: "YC-PENDING-AT-RISK", status: "pending", deadline_state: "at_risk" }),
+        // Waiting on the applicant, not the city.
+        buildRow({ id: "revision-overdue", reference_number: "YC-REVISION-OVERDUE", status: "revision_requested", deadline_state: "overdue" }),
+        buildRow({ id: "approved-late", reference_number: "YC-APPROVED-LATE", status: "approved", decided_at: defaultSubmittedAt(), sla_breached: true }),
+      ]);
+
+      render(<YellowCardPage />);
+
+      await screen.findByText("YC-PENDING-OVERDUE");
+      expect(tableReferences()).toEqual(["YC-PENDING-OVERDUE", "YC-RESUBMITTED-OVERDUE"]);
+      expect(screen.getByText("Showing only applications past due now, whatever the date range")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Today" }));
+      expect(tableReferences()).toEqual(["YC-PENDING-OVERDUE", "YC-RESUBMITTED-OVERDUE"]);
+    });
+
+    // The audited export RPC can't narrow to the filter, so a CSV taken now
+    // would hold every application in range, not the ones on screen (#128).
+    it("Export is off while the filter is on, and comes back when it clears", async () => {
+      const user = userEvent.setup();
+      mockSearchParams = new URLSearchParams("sla=late&from=2026-06-01&to=2026-06-30&basis=application");
+      mockListApplications.mockResolvedValue(juneApplications());
+      mockExportApplications.mockResolvedValue([]);
+
+      render(<YellowCardPage />);
+
+      await screen.findByText("YC-LATE-APPROVED");
+      const exportButton = getApplicationsExportButton();
+      expect(exportButton).toBeDisabled();
+      expect(exportButton).toHaveAccessibleDescription(
+        "Export can't narrow to this filter. Clear it to export every application in the range."
+      );
+      await user.click(exportButton);
+      expect(mockExportApplications).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole("button", { name: "Clear filter" }));
+
+      expect(getApplicationsExportButton()).toBeEnabled();
+      expect(screen.queryByText(/^Export can't narrow/)).not.toBeInTheDocument();
+      await user.click(getApplicationsExportButton());
+      expect(mockExportApplications).toHaveBeenCalledTimes(1);
+    });
+
+    it("an unknown filter is ignored", async () => {
+      mockSearchParams = new URLSearchParams("sla=everything");
+      mockListApplications.mockResolvedValue([buildRow({ id: "app-1", reference_number: "YC-2026-000001" })]);
+
+      render(<YellowCardPage />);
+
+      await screen.findByText("YC-2026-000001");
+      expect(screen.queryByText(/^Showing only applications/)).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Clear filter" })).not.toBeInTheDocument();
     });
   });
 });

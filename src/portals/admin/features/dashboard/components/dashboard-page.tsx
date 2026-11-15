@@ -4,7 +4,7 @@
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/portals/admin/components/ui/button";
-import { KpiTile } from "@/portals/admin/components/ui/kpi-tile";
+import { KpiTile, SplitKpiTile } from "@/portals/admin/components/ui/kpi-tile";
 import { LoadingStatus, Skeleton } from "@/portals/admin/components/ui/skeleton";
 import { useAuth } from "@/portals/admin/features/auth/hooks/use-auth";
 import { executiveRangeStats } from "@/portals/admin/features/dashboard/lib/dashboard";
@@ -23,7 +23,14 @@ import { getIncidentConfig, IncidentConfigRow, listDepartments, DepartmentRow } 
 import { listApplications, YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yellow-card";
 import { listIncidents, IncidentRow } from "@/portals/admin/features/incidents/lib/incidents";
 import { listBookings, BookingRow } from "@/portals/admin/features/booking/lib/bookings";
-import { getSlaByDepartment, getSlaTrend, SLA_NEEDS_ATTENTION_PCT, SLA_TARGET_PCT } from "@/portals/admin/features/sla/lib/sla";
+import {
+  formatTargetGap,
+  getSlaByDepartment,
+  getSlaTrend,
+  SLA_NEEDS_ATTENTION_PCT,
+  SLA_SERVICES,
+  SLA_TARGET_PCT,
+} from "@/portals/admin/features/sla/lib/sla";
 import type { PortalError } from "@/portals/admin/lib/supabase/errors";
 import { filterByDateRange, formatManilaTimestamp, presetDateRange } from "@/portals/admin/lib/dates";
 import { AttentionItem } from "@/portals/admin/features/dashboard/types";
@@ -302,14 +309,8 @@ export function DashboardPage() {
   // Per-level response targets from public_incident_config — critical/high/
   // medium/low differ by more than an order of magnitude, so measuring the
   // backlog against any single literal understates breaches at every level
-  // but the most lenient one. As of Admin Portal Fix Plan Task 1.3,
-  // issueRangeStats' own backlogPastSla ignores this parameter
-  // unconditionally (see its doc comment in src/portals/admin/lib/aggregate.ts) — it is
-  // computed and passed through anyway, at negligible cost, so issueStats'
-  // call below keeps the same signature every other page calling
-  // issueRangeStats uses, and so a Phase 6-backed rewrite of backlogPastSla
-  // has the targets ready without this wiring needing to be re-added
-  // (Phase 1 final review, finding 4).
+  // but the most lenient one. issueRangeStats no longer reads them: its
+  // past-due count uses each report's own due time (l112).
   const slaHours = useMemo(() => incidentSlaHours(incidentConfig), [incidentConfig]);
   const issueStats = useMemo(
     () => issueRangeStats(incidentRows, dateRange, (row) => row.submitted_at, slaHours),
@@ -337,29 +338,6 @@ export function DashboardPage() {
     return eventTypeMix(filtered)[0] ?? null;
   }, [bookingRows, dateRange]);
 
-  // Only points with a real (non-null) compliancePct are eligible — a
-  // bucket with zero scoreable incidents has no figure to average in or
-  // crown "best" (see SlaTrendPoint.compliancePct's doc comment in
-  // src/portals/admin/lib/types.ts); folding its null in as 0 would drag trendAvgPct down and
-  // could even crown a no-data month "worst" (Admin Portal Fix Plan, Phase 1
-  // final review, finding 1 — the same fix applied to the SLA Reports page's
-  // own monthlySummary).
-  const scoredTrendPoints = useMemo(
-    () => trendPoints.filter((point): point is typeof point & { compliancePct: number } => point.compliancePct !== null),
-    [trendPoints]
-  );
-  const bestTrendPoint = useMemo(() => {
-    if (scoredTrendPoints.length === 0) return null;
-    return scoredTrendPoints.reduce((best, point) => (point.compliancePct > best.compliancePct ? point : best));
-  }, [scoredTrendPoints]);
-  const bestCompliancePct = bestTrendPoint?.compliancePct ?? null;
-  const trendAvgPct =
-    scoredTrendPoints.length > 0
-      ? Math.round(
-          (scoredTrendPoints.reduce((sum, point) => sum + point.compliancePct, 0) / scoredTrendPoints.length) * 10
-        ) / 10
-      : null;
-
   // Only rendered while a real result exists to describe (Admin Portal Fix
   // Plan, Phase 3 accessibility task): the mini bar chart below is a purely
   // visual `<div>` grid with no text content of its own, so a screen reader
@@ -376,10 +354,10 @@ export function DashboardPage() {
   const visibleTrendPoints = status === "ready" ? trendPoints : [];
   const trendChartLabel =
     visibleTrendPoints.length > 0
-      ? `SLA compliance trend: ${visibleTrendPoints
+      ? `Incidents resolved on time, by month: ${visibleTrendPoints
           .map((point) => `${point.label} ${formatRate(point.compliancePct)}`)
           .join(", ")}`
-      : "SLA compliance trend: no data in range";
+      : "Incidents resolved on time, by month: no data in range";
 
   // Real signals only — an item appears here only if the underlying
   // condition is actually true for the current range, unlike the old mock's
@@ -407,32 +385,14 @@ export function DashboardPage() {
       });
     }
 
-    // A Yellow Card past-SLA item used to live here, gated on
-    // ycStats.pendingPastSla > 0. It is removed for now, not repointed:
-    // admin_yellow_card_analytics.sla_breached is only meaningful for
-    // DECIDED applications (see applicationMet's doc comment in
-    // src/portals/admin/features/sla/lib/sla.ts) — the counter behind it only accrues on status
-    // change, so a pending application's sla_breached reads false no matter
-    // how overdue it actually is. yellowCardRangeStats now returns
-    // pendingPastSla: null (unavailable) rather than that structurally-
-    // always-0 number, and there is no honest way to trigger a "needs
-    // attention" alert from it until Phase 6 gives pending applications a
-    // real due date. Repointing this item at decided-and-breached counts
-    // instead would not serve the same purpose — a decided application is
-    // already closed out, not something staff can still act on.
-
-    // An incident-backlog-past-SLA item used to live here too, gated on
-    // issueStats.backlogPastSla !== null && > 0. It is removed for now, not
-    // repointed, the same call already made for the Yellow Card item just
-    // above and for the same underlying reason: as of Admin Portal Fix Plan
-    // Task 1.3, backlogPastSla is unconditionally null — computing it from
-    // submitted_at age vs. today's config target counted never-armed
-    // (unverified) incidents as breached, charged routing/verification
-    // delay against the department, and re-judged old incidents against a
-    // target that may have since changed (see backlogPastSla's doc comment
-    // in src/portals/admin/lib/aggregate.ts). There is no honest way to trigger a "needs
-    // attention" alert from it until a Phase 6 migration adds a real armed
-    // due date to admin_incident_analytics.
+    // Yellow Card and incident past-SLA items used to live here. They were
+    // removed because nothing honest could trigger them: a pending
+    // application's sla_breached reads false however overdue it is, and the
+    // incident figure counted unverified, never-armed reports as late. Since
+    // l112 the views carry each request's due time and state, and the Yellow
+    // Card and Incident Reports pages count past due from them (#124).
+    // Bringing these alerts back is a separate call; until then the
+    // Dashboard raises none.
 
     return items;
   }, [departmentRows, status]);
@@ -523,19 +483,20 @@ export function DashboardPage() {
 
       <div className="relative z-10 -mt-14 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiTile
-          label="Citizens engaged"
+          label="Service requests filed"
           value={
-            status === "ready" ? stats.citizensEngaged.toLocaleString() : status === "loading" ? <Skeleton className="h-7 w-16" /> : "—"
+            status === "ready" ? stats.requestsFiled.toLocaleString() : status === "loading" ? <Skeleton className="h-7 w-16" /> : "—"
           }
           note={
             status === "ready" ? (
-              stats.citizensDelta
+              stats.requestsFiledDelta
             ) : status === "error" ? (
               "Unable to load"
             ) : (
               <Skeleton className="h-3 w-24" />
             )
           }
+          direction="neutral"
           noteTone="positive"
           surface="raised"
         />
@@ -544,6 +505,9 @@ export function DashboardPage() {
           value={
             status === "ready" ? stats.serviceBacklog : status === "loading" ? <Skeleton className="h-7 w-16" /> : "—"
           }
+          // The count is right now, whatever the range; only the note below
+          // follows it (metrics sheet D2).
+          caption="Waiting on the city now · ignores the date range"
           note={
             status === "ready" ? (
               stats.backlogDelta
@@ -553,41 +517,39 @@ export function DashboardPage() {
               <Skeleton className="h-3 w-24" />
             )
           }
+          direction="neutral"
           noteTone="negative"
           surface="raised"
         />
-        <KpiTile
+        {/* Once per service, never pooled: the Yellow Card clock and the
+            incident clocks make different promises (ADR 0001, #119). */}
+        <SplitKpiTile
           label="SLA compliance"
-          value={
-            status === "ready" ? formatRate(stats.slaCompliancePct) : status === "loading" ? <Skeleton className="h-7 w-16" /> : "—"
-          }
-          note={
-            status === "ready" ? (
-              stats.slaNote
-            ) : status === "error" ? (
-              "Unable to load"
-            ) : (
-              <Skeleton className="h-3 w-24" />
-            )
-          }
+          parts={SLA_SERVICES.map(({ name, key }) => ({
+            name,
+            value:
+              status === "ready" ? formatRate(stats.sla[key].compliancePct) : status === "loading" ? <Skeleton className="h-6 w-14" /> : "—",
+            caption: status === "ready" ? formatTargetGap(stats.sla[key].gapToTargetPts) : undefined,
+            note:
+              status === "ready" ? stats.sla[key].delta : status === "error" ? "Unable to load" : <Skeleton className="h-3 w-24" />,
+          }))}
+          direction="higher-is-better"
           noteTone="negative"
           surface="raised"
         />
         {/* Labeled "Days with an event", not "Utilization": this is the
-            share of calendar days in range with a non-cancelled booking, not
-            a capacity fill rate — no venue capacity NUMBER exists to divide
-            by (see src/portals/admin/features/dashboard/lib/dashboard.ts's occupancyStats doc comment).
-            Convention Center's own Utilization tile says "Not tracked" for
-            that reason; this tile must not contradict it by implying a
-            fill-rate percentage under a similar-sounding label. */}
+            share of calendar days in range with a confirmed booking, not a
+            capacity fill rate — no venue capacity NUMBER exists to divide by
+            (see eventDays in src/portals/admin/lib/aggregate.ts). The
+            Convention Center's Event days tile shows the same figure (#117). */}
         <KpiTile
           label="Days with an event"
           value={
-            status === "ready" ? `${stats.lccUtilizationPct}%` : status === "loading" ? <Skeleton className="h-7 w-16" /> : "—"
+            status === "ready" ? `${stats.eventDays.pct}%` : status === "loading" ? <Skeleton className="h-7 w-16" /> : "—"
           }
           note={
             status === "ready" ? (
-              stats.lccDelta
+              stats.eventDays.note
             ) : status === "error" ? (
               "Unable to load"
             ) : (
@@ -649,7 +611,7 @@ export function DashboardPage() {
                 ? <Skeleton className="h-3 w-40" />
                 : status === "error"
                   ? "Unable to load data"
-                  : issueStats.resolutionRatePct === null
+                  : issueStats.reports === 0
                     ? "No incidents in range"
                     : topCategory
                       ? `${formatRate(issueStats.resolutionRatePct)} resolved · top: ${topCategory.category}`
@@ -703,36 +665,34 @@ export function DashboardPage() {
                 <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             }
+            // The same two figures as the SLA compliance tile, and nothing
+            // else: no trend average or best month beside them, so the
+            // Dashboard never shows two different compliance numbers (#119).
             value={
-              status === "ready" ? formatRate(stats.slaCompliancePct) : status === "loading" ? <Skeleton className="h-6 w-14" /> : "—"
+              status === "loading" ? (
+                <Skeleton className="h-6 w-14" />
+              ) : (
+                <span className="flex flex-wrap gap-x-4">
+                  {SLA_SERVICES.map(({ name, key }) => (
+                    <span key={key} className="inline-flex items-baseline gap-1.5">
+                      <span className="text-xs font-medium text-gray-500">{name}</span>
+                      <span>{status === "ready" ? formatRate(stats.sla[key].compliancePct) : "—"}</span>
+                    </span>
+                  ))}
+                </span>
+              )
             }
-            // Gated on `status`, the one fetch-status enum this page now
-            // has: departmentRows/trendPoints are derived (via useMemo) from
-            // the same fetched rows the four hero KPI tiles read, not a
-            // second independently-fetched dataset, so without this a failed
-            // fetch would leave the PREVIOUS range's trend average/best-month
-            // figures on screen looking live, the same bug Task 1.5 already
-            // fixed for the four top KPI tiles (Admin Portal Fix Plan,
-            // Phase 1 final review, finding 5).
             caption={
-              status === "loading"
-                ? <Skeleton className="h-3 w-32" />
-                : status === "error"
-                  ? "Unable to load data"
-                  : trendAvgPct !== null
-                    // Incidents only, unlike the headline above, which also
-                    // counts Yellow Card (#40).
-                    ? `Trend avg (incidents only): ${formatRate(trendAvgPct)}`
-                    : "No SLA trend data in range"
+              status === "loading" ? <Skeleton className="h-3 w-32" /> : `Project target: ${SLA_TARGET_PCT}%`
             }
             footnote={
               status === "loading"
                 ? <Skeleton className="h-3 w-40" />
                 : status === "error"
                   ? "Unable to load data"
-                  : bestTrendPoint
-                    ? `Best: ${bestTrendPoint.label} (${formatRate(bestCompliancePct)})`
-                    : "No SLA trend data in range"
+                  : visibleTrendPoints.length > 0
+                    ? "Bars: incidents resolved on time, by month"
+                    : "No incident trend data in range"
             }
           >
             {/* role="img" + a single descriptive aria-label (Admin Portal Fix
@@ -751,13 +711,7 @@ export function DashboardPage() {
                   // src/portals/admin/lib/types.ts) — render "—" via formatRate, not a
                   // fabricated "0%" (finding 1), and give it a flat neutral
                   // bar rather than pretending it sits at 0% compliance.
-                  className={`flex-1 ${
-                    point.compliancePct === null
-                      ? "bg-gray-200"
-                      : point.compliancePct === bestCompliancePct
-                        ? "bg-blue-400"
-                        : "bg-blue-800"
-                  }`}
+                  className={`flex-1 ${point.compliancePct === null ? "bg-gray-200" : "bg-blue-800"}`}
                   style={{
                     height: `${
                       point.compliancePct === null

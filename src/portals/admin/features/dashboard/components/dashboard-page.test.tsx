@@ -1,11 +1,12 @@
 // src/portals/admin/features/dashboard/components/dashboard-page.test.tsx
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import DashboardPage, { metadata } from "@/app/(admin)/admin/(shell)/dashboard/page";
 import type { YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yellow-card";
 import type { IncidentRow } from "@/portals/admin/features/incidents/lib/incidents";
 import type { BookingRow } from "@/portals/admin/features/booking/lib/bookings";
 import type { DepartmentRow } from "@/portals/admin/lib/supabase/catalogs";
+import { presetDateRange } from "@/portals/admin/lib/dates";
 import { vi } from "vitest";
 
 // vi.mock's first argument is a plain string, not an import specifier, so it
@@ -92,6 +93,8 @@ function buildYellowCardRow(overrides: Partial<YellowCardRow> = {}): YellowCardR
     sla_elapsed_seconds: 1000,
     sla_breached: false,
     review_cycles: 0,
+    due_at: null,
+    deadline_state: null,
     ...overrides,
   };
 }
@@ -115,6 +118,10 @@ function buildIncidentRow(overrides: Partial<IncidentRow> = {}): IncidentRow {
     closed_at: null,
     reopened_count: 0,
     time_to_triage_hours: null,
+    // Resolved and on time by default, so it has a due time: a report with
+    // none never had a clock and is not scored (#125).
+    sla_due_at: defaultSubmittedAt(),
+    sla_at_risk: null,
     sla_met: true,
     ...overrides,
   };
@@ -198,7 +205,7 @@ describe("DashboardPage", () => {
   it("shows no error banner, not a false permission/load-failure message, when all three fetches resolve to []", async () => {
     render(<DashboardPage />);
 
-    await screen.findByText("Citizens engaged");
+    await screen.findByText("Service requests filed");
     expect(screen.queryByText(/permission/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/unable to load/i)).not.toBeInTheDocument();
   });
@@ -228,23 +235,24 @@ describe("DashboardPage", () => {
 
     await screen.findByText(/Unable to load dashboard data/);
 
-    for (const label of ["Citizens engaged", "Service backlog", "SLA compliance", "Days with an event"]) {
+    for (const label of ["Service requests filed", "Service backlog", "SLA compliance", "Days with an event"]) {
       const tile = screen.getByText(label).closest("div");
       expect(tile).not.toBeNull();
-      expect(within(tile as HTMLElement).getByText("—")).toBeInTheDocument();
+      // The SLA compliance tile carries one "—" per service (#119).
+      expect(within(tile as HTMLElement).getAllByText("—").length).toBeGreaterThan(0);
       expect(within(tile as HTMLElement).queryByText(/\d/)).not.toBeInTheDocument();
     }
   });
 
   it("renders the four KPI tile labels", async () => {
     render(<DashboardPage />);
-    expect(await screen.findByText("Citizens engaged")).toBeInTheDocument();
+    expect(await screen.findByText("Service requests filed")).toBeInTheDocument();
     expect(screen.getByText("Service backlog")).toBeInTheDocument();
     expect(screen.getByText("SLA compliance")).toBeInTheDocument();
     expect(screen.getByText("Days with an event")).toBeInTheDocument();
   });
 
-  it("citizens engaged sums real fetched rows across all three modules for the active range", async () => {
+  it("service requests filed sums real fetched rows across all three modules for the active range", async () => {
     mockListApplications.mockResolvedValue([buildYellowCardRow()]);
     mockListIncidents.mockResolvedValue([buildIncidentRow(), buildIncidentRow({ id: "inc-2" })]);
     mockListBookings.mockResolvedValue([buildBookingRow()]);
@@ -254,9 +262,58 @@ describe("DashboardPage", () => {
     expect(await screen.findByText("4")).toBeInTheDocument();
   });
 
+  // The backlog uses the Staff Portal's own Backlog statuses, so both Portals
+  // give the same number (#116, metrics sheet D2).
+  describe("Service backlog (#116)", () => {
+    async function backlogTile(): Promise<HTMLElement> {
+      await screen.findByText("Service requests filed");
+      return screen.getByText("Service backlog").closest("div") as HTMLElement;
+    }
+
+    it("leaves out a Yellow Card in revision: it waits on the resident", async () => {
+      mockListApplications.mockResolvedValue([
+        buildYellowCardRow({ id: "app-1", status: "pending" }),
+        buildYellowCardRow({ id: "app-2", status: "resubmitted" }),
+        buildYellowCardRow({ id: "app-3", status: "revision_requested" }),
+      ]);
+
+      render(<DashboardPage />);
+
+      const tile = await backlogTile();
+      await waitFor(() => expect(within(tile).getByText("2")).toBeInTheDocument());
+    });
+
+    it("counts a confirmed booking: the office still records the balance", async () => {
+      mockListBookings.mockResolvedValue([
+        buildBookingRow({ id: "b-1", status: "confirmed" }),
+        buildBookingRow({ id: "b-2", status: "awaiting_payment" }),
+        buildBookingRow({ id: "b-3", status: "fully_paid" }),
+      ]);
+
+      render(<DashboardPage />);
+
+      const tile = await backlogTile();
+      await waitFor(() => expect(within(tile).getByText("1")).toBeInTheDocument());
+    });
+
+    it("says it ignores the date range, and still says how much of it was filed this period", async () => {
+      mockListIncidents.mockResolvedValue([
+        buildIncidentRow({ id: "inc-1", status: "open", resolved_at: null }),
+        buildIncidentRow({ id: "inc-2", status: "in_progress", resolved_at: null, submitted_at: daysAgoIso(400) }),
+      ]);
+
+      render(<DashboardPage />);
+
+      const tile = await backlogTile();
+      await waitFor(() => expect(within(tile).getByText("2")).toBeInTheDocument());
+      expect(within(tile).getByText("Waiting on the city now · ignores the date range")).toBeInTheDocument();
+      expect(within(tile).getByText("+1 newly filed this period")).toBeInTheDocument();
+    });
+  });
+
   it("module cards link to their tabs", async () => {
     render(<DashboardPage />);
-    await screen.findByText("Citizens engaged");
+    await screen.findByText("Service requests filed");
     expect(screen.getByRole("link", { name: /^Yellow Card/ })).toHaveAttribute("href", "/admin/yellow-card");
     expect(screen.getByRole("link", { name: /^Incident Reports/ })).toHaveAttribute("href", "/admin/issue-reports");
     expect(screen.getByRole("link", { name: /^Convention Center/ })).toHaveAttribute("href", "/admin/convention-center");
@@ -293,18 +350,45 @@ describe("DashboardPage", () => {
     expect(within(card).queryByText(/0% approval rate/)).not.toBeInTheDocument();
   });
 
+  // #120, sheet I2: the Incident Reports card shows the same Resolution Rate
+  // as its page, so a duplicate leaves the denominator here too.
+  it("the Incident Reports card's resolution rate leaves duplicates out", async () => {
+    mockListIncidents.mockResolvedValue([
+      buildIncidentRow(),
+      buildIncidentRow({ id: "inc-2", status: "closed", closure_reason: "duplicate", resolved_at: null, sla_due_at: null, sla_met: null }),
+    ]);
+
+    render(<DashboardPage />);
+
+    const card = await screen.findByRole("link", { name: /^Incident Reports/ });
+    expect(await within(card).findByText(/^100% resolved · top:/)).toBeInTheDocument();
+  });
+
+  // Reports were filed but every one was a duplicate: the card must not
+  // claim there were no incidents beside a count of 2.
+  it("the Incident Reports card does not say 'No incidents in range' when every report was a duplicate", async () => {
+    const duplicate = { status: "closed" as const, closure_reason: "duplicate" as const, resolved_at: null, sla_due_at: null, sla_met: null };
+    mockListIncidents.mockResolvedValue([buildIncidentRow(duplicate), buildIncidentRow({ id: "inc-2", ...duplicate })]);
+
+    render(<DashboardPage />);
+
+    const card = await screen.findByRole("link", { name: /^Incident Reports/ });
+    expect(await within(card).findByText(/^— resolved · top:/)).toBeInTheDocument();
+    expect(within(card).queryByText("No incidents in range")).not.toBeInTheDocument();
+  });
+
   it("switching range presets re-derives the KPI and module card values from the same fetched rows", async () => {
     const user = userEvent.setup();
     mockListApplications.mockResolvedValue([buildYellowCardRow()]);
 
     render(<DashboardPage />);
-    await screen.findByText("Citizens engaged");
+    await screen.findByText("Service requests filed");
 
     await user.click(screen.getByRole("button", { name: "Today" }));
 
     // Re-rendering under a different preset must not crash and must still
     // show the module's KPI tile labels.
-    expect(screen.getByText("Citizens engaged")).toBeInTheDocument();
+    expect(screen.getByText("Service requests filed")).toBeInTheDocument();
   });
 
   // Regression guard: the old mock's needsAttention list was four fixed
@@ -339,42 +423,26 @@ describe("DashboardPage", () => {
     expect(link).toHaveAttribute("href", "/admin/sla-reports");
   });
 
-  // Regression guard for the sla_breached-for-pending fix: this
-  // needs-attention item was removed, not repointed. Before the fix, a
-  // pending application's sla_breached only accrues on status change (see
-  // applicationMet's doc comment in src/portals/admin/features/sla/lib/sla.ts), so it would silently
-  // never fire for a genuinely overdue application. Rather than keep an item
-  // that can misreport in the "everything's fine" direction, the item is
-  // gone entirely until Phase 6 gives pending applications a real due date
-  // to alert from.
-  it("does not surface a Yellow Card past-SLA needs-attention item — sla_breached is not honest for pending rows", async () => {
-    mockListApplications.mockResolvedValue([buildYellowCardRow({ status: "pending", sla_breached: true })]);
+  // The past-SLA needs-attention items were removed when nothing honest could
+  // trigger them. The views now carry the due time (l112), but bringing the
+  // alerts back is a separate call (#124), so none fires yet.
+  it("does not surface a Yellow Card past-SLA needs-attention item, even for an overdue application", async () => {
+    mockListApplications.mockResolvedValue([buildYellowCardRow({ status: "pending", sla_breached: true, deadline_state: "overdue" })]);
 
     render(<DashboardPage />);
-    await screen.findByText("Citizens engaged");
+    await screen.findByText("Service requests filed");
 
     expect(screen.queryByText(/Yellow Card application.*past SLA/)).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Yellow Card application.*past SLA/ })).not.toBeInTheDocument();
   });
 
-  // Admin Portal Fix Plan, Task 1.3: this needs-attention item was removed,
-  // not repointed, the same call already made for the Yellow Card item just
-  // above and for the same reason. backlogPastSla used to compute
-  // `ageHours = now - submitted_at` per open row against today's LIVE
-  // per-level config — counting never-armed (unverified) incidents as
-  // breached, charging routing/verification delay against the department,
-  // and re-judging old incidents against a target that may have since
-  // changed (see backlogPastSla's doc comment in src/portals/admin/lib/aggregate.ts). It
-  // is unconditionally null now, so no incident-backlog alert can fire here
-  // even for a critical incident far past its real 4h target, until a Phase
-  // 6 migration adds a real armed due date to admin_incident_analytics.
-  it("does not surface an incident-backlog-past-SLA needs-attention item — backlogPastSla is unavailable, not honest from submitted_at", async () => {
+  it("does not surface an incident-backlog-past-SLA needs-attention item, even for a report past its due time", async () => {
     mockListIncidents.mockResolvedValue([
-      buildIncidentRow({ status: "open", incident_level: "critical", submitted_at: hoursAgo(5) }),
+      buildIncidentRow({ status: "open", incident_level: "critical", submitted_at: hoursAgo(5), sla_due_at: hoursAgo(1) }),
     ]);
 
     render(<DashboardPage />);
-    await screen.findByText("Citizens engaged");
+    await screen.findByText("Service requests filed");
 
     expect(screen.queryByText(/incident report.*past its SLA/)).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /incident report.*past its SLA/ })).not.toBeInTheDocument();
@@ -402,42 +470,198 @@ describe("DashboardPage", () => {
 
     const card = await screen.findByRole("link", { name: /^SLA Reports/ });
     const label = manilaMonthLabel(recentDate);
-    expect(within(card).getByText(`Best: ${label} (100%)`)).toBeInTheDocument();
+    expect(
+      within(card).getByRole("img", { name: `Incidents resolved on time, by month: ${label} 100%` })
+    ).toBeInTheDocument();
+    expect(within(card).getByText("Bars: incidents resolved on time, by month")).toBeInTheDocument();
   });
 
-  // Admin Portal Fix Plan, Phase 1 final review, finding 1: a trend point
-  // with compliancePct: null (a month with zero scoreable incidents) must
-  // not be averaged in as 0, and must not crown itself "best" via a bare
-  // `>` comparison against null. The one real point should win both the
-  // trend average and "Best", not a blended/undefined figure.
-  //
-  // The two incidents are 40 days apart specifically so they always land in
-  // different calendar months (40 exceeds every month's length) regardless
-  // of which real date this suite runs on, without pinning a literal
-  // "Jun 2026"/"Jul 2026" label the way the pre-Task-4.2 mocked version did.
-  // The "Annual" preset (Jan 1 of the current year to today) is clicked so
-  // both months fall inside the active range — this can only fail if the
-  // suite happens to run within the first ~40 days of a calendar year.
-  it("excludes a null-compliance trend point from the SLA module card's trend average and best-month figures", async () => {
-    const user = userEvent.setup();
-    const staleDate = daysAgoIso(40);
-    const recentDate = daysAgoIso(1);
-    mockListIncidents.mockResolvedValue([
-      // Still open — zero scoreable incidents in its bucket, so that bucket's
-      // compliancePct is null (see getSlaTrend's doc comment in src/portals/admin/features/sla/lib/sla.ts).
-      buildIncidentRow({ id: "inc-null", submitted_at: staleDate, status: "open", resolved_at: null }),
-      buildIncidentRow({ id: "inc-real", submitted_at: recentDate, resolved_at: recentDate, sla_met: true }),
-    ]);
+  // An event day is a day with a confirmed, fully paid or completed booking
+  // (#117, metrics sheet D4). The Convention Center's Event days tile shows
+  // the same figure (C2), pinned by the same two cases in its own page test.
+  describe("Days with an event (#117)", () => {
+    async function eventDaysTile(): Promise<HTMLElement> {
+      await screen.findByText("Service requests filed");
+      return screen.getByText("Days with an event").closest("div") as HTMLElement;
+    }
 
-    render(<DashboardPage />);
-    await screen.findByText("Citizens engaged");
-    await user.click(screen.getByRole("button", { name: "Annual" }));
+    it("a booking awaiting a quote, review or payment makes no event day", async () => {
+      const user = userEvent.setup();
+      const { to: today } = presetDateRange("Today");
+      const waiting: BookingRow["status"][] = [
+        "pending",
+        "awaiting_tier_review",
+        "awaiting_resubmission",
+        "awaiting_quote",
+        "awaiting_payment",
+        "payment_verification",
+        "cancelled",
+      ];
+      mockListBookings.mockResolvedValue(
+        waiting.map((status, index) => buildBookingRow({ id: `b-${index}`, status, event_date: today }))
+      );
 
-    const card = await screen.findByRole("link", { name: /^SLA Reports/ });
-    const recentLabel = manilaMonthLabel(recentDate);
-    // #40: the headline counts Yellow Card too; the trend average doesn't.
-    expect(await within(card).findByText("Trend avg (incidents only): 100%")).toBeInTheDocument();
-    expect(within(card).getByText(`Best: ${recentLabel} (100%)`)).toBeInTheDocument();
+      render(<DashboardPage />);
+      const tile = await eventDaysTile();
+      await user.click(screen.getByRole("button", { name: "Today" }));
+
+      await waitFor(() => expect(within(tile).getByText("0%")).toBeInTheDocument());
+      expect(within(tile).getByText("0 of 1 day had an event")).toBeInTheDocument();
+    });
+
+    it("two confirmed bookings on one day make one event day, on Annual", async () => {
+      const user = userEvent.setup();
+      const { from, to } = presetDateRange("Annual");
+      mockListBookings.mockResolvedValue([
+        buildBookingRow({ id: "b-1", status: "confirmed", event_date: from }),
+        buildBookingRow({ id: "b-2", status: "confirmed", event_date: from }),
+        buildBookingRow({ id: "b-3", status: "fully_paid", event_date: to }),
+        buildBookingRow({ id: "b-4", status: "completed", event_date: to }),
+        buildBookingRow({ id: "b-5", status: "awaiting_payment", event_date: `${from.slice(0, 8)}02` }),
+      ]);
+      const days = new Set([from, to]).size;
+      const totalDays = (Date.parse(to) - Date.parse(from)) / 86_400_000 + 1;
+
+      render(<DashboardPage />);
+      const tile = await eventDaysTile();
+      await user.click(screen.getByRole("button", { name: "Annual" }));
+
+      await waitFor(() =>
+        expect(within(tile).getByText(`${days} of ${totalDays} day${totalDays === 1 ? "" : "s"} had an event`)).toBeInTheDocument()
+      );
+      expect(within(tile).getByText(`${Math.round((days / totalDays) * 1000) / 10}%`)).toBeInTheDocument();
+    });
+  });
+
+  // #119: SLA compliance is shown once per service, never pooled, because
+  // the Yellow Card clock (3 working days, a legal processing time) and the
+  // incident clocks (4-72 calendar hours, voluntary standards) are different
+  // promises. The fixture is chosen so a pooled figure would show: Yellow
+  // Card 3 of 4 on time (75%), incidents 1 of 2 (50%), pooled 4 of 6
+  // (66.7%).
+  describe("SLA compliance per service (#119)", () => {
+    function slaTile(): HTMLElement {
+      return screen.getByText("SLA compliance").closest("div") as HTMLElement;
+    }
+
+    async function waitForSlaTile(text: string): Promise<HTMLElement> {
+      await screen.findByText("Service requests filed");
+      return await waitFor(() => {
+        const tile = slaTile();
+        expect(within(tile).getByText(text)).toBeInTheDocument();
+        return tile;
+      });
+    }
+
+    function threeOfFourYellowCardsOnTime(): YellowCardRow[] {
+      return [
+        buildYellowCardRow({ id: "app-1", status: "approved", sla_breached: false }),
+        buildYellowCardRow({ id: "app-2", status: "approved", sla_breached: false }),
+        buildYellowCardRow({ id: "app-3", status: "rejected", sla_breached: false }),
+        buildYellowCardRow({ id: "app-4", status: "approved", sla_breached: true }),
+      ];
+    }
+
+    function oneOfTwoIncidentsOnTime(): IncidentRow[] {
+      return [
+        buildIncidentRow({ id: "inc-1", sla_met: true }),
+        buildIncidentRow({ id: "inc-2", sla_met: false }),
+      ];
+    }
+
+    it("shows a Yellow Card figure and an incident figure, each with its gap to the project target, and no pooled one", async () => {
+      mockListApplications.mockResolvedValue(threeOfFourYellowCardsOnTime());
+      mockListIncidents.mockResolvedValue(oneOfTwoIncidentsOnTime());
+
+      render(<DashboardPage />);
+
+      const tile = await waitForSlaTile("75%");
+      expect(within(tile).getByText("Yellow Card")).toBeInTheDocument();
+      expect(within(tile).getByText("10 pts below 85% project target")).toBeInTheDocument();
+      expect(within(tile).getByText("Incidents")).toBeInTheDocument();
+      expect(within(tile).getByText("50%")).toBeInTheDocument();
+      expect(within(tile).getByText("35 pts below 85% project target")).toBeInTheDocument();
+      expect(screen.queryByText("66.7%")).not.toBeInTheDocument();
+    });
+
+    it("a withdrawn application is not scored, however long it sat", async () => {
+      mockListApplications.mockResolvedValue([
+        buildYellowCardRow({ id: "app-1", status: "approved", sla_breached: false }),
+        // Withdrawn after five working days on the clock: the resident ended
+        // it, not the city, so it is neither on time nor late.
+        buildYellowCardRow({ id: "app-2", status: "withdrawn", sla_elapsed_seconds: 45 * 3600, sla_breached: true }),
+      ]);
+
+      render(<DashboardPage />);
+
+      const tile = await waitForSlaTile("100%");
+      expect(within(tile).getByText("15 pts above 85% project target")).toBeInTheDocument();
+      expect(within(tile).queryByText("50%")).not.toBeInTheDocument();
+    });
+
+    it('a service with nothing scored reads "—", not 0%', async () => {
+      mockListApplications.mockResolvedValue([
+        buildYellowCardRow({ id: "app-1", status: "withdrawn", sla_breached: true }),
+      ]);
+      mockListIncidents.mockResolvedValue(oneOfTwoIncidentsOnTime());
+
+      render(<DashboardPage />);
+
+      const tile = await waitForSlaTile("50%");
+      expect(within(tile).getByText("—")).toBeInTheDocument();
+      expect(within(tile).getByText("Nothing scored in range")).toBeInTheDocument();
+      expect(within(tile).queryByText("0%")).not.toBeInTheDocument();
+    });
+
+    it("a withdrawn application raises no Yellow Card needs-attention alert", async () => {
+      mockListApplications.mockResolvedValue([
+        buildYellowCardRow({ id: "app-1", status: "withdrawn", sla_elapsed_seconds: 45 * 3600, sla_breached: true }),
+      ]);
+
+      render(<DashboardPage />);
+
+      expect(await screen.findByText("No items currently need attention.")).toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: /Yellow Card SLA at/ })).not.toBeInTheDocument();
+    });
+
+    it("each figure's delta says better or worse against the previous period", async () => {
+      const user = userEvent.setup();
+      // "Today" compares with yesterday: Yellow Card went from 0 of 1 to 1 of
+      // 1 on time, incidents from 1 of 1 to 0 of 1.
+      mockListApplications.mockResolvedValue([
+        buildYellowCardRow({ id: "app-old", submitted_at: hoursAgo(24), sla_breached: true }),
+        buildYellowCardRow({ id: "app-new", sla_breached: false }),
+      ]);
+      mockListIncidents.mockResolvedValue([
+        buildIncidentRow({ id: "inc-old", submitted_at: hoursAgo(24), resolved_at: hoursAgo(23), sla_met: true }),
+        buildIncidentRow({ id: "inc-new", sla_met: false }),
+      ]);
+
+      render(<DashboardPage />);
+      await screen.findByText("Service requests filed");
+      await user.click(screen.getByRole("button", { name: "Today" }));
+
+      const tile = await waitForSlaTile("100%");
+      expect(within(tile).getByText("+100 pts vs previous period · better")).toHaveClass("text-green-700");
+      expect(within(tile).getByText("-100 pts vs previous period · worse")).toHaveClass("text-red-700");
+    });
+
+    it("the SLA card shows the same two figures, without a trend average or a best month", async () => {
+      mockListApplications.mockResolvedValue(threeOfFourYellowCardsOnTime());
+      mockListIncidents.mockResolvedValue(oneOfTwoIncidentsOnTime());
+
+      render(<DashboardPage />);
+      await waitForSlaTile("75%");
+
+      const card = screen.getByRole("link", { name: /^SLA Reports/ });
+      expect(within(card).getByText("Yellow Card")).toBeInTheDocument();
+      expect(within(card).getByText("75%")).toBeInTheDocument();
+      expect(within(card).getByText("Incidents")).toBeInTheDocument();
+      expect(within(card).getByText("50%")).toBeInTheDocument();
+      expect(within(card).queryByText("66.7%")).not.toBeInTheDocument();
+      expect(within(card).queryByText(/Trend avg/)).not.toBeInTheDocument();
+      expect(within(card).queryByText(/Best/)).not.toBeInTheDocument();
+    });
   });
 
   // Admin Portal Fix Plan, Task 4.2: department/trend figures are now
@@ -486,7 +710,7 @@ describe("DashboardPage", () => {
     mockListBookings.mockResolvedValue([buildBookingRow()]);
 
     render(<DashboardPage />);
-    await screen.findByText("Citizens engaged");
+    await screen.findByText("Service requests filed");
 
     expect(mockListApplications).toHaveBeenCalledTimes(1);
     expect(mockListIncidents).toHaveBeenCalledTimes(1);
@@ -627,7 +851,7 @@ describe("DashboardPage", () => {
     ]);
 
     render(<DashboardPage />);
-    await screen.findByText("Citizens engaged");
+    await screen.findByText("Service requests filed");
     await user.click(screen.getByRole("button", { name: "Annual" }));
 
     const card = await screen.findByRole("link", { name: /^SLA Reports/ });
@@ -635,7 +859,7 @@ describe("DashboardPage", () => {
     const labelB = manilaMonthLabel(monthB);
     expect(
       await within(card).findByRole("img", {
-        name: `SLA compliance trend: ${labelA} 80%, ${labelB} 90%`,
+        name: `Incidents resolved on time, by month: ${labelA} 80%, ${labelB} 90%`,
       })
     ).toBeInTheDocument();
   });

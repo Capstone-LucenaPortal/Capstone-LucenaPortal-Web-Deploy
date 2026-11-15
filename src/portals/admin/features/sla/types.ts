@@ -1,5 +1,7 @@
 // Domain types for the SLA-reporting slice.
 
+import type { Delta } from "@/portals/admin/lib/aggregate";
+
 export type SlaDateBasis = "request" | "resolution";
 
 export interface SlaTrendPoint {
@@ -30,31 +32,66 @@ export interface SlaTrendRow extends SlaTrendPoint {
   avgResponseDays: number | null;
 }
 
+// One service's SLA compliance over the rows it was given: how many
+// scoreable requests were judged against the clock, how many finished on
+// time and how many late. The two services' clocks make different promises
+// (ADR 0001), so this is only ever computed per service, never pooled.
+export interface ServiceCompliance {
+  scored: number;
+  onTime: number;
+  finishedLate: number;
+  // null when nothing was scored. Render via formatRate
+  // (src/portals/admin/lib/aggregate.ts), never `${value}%`, so a quiet
+  // period can never misread as "0% compliance".
+  compliancePct: number | null;
+  // compliancePct minus the 85% project target, in percentage points:
+  // negative below it, positive above it. null when nothing was scored.
+  gapToTargetPts: number | null;
+}
+
+export interface SlaCompliance {
+  yellowCard: ServiceCompliance;
+  incidents: ServiceCompliance;
+}
+
+// One service's SLA Reports tiles: its compliance, plus what its scored
+// count was out of and how scored and finished late moved since the
+// previous period.
+export interface ServiceRangeStats extends ServiceCompliance {
+  // Every request of this service in range, BEFORE the scoreable-only
+  // filter `scored` applies: still-pending applications, withdrawals, open
+  // reports and those closed as invalid, duplicate or expired included.
+  // Always >= `scored`.
+  inRange: number;
+  scoredDelta: Delta;
+  finishedLateDelta: Delta;
+}
+
 export interface SlaRangeStats {
   rangeLabel: string;
-  responses: number;
-  responsesDelta: string;
-  violations: number;
-  violationsDelta: string;
-  // null when `responses` is 0 — no SLA-scoreable requests (decided
-  // applications + resolved/scoreable incidents) pooled in range. Render via
-  // formatRate (src/portals/admin/lib/aggregate.ts), never `${value}%` or `?? 0`, so a
-  // quiet period can never misread as "0% compliance".
-  compliancePct: number | null;
-  // Unrounded mean days to resolve incidents in range (incidents only); null
-  // when none resolved. Render via formatDuration
-  // (src/portals/admin/lib/aggregate.ts), never `${value}d`, so an empty range
-  // can never misread as "answered at once".
-  avgResponseDays: number | null;
-  avgResponseDelta: string;
+  // Each service's own figures in range, never pooled: the two clocks make
+  // different promises (ADR 0001, #122).
+  yellowCard: ServiceRangeStats;
+  incidents: ServiceRangeStats;
   trend: SlaTrendPoint[];
-  // Every incident + application filed in range, pooled the same way
-  // `responses` is, but BEFORE the scoreable-only filter `responses` applies
-  // — i.e. `responses` plus every still-pending application and still-open/
-  // non-scoreable incident that got excluded from it. Lets the page caption
-  // the gap between the two ("12 of 340 scoreable") instead of leaving it
-  // unexplained on screen. Always >= `responses`.
-  totalInRange: number;
+}
+
+// Each service's waiting requests already past their promised time, right
+// now and whatever the range (metrics sheet S4, #126).
+export interface SlaPastDueNow {
+  yellowCard: number;
+  incidents: number;
+}
+
+// The footer under the Monthly compliance history: on time ÷ scored across
+// all the months, so each month weighs as much as its cases (#122), and the
+// month with the highest compliance.
+export interface SlaMonthlySummary {
+  scored: number;
+  onTime: number;
+  // null when no month scored anything.
+  compliancePct: number | null;
+  best: { label: string; compliancePct: number } | null;
 }
 
 export type SlaDepartmentStatus =
@@ -69,7 +106,7 @@ export interface SlaDepartmentRow {
   compliancePct: number;
   // Every incident/application attributed to this row in range, BEFORE the
   // scoreable-only filter `requests` applies — the same "unscoreable +
-  // scoreable" total SlaRangeStats.totalInRange carries citywide, just
+  // scoreable" total ServiceRangeStats.inRange carries per service, just
   // per-row. Always >= `requests`; equal to it when nothing in this row's
   // group was excluded as not-yet-scoreable.
   totalInRange: number;

@@ -1,17 +1,20 @@
 // Domain types for the convention-centre booking slice.
 
+import type { Delta, EventDays } from "@/portals/admin/lib/aggregate";
+
 export type ConventionDateBasis = "booking" | "event";
 
-// Only bookings/bookingsDelta: utilization needs a venue capacity NUMBER
-// (booking_venues.capacity_label is free text) and resident/outside share
-// needs is_resident, which submit_booking never writes. The page renders
-// "Not tracked" for those three tiles rather than a fabricated figure, so
-// this shape carried six fields that were hardcoded to 0/"Not tracked" in
-// aggregate.ts and read by nobody. They are gone; if the underlying data
-// ever lands, they come back as real derivations.
+// No resident/outside share: it needs is_resident, which submit_booking
+// never writes, so the page shows no such figure (#118). If the underlying
+// data ever lands, it comes back as a real derivation.
 export interface ConventionRangeStats {
+  // Booking requests in range, whatever became of them (metrics sheet C1).
   bookings: number;
-  bookingsDelta: string;
+  // Of those, confirmed, fully paid or completed.
+  confirmed: number;
+  bookingsDelta: Delta;
+  // The same figure as the Dashboard's "Days with an event" (#117).
+  eventDays: EventDays;
 }
 
 export interface EventTypeSlice {
@@ -28,7 +31,6 @@ export interface VenueBooking {
   venue: string;
   chip?: VenueBookingChip;
   capacityLabel: string;
-  avgFillPct: number | null;
   bookings: number;
   barClass: string;
 }

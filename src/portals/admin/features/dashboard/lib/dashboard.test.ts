@@ -21,6 +21,8 @@ function buildYellowCardRow(overrides: Partial<YellowCardRow> = {}): YellowCardR
     sla_elapsed_seconds: 1000,
     sla_breached: false,
     review_cycles: 0,
+    due_at: null,
+    deadline_state: null,
     ...overrides,
   };
 }
@@ -44,6 +46,8 @@ function buildIncidentRow(overrides: Partial<IncidentRow> = {}): IncidentRow {
     closed_at: null,
     reopened_count: 0,
     time_to_triage_hours: null,
+    sla_due_at: null,
+    sla_at_risk: null,
     sla_met: null,
     ...overrides,
   };
@@ -81,7 +85,7 @@ function buildBookingRow(overrides: Partial<BookingRow> = {}): BookingRow {
 const RANGE = { from: "2026-07-01", to: "2026-07-31" };
 
 describe("executiveRangeStats", () => {
-  it("sums citizensEngaged across all three modules within range", () => {
+  it("sums service requests filed across all three modules within range", () => {
     const stats = executiveRangeStats(
       [buildYellowCardRow({ submitted_at: "2026-07-10T00:00:00Z" })],
       [
@@ -92,10 +96,10 @@ describe("executiveRangeStats", () => {
       RANGE
     );
 
-    expect(stats.citizensEngaged).toBe(4);
+    expect(stats.requestsFiled).toBe(4);
   });
 
-  it("excludes rows submitted outside range from citizensEngaged", () => {
+  it("excludes rows submitted outside range from service requests filed", () => {
     const stats = executiveRangeStats(
       [
         buildYellowCardRow({ submitted_at: "2026-07-10T00:00:00Z" }),
@@ -106,7 +110,7 @@ describe("executiveRangeStats", () => {
       RANGE
     );
 
-    expect(stats.citizensEngaged).toBe(1);
+    expect(stats.requestsFiled).toBe(1);
   });
 
   // Service backlog is a point-in-time queue: it must read every row ever
@@ -124,7 +128,7 @@ describe("executiveRangeStats", () => {
     expect(stats.serviceBacklog).toBe(3);
   });
 
-  // Regression guard: BOOKING_BACKLOG_STATUSES deliberately excludes
+  // Regression guard: the Service backlog deliberately excludes
   // awaiting_payment — that status means the booking is waiting on the
   // citizen, not on staff, so it must not inflate the Service Backlog tile.
   // This fixture makes "excluded" vs. "counted" visibly different: 1 real
@@ -172,29 +176,31 @@ describe("executiveRangeStats", () => {
     expect(stats.serviceBacklog).toBe(0);
   });
 
-  it("pools incident sla_met and application !sla_breached into slaCompliancePct, within range", () => {
+  // #119: SLA compliance is scored once per service and never pooled. The
+  // fixture would read 66.7% (2 of 3) if the two clocks were pooled.
+  it("scores Yellow Card applications and incidents apart, within range, with no pooled figure", () => {
     const stats = executiveRangeStats(
-      // status: "approved" — applicationMet only reads sla_breached for a
-      // DECIDED application (see its doc comment in src/portals/admin/features/sla/lib/sla.ts); a
-      // pending one would be excluded from this ratio entirely rather than
-      // counted as met, which is a different behavior covered separately
-      // below.
+      // status: "approved" — applicationMet only reads sla_breached for an
+      // approved or rejected application (see its doc comment in
+      // src/portals/admin/features/sla/lib/sla.ts).
       [buildYellowCardRow({ submitted_at: "2026-07-10T00:00:00Z", status: "approved", sla_breached: false })],
       [
         // incidentMet only reads sla_met for a RESOLVED, non-excluded-closure
-        // incident (see its doc comment in src/portals/admin/features/sla/lib/sla.ts) — status/resolved_at
-        // are set here so both rows are actually scoreable, not just "open"
-        // defaults that would now be excluded entirely.
+        // incident with a due time (see its doc comment in src/portals/admin/features/sla/lib/sla.ts) —
+        // status/resolved_at/sla_due_at are set here so both rows are actually
+        // scoreable, not just "open" defaults that would be excluded entirely.
         buildIncidentRow({
           submitted_at: "2026-07-11T00:00:00Z",
           status: "resolved",
           resolved_at: "2026-07-11T12:00:00Z",
+          sla_due_at: "2026-07-12T00:00:00Z",
           sla_met: true,
         }),
         buildIncidentRow({
           submitted_at: "2026-07-12T00:00:00Z",
           status: "resolved",
           resolved_at: "2026-07-13T00:00:00Z",
+          sla_due_at: "2026-07-12T12:00:00Z",
           sla_met: false,
         }),
       ],
@@ -202,33 +208,24 @@ describe("executiveRangeStats", () => {
       RANGE
     );
 
-    // 2 met (1 application + 1 incident) out of 3 total.
-    expect(stats.slaCompliancePct).toBe(Math.round((2 / 3) * 1000) / 10);
-    expect(stats.slaNote).toContain("below 85% target");
+    expect(stats.sla.yellowCard).toMatchObject({ scored: 1, onTime: 1, compliancePct: 100, gapToTargetPts: 15 });
+    expect(stats.sla.incidents).toMatchObject({ scored: 2, onTime: 1, finishedLate: 1, compliancePct: 50 });
+    expect(stats).not.toHaveProperty("slaCompliancePct");
   });
 
   // Regression guard for the sla_breached-for-pending fix: a pending
-  // application's SLA status is unknown, not "met" — it must be excluded
-  // from slaResponses/slaMet entirely, not counted toward compliance. Before
-  // the fix, this pending row's sla_breached: false read as "met", inflating
-  // compliance to 100%; after the fix only the one resolved-but-breached
-  // incident counts, giving 0%.
-  it("excludes a pending application from slaCompliancePct rather than counting it as met", () => {
+  // application's SLA status is unknown, not "met" — it must not be scored.
+  // Before the fix, this pending row's sla_breached: false read as "met".
+  it("does not score a pending application", () => {
     const stats = executiveRangeStats(
       [buildYellowCardRow({ submitted_at: "2026-07-10T00:00:00Z", status: "pending", sla_breached: false })],
-      [
-        buildIncidentRow({
-          submitted_at: "2026-07-11T00:00:00Z",
-          status: "resolved",
-          resolved_at: "2026-07-12T00:00:00Z",
-          sla_met: false,
-        }),
-      ],
+      [],
       [],
       RANGE
     );
 
-    expect(stats.slaCompliancePct).toBe(0);
+    expect(stats.sla.yellowCard.scored).toBe(0);
+    expect(stats.sla.yellowCard.compliancePct).toBeNull();
   });
 
   // Admin Portal Fix Plan, Task 1.5: a zero-denominator compliance figure
@@ -236,19 +233,17 @@ describe("executiveRangeStats", () => {
   // compliance" hero tile on a period with nothing to score is a false
   // alarm, not an honest reading. See formatRate in src/portals/admin/lib/aggregate.ts
   // for how the UI renders this.
-  it("slaCompliancePct is null, not 0 or NaN, when there are no incidents or applications in range", () => {
+  it("compliance is null, not 0 or NaN, for each service when nothing is in range", () => {
     const stats = executiveRangeStats([], [], [], RANGE);
-    expect(stats.slaCompliancePct).toBeNull();
+    expect(stats.sla.yellowCard.compliancePct).toBeNull();
+    expect(stats.sla.incidents.compliancePct).toBeNull();
+    expect(stats.sla.incidents.gapToTargetPts).toBeNull();
   });
 
-  // Extended by Task 1.2, then corrected by Task 1.5: slaCompliancePct must
-  // also read null (not 0, not NaN) when incidents/applications exist in
-  // range but NONE of them are scoreable yet — e.g. every incident is still
-  // open. Distinct from the "nothing in range at all" case above: here
-  // `incidents` is non-empty, but scoreableIncidents.length is 0, so
-  // slaResponses stays 0 — the same empty-denominator case, just reached via
-  // a different path (exclusion rather than absence).
-  it("slaCompliancePct is null, not 0 or NaN, when incidents exist in range but none are scoreable yet", () => {
+  // Extended by Task 1.2, then corrected by Task 1.5: compliance must also
+  // read null (not 0, not NaN) when incidents exist in range but NONE of
+  // them are scoreable yet — e.g. every incident is still open.
+  it("incident compliance is null, not 0 or NaN, when incidents exist in range but none are scoreable yet", () => {
     const stats = executiveRangeStats(
       [],
       [buildIncidentRow({ submitted_at: "2026-07-10T00:00:00Z", status: "open", resolved_at: null })],
@@ -256,25 +251,12 @@ describe("executiveRangeStats", () => {
       RANGE
     );
 
-    expect(stats.slaCompliancePct).toBeNull();
+    expect(stats.sla.incidents.compliancePct).toBeNull();
   });
 
-  // The KPI tile's caption must degrade honestly too, not compute a
-  // pts-below-target gap against a null baseline.
-  it("slaNote reads 'No SLA-scoreable requests in range' rather than a pts-below-target gap when slaCompliancePct is null", () => {
-    const stats = executiveRangeStats([], [], [], RANGE);
-    expect(stats.slaNote).toBe("No SLA-scoreable requests in range");
-  });
-
-  // Regression guard: slaResponses/slaMet must pool only applications and
-  // incidents, the same "two SLA clocks" pooling rule getSlaByDepartment/
-  // getSlaRangeStats already document in src/portals/admin/features/sla/lib/sla.ts — bookings have no
-  // SLA clock at all. The fixture below is chosen so folding bookings in
-  // would visibly change the number: 1 met incident alone is 100%; adding 2
-  // unrelated bookings to the denominator (bookings.length, uncounted as
-  // "met" since applicationMet/incidentMet don't apply to them) would drag
-  // it down to 33.3%.
-  it("slaResponses/slaMet pool only applications and incidents, never bookings", () => {
+  // Bookings have no SLA clock at all (ADR 0001). 2 unrelated bookings in
+  // range must not drag 1 met incident below 100%.
+  it("never scores bookings", () => {
     const stats = executiveRangeStats(
       [],
       [
@@ -282,6 +264,7 @@ describe("executiveRangeStats", () => {
           submitted_at: "2026-07-10T00:00:00Z",
           status: "resolved",
           resolved_at: "2026-07-10T12:00:00Z",
+          sla_due_at: "2026-07-11T00:00:00Z",
           sla_met: true,
         }),
       ],
@@ -292,14 +275,15 @@ describe("executiveRangeStats", () => {
       RANGE
     );
 
-    expect(stats.slaCompliancePct).toBe(100);
+    expect(stats.sla.incidents.compliancePct).toBe(100);
+    expect(stats.sla.yellowCard.scored).toBe(0);
   });
 
-  // lccUtilizationPct is a real, derivable occupancy signal (share of
-  // calendar days in range with a non-cancelled booking) — not a fabricated
-  // capacity fill rate, which the row shape has no data to compute (see the
-  // function's doc comment in src/portals/admin/features/dashboard/lib/dashboard.ts).
-  it("lccUtilizationPct is the share of days in range with a non-cancelled booking", () => {
+  // Days with an event is the share of calendar days in range with a
+  // confirmed booking — not a fabricated capacity fill rate, which the row
+  // shape has no data to compute (see eventDays in
+  // src/portals/admin/lib/aggregate.ts, #117).
+  it("eventDays is the share of days in range with a confirmed booking", () => {
     const stats = executiveRangeStats(
       [],
       [],
@@ -312,10 +296,10 @@ describe("executiveRangeStats", () => {
     );
 
     // 2 booked days out of 31 in July.
-    expect(stats.lccUtilizationPct).toBe(Math.round((2 / 31) * 1000) / 10);
+    expect(stats.eventDays.pct).toBe(Math.round((2 / 31) * 1000) / 10);
   });
 
-  it("a cancelled-only day does not count toward lccUtilizationPct", () => {
+  it("a cancelled-only day does not count toward eventDays", () => {
     const stats = executiveRangeStats(
       [],
       [],
@@ -323,10 +307,10 @@ describe("executiveRangeStats", () => {
       RANGE
     );
 
-    expect(stats.lccUtilizationPct).toBe(0);
+    expect(stats.eventDays.pct).toBe(0);
   });
 
-  // Fix round 1, finding 1: lccUtilizationPct must never exceed 100%. A
+  // Fix round 1, finding 1: eventDays must never exceed 100%. A
   // prior version filtered bookings by submitted_at before computing
   // occupancy, but then counted event_date values from that slice without
   // constraining event_date to `range` at all — a booking's filing date and
@@ -347,8 +331,8 @@ describe("executiveRangeStats", () => {
 
     const stats = executiveRangeStats([], [], rows, RANGE);
 
-    expect(stats.lccUtilizationPct).toBeLessThanOrEqual(100);
-    expect(stats.lccUtilizationPct).toBe(0);
+    expect(stats.eventDays.pct).toBeLessThanOrEqual(100);
+    expect(stats.eventDays.pct).toBe(0);
   });
 
   // The mirror-image case: a booking submitted OUTSIDE range but with an
@@ -362,15 +346,15 @@ describe("executiveRangeStats", () => {
       RANGE
     );
 
-    expect(stats.lccUtilizationPct).toBe(Math.round((1 / 31) * 1000) / 10);
+    expect(stats.eventDays.pct).toBe(Math.round((1 / 31) * 1000) / 10);
   });
 
   it("returns well-formed deltas even with zero rows anywhere", () => {
     const stats = executiveRangeStats([], [], [], RANGE);
 
-    expect(stats.citizensEngaged).toBe(0);
-    expect(stats.citizensDelta).toContain("No activity");
+    expect(stats.requestsFiled).toBe(0);
+    expect(stats.requestsFiledDelta.text).toContain("No activity");
     expect(stats.serviceBacklog).toBe(0);
-    expect(stats.backlogDelta).toBe("+0 newly filed this period");
+    expect(stats.backlogDelta.text).toBe("+0 newly filed this period");
   });
 });

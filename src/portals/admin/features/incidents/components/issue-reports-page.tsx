@@ -7,10 +7,12 @@ import {
   categoryMix,
   formatDuration,
   formatRate,
+  incidentPastDueRows,
   incidentSlaHours,
   issueDateAccessor,
   issueRangeStats,
   recentMonthlyCounts,
+  triageHoursOf,
 } from "@/portals/admin/lib/aggregate";
 import { IssueDateBasis } from "@/portals/admin/features/incidents/types";
 import {
@@ -21,6 +23,10 @@ import {
   presetDateRange,
 } from "@/portals/admin/lib/dates";
 import { listIncidents, IncidentRow } from "@/portals/admin/features/incidents/lib/incidents";
+import { formatTargetGap, incidentMet, incidentsResolvedOnTime } from "@/portals/admin/features/sla/lib/sla";
+import { INCIDENT_REPORTS_PATH } from "@/portals/admin/features/sla/lib/sla-links";
+import { useSlaRowFilter } from "@/portals/admin/features/sla/hooks/use-sla-row-filter";
+import { SlaRowFilterBanner } from "@/portals/admin/features/sla/components/sla-row-filter-banner";
 import {
   listDepartments,
   DepartmentRow,
@@ -61,6 +67,7 @@ const BASIS_OPTIONS: { value: IssueDateBasis; label: string }[] = [
   { value: "report", label: "Report Date" },
   { value: "resolution", label: "Resolution Date" },
 ];
+const BASIS_VALUES = BASIS_OPTIONS.map((option) => option.value);
 
 // The table's date column and the monthly chart's subtitle name the date the
 // picked date type reads. The default (submitted) date type keeps the
@@ -112,9 +119,11 @@ function closureReasonLabel(reason: IncidentRow["closure_reason"]): string {
 // Admin Portal Fix Plan, Task 5.3, Step 3: time_to_triage_hours is already on
 // admin_incident_analytics (l42) but was never rendered anywhere. Sub-hour
 // triage rounds to "<1h" rather than a misleadingly precise-looking "0.1h" or
-// a false "0h".
-function formatTriageHours(hours: IncidentRow["time_to_triage_hours"]): string {
-  if (hours === null || hours === undefined) return "—";
+// a false "0h". A reopened report reads "—", in the table and the export
+// alike: reopening reset its routed time (triageHoursOf, metrics sheet I8).
+function formatTriageHours(row: IncidentRow): string {
+  const hours = triageHoursOf(row);
+  if (hours === null) return "—";
   if (hours < 1) return "<1h";
   return `${Math.round(hours * 10) / 10}h`;
 }
@@ -125,13 +134,16 @@ function filterRows(rows: IncidentRow[], tab: (typeof STATUS_TABS)[number]["valu
 }
 
 export function IssueReportsPage() {
-  const [preset, setPreset] = useState<DateFilterPreset>("Month");
+  // Arriving from SLA Reports' Finished late or Past due now (#127): the link
+  // seeds the range and date type, and narrows the Recent reports table.
+  const { link, filter: slaFilter, clear: clearSlaFilter } = useSlaRowFilter(INCIDENT_REPORTS_PATH, BASIS_VALUES);
+  const [preset, setPreset] = useState<DateFilterPreset>(link?.preset ?? "Month");
   // Seeded from the current Manila month rather than from literals written
   // the day this page was authored — see the yellow-card page for the same
   // note. Lazy initialisers, so presetDateRange runs once on mount.
-  const [customStart, setCustomStart] = useState(() => presetDateRange("Month").from);
-  const [customEnd, setCustomEnd] = useState(() => presetDateRange("Month").to);
-  const [dateBasis, setDateBasis] = useState<IssueDateBasis>("report");
+  const [customStart, setCustomStart] = useState(() => link?.from ?? presetDateRange("Month").from);
+  const [customEnd, setCustomEnd] = useState(() => link?.to ?? presetDateRange("Month").to);
+  const [dateBasis, setDateBasis] = useState<IssueDateBasis>(link?.basis ?? "report");
   const [compare, setCompare] = useState(true);
   const [activeTab, setActiveTab] = useState<(typeof STATUS_TABS)[number]["value"]>("all");
   const [reviewingId, setReviewingId] = useState<string | null>(null);
@@ -141,14 +153,9 @@ export function IssueReportsPage() {
   const [error, setError] = useState<PortalError | null>(null);
   const [departments, setDepartments] = useState<DepartmentRow[]>([]);
   const [categories, setCategories] = useState<IncidentCategoryRow[]>([]);
-  // null means "not read" — NOT "no SLA". This currently has no visible
-  // effect either way: the Open Backlog tile's backlogPastSla note below is
-  // unconditionally "SLA breach count unavailable" (Admin Portal Fix Plan,
-  // Task 1.3 — issueRangeStats' backlogPastSla ignores `slaHours` entirely,
-  // see its own doc comment in src/portals/admin/lib/aggregate.ts), not gated on this
-  // being non-null. Fetched and kept anyway, not deleted, so a future Phase
-  // 6-backed rewrite of backlogPastSla does not have to re-wire this
-  // plumbing from scratch (Phase 1 final review, finding 4).
+  // null means "not read" — NOT "no SLA". Nothing on the page reads the
+  // targets for a figure any more: Open Backlog's past-due note uses each
+  // report's own due time (l112).
   const [incidentConfig, setIncidentConfig] = useState<IncidentConfigRow | null>(null);
   // Set only inside the fetch effect's success path below, never on every
   // render — this is what lets the "Updated {time} (Asia/Manila)" stamp near
@@ -263,11 +270,8 @@ export function IssueReportsPage() {
   // from public_incident_config rather than hardcoded: Super Staff can change
   // any of them through save_incident_config, and they differ from each other
   // by more than an order of magnitude, so no single literal is right for all
-  // four. As of Task 1.3, issueRangeStats' own backlogPastSla ignores this
-  // parameter unconditionally (see its doc comment in src/portals/admin/lib/aggregate.ts)
-  // — computed and passed through anyway, at negligible cost, so a future
-  // Phase 6-backed rewrite of backlogPastSla has the targets ready without
-  // this wiring needing to be re-added (Phase 1 final review, finding 4).
+  // four. issueRangeStats no longer reads them (see its doc comment in
+  // src/portals/admin/lib/aggregate.ts).
   const slaHours = useMemo(() => incidentSlaHours(incidentConfig), [incidentConfig]);
 
   const departmentLabel = useMemo(() => {
@@ -306,6 +310,10 @@ export function IssueReportsPage() {
     () => issueRangeStats(rows, dateRange, getDate, slaHours),
     [rows, dateRange, getDate, slaHours]
   );
+  // Scored by the rules every page shares (slaCompliance), on the page's
+  // date type, so on the filing date it is the Dashboard's incident SLA
+  // compliance for the same range (metrics sheet I9).
+  const resolvedOnTime = useMemo(() => incidentsResolvedOnTime(rows, dateRange, getDate), [rows, dateRange, getDate]);
   const filtered = useMemo(
     () => filterByDateRange(filterRows(rows, activeTab), getDate, dateRange),
     [rows, activeTab, getDate, dateRange]
@@ -317,6 +325,15 @@ export function IssueReportsPage() {
   // silently ignored the active filter would be worse than a stale KPI
   // number, since a stale chart doesn't visually look wrong the way a stale
   // number does.
+  // The table and its export alone narrow to SLA Reports' filter; the tiles
+  // and panels still describe the range. Finished late is the reports in
+  // range scored late by the rule SLA Reports counts with (incidentMet). Past
+  // due now is the open reports past their due time, whatever the range.
+  const tableRows = useMemo(() => {
+    if (slaFilter === "past-due") return filterRows(incidentPastDueRows(rows), activeTab);
+    if (slaFilter === "late") return filtered.filter((row) => incidentMet(row) === false);
+    return filtered;
+  }, [slaFilter, rows, activeTab, filtered]);
   const categoryMixSlices = useMemo(() => categoryMix(filtered), [filtered]);
   const barangayRows = useMemo(() => barangayIncidentRows(filtered), [filtered]);
   // Unlike the two panels above, recentMonthlyCounts stays on the raw, unfiltered
@@ -352,9 +369,10 @@ export function IssueReportsPage() {
   }, [barangayRowsWithLabels]);
 
   // The CSV carries no reporter PII — every column here also appears in the
-  // visible table — so it reads the already-filtered `rows` state directly
-  // rather than going through an audited RPC (contrast with Yellow Card's
-  // exportApplications, which releases applicant identity and must be audited).
+  // visible table — so it reads the table's own rows directly, SLA Reports'
+  // filter included (#127), rather than going through an audited RPC
+  // (contrast with Yellow Card's exportApplications, which releases applicant
+  // identity and must be audited).
   function handleExportReports() {
     downloadCsv(
       "issue-reports.csv",
@@ -370,7 +388,7 @@ export function IssueReportsPage() {
         "Reopened",
         "Time to Triage",
       ],
-      filtered.map((row) => [
+      tableRows.map((row) => [
         row.reference_number ?? "—",
         row.incident_type_label ?? "—",
         levelLabel(row.incident_level),
@@ -380,7 +398,7 @@ export function IssueReportsPage() {
         statusLabel(row.status),
         closureReasonLabel(row.closure_reason),
         row.reopened_count ?? 0,
-        formatTriageHours(row.time_to_triage_hours),
+        formatTriageHours(row),
       ])
     );
   }
@@ -420,48 +438,79 @@ export function IssueReportsPage() {
           and finish loading together. */}
       {isLoading && <LoadingStatus label="Loading reports…" />}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <KpiTile
           label="Reports"
           value={isLoading ? <Skeleton className="h-7 w-16" /> : error ? "—" : stats.reports.toLocaleString()}
           note={isLoading ? <Skeleton className="h-3 w-24" /> : error || !compare ? undefined : stats.reportsDelta}
+          direction="neutral"
           noteTone="positive"
         />
+        {/* The page's effectiveness figure: resolved reports finished by
+            their own level's due time. A report that never had a clock, or
+            was closed as invalid, duplicate or expired, is not scored. */}
+        <KpiTile
+          label="Resolved on time"
+          value={isLoading ? <Skeleton className="h-7 w-16" /> : error ? "—" : formatRate(resolvedOnTime.compliancePct)}
+          caption={
+            isLoading || error
+              ? undefined
+              : resolvedOnTime.scored === 0
+                ? "Nothing scored in range"
+                : `${resolvedOnTime.onTime} of ${resolvedOnTime.scored} within their level's target · ${formatTargetGap(resolvedOnTime.gapToTargetPts)}`
+          }
+          note={isLoading ? <Skeleton className="h-3 w-24" /> : error || !compare ? undefined : resolvedOnTime.delta}
+          direction="higher-is-better"
+          noteTone="negative"
+        />
+        {/* Reports closed as invalid, duplicate or expired are not in the
+            denominator; open ones are, so a recent range reads low and the
+            caption says why (metrics sheet I2). */}
         <KpiTile
           label="Resolution Rate"
           value={isLoading ? <Skeleton className="h-7 w-16" /> : error ? "—" : formatRate(stats.resolutionRatePct)}
+          caption={isLoading || error ? undefined : `resolved so far · ${stats.resolutionStillOpen} still open`}
           note={isLoading ? <Skeleton className="h-3 w-24" /> : error || !compare ? undefined : stats.resolutionRateDelta}
+          direction="higher-is-better"
           noteTone="negative"
         />
+        {/* The resident's whole wait, triage included, so not the clock:
+            Resolved on time is the on-time figure (metrics sheet I3). */}
         <KpiTile
-          label="Avg Response"
-          value={isLoading ? <Skeleton className="h-7 w-16" /> : error ? "—" : formatDuration(stats.avgResponseDays)}
-          note={isLoading ? <Skeleton className="h-3 w-24" /> : error || !compare ? undefined : stats.avgResponseDelta}
+          label="Avg time to resolve"
+          value={isLoading ? <Skeleton className="h-7 w-16" /> : error ? "—" : formatDuration(stats.avgTimeToResolveDays)}
+          caption={isLoading || error ? undefined : "From filing, across all levels"}
+          note={isLoading ? <Skeleton className="h-3 w-24" /> : error || !compare ? undefined : stats.avgTimeToResolveDelta}
+          direction="lower-is-better"
           noteTone="positive"
         />
-        {/* backlogPastSla is always null (Admin Portal Fix Plan, Task 1.3):
-            computing it from submitted_at age vs. today's config target
-            counted never-armed (unverified) incidents as breached, charged
-            routing/verification delay against the department, and re-judged
-            old incidents against a target that may have since changed — see
-            backlogPastSla's doc comment in src/portals/admin/lib/aggregate.ts. It stays
-            unavailable, the same "unknown, not zero" rule the Yellow Card
-            page's Pending Review tile already applies to pendingPastSla,
-            until a Phase 6 migration adds a real armed due date to
-            admin_incident_analytics. */}
+        {/* Triage sits before the clock, so Resolved on time never sees it.
+            Reopened reports are left out: reopening reset their routed time
+            (metrics sheet I10). No target. */}
+        <KpiTile
+          label="Avg time to triage"
+          value={isLoading ? <Skeleton className="h-7 w-16" /> : error ? "—" : formatDuration(stats.avgTimeToTriageDays)}
+          caption={isLoading || error ? undefined : "Filing to routing, before the clock starts"}
+          note={isLoading ? <Skeleton className="h-3 w-24" /> : error || !compare ? undefined : stats.avgTimeToTriageDelta}
+          direction="lower-is-better"
+          noteTone="positive"
+        />
+        {/* Past due is past the report's own due time; a report never
+            routed and verified has no clock, so it is never past due. A
+            rejected report back in Awaiting Triage keeps its clock, so it
+            can be (metrics sheet I4, #129). */}
         <KpiTile
           label="Open Backlog"
           value={isLoading ? <Skeleton className="h-7 w-16" /> : error ? "—" : stats.openBacklog}
+          caption={isLoading || error ? undefined : "Past due = past its level's target"}
           note={
             isLoading ? (
               <Skeleton className="h-3 w-24" />
-            ) : error ? undefined : stats.backlogPastSla === null ? (
-              "SLA breach count unavailable — pending DB support"
-            ) : (
-              `${stats.backlogPastSla} past their level's SLA target`
+            ) : error ? undefined : (
+              `${stats.backlogPastDue} past due · ${stats.backlogAtRisk} at risk`
             )
           }
-          noteTone={stats.backlogPastSla === null ? "neutral" : "negative"}
+          noteTone={stats.backlogPastDue > 0 ? "negative" : "neutral"}
         />
       </div>
 
@@ -512,6 +561,7 @@ export function IssueReportsPage() {
             }}
           />
         </div>
+        {slaFilter && <SlaRowFilterBanner filter={slaFilter} noun="reports" onClear={clearSlaFilter} />}
 
         {isLoading ? (
           <div className="space-y-2 px-6 py-8">
@@ -530,7 +580,7 @@ export function IssueReportsPage() {
               Retry
             </Button>
           </div>
-        ) : filtered.length === 0 ? (
+        ) : tableRows.length === 0 ? (
           <p className="px-6 py-8 text-center text-sm text-gray-500">No reports match this filter.</p>
         ) : (
           <DataTable
@@ -578,7 +628,7 @@ export function IssueReportsPage() {
               },
               {
                 header: "Time to Triage",
-                render: (row: IncidentRow) => formatTriageHours(row.time_to_triage_hours),
+                render: (row: IncidentRow) => formatTriageHours(row),
               },
               {
                 header: "Review",
@@ -592,7 +642,7 @@ export function IssueReportsPage() {
                   ),
               },
             ]}
-            rows={filtered}
+            rows={tableRows}
             rowKey={(row) => row.id ?? row.reference_number ?? ""}
           />
         )}

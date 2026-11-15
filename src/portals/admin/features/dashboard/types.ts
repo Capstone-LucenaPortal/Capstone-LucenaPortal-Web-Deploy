@@ -1,20 +1,25 @@
 // Domain types for the executive dashboard slice.
 
+import type { Delta, EventDays } from "@/portals/admin/lib/aggregate";
+import type { ServiceCompliance } from "@/portals/admin/features/sla/types";
+
+// One service's SLA compliance in range, plus its change against the
+// previous period (higher is better).
+export interface ServiceSla extends ServiceCompliance {
+  delta: Delta;
+}
+
 export interface ExecutiveRangeStats {
-  citizensEngaged: number;
-  citizensDelta: string;
+  requestsFiled: number;
+  requestsFiledDelta: Delta;
   serviceBacklog: number;
-  backlogDelta: string;
-  // null when there are zero SLA-scoreable requests (decided applications +
-  // resolved/scoreable incidents) pooled across both clocks in range — e.g. a
-  // quiet "Today" preset. Render via formatRate (src/portals/admin/lib/aggregate.ts),
-  // never `${value}%`, so this can never misread as "0% compliance". slaNote
-  // is a plain "no scoreable requests" caption in that case, not a pts-below-
-  // target gap computed against a null baseline.
-  slaCompliancePct: number | null;
-  slaNote: string;
-  lccUtilizationPct: number;
-  lccDelta: string;
+  backlogDelta: Delta;
+  // SLA compliance once per service, never pooled: the two clocks make
+  // different promises (ADR 0001).
+  sla: { yellowCard: ServiceSla; incidents: ServiceSla };
+  // Days with an event: the same figure as the Convention Center's Event
+  // days tile (#117).
+  eventDays: EventDays;
 }
 
 export interface AttentionItem {
