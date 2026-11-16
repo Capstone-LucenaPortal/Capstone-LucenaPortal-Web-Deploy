@@ -75,10 +75,12 @@ function ProgramDetails({ program }: { program: Program }) {
           ))}
         </div>
       )}
-      <div style={{ padding: 20, background: '#F0F8FF', borderRadius: 8 }}>
-        <p style={{ fontSize: 12, fontWeight: 600, color: '#003DA5', textTransform: 'uppercase', marginBottom: 8 }}>How to Apply</p>
-        <p style={{ fontSize: 14, color: '#333333', lineHeight: 1.6, whiteSpace: 'pre-line' }}>{program.howToApply}</p>
-      </div>
+      {program.steps && (
+        <div style={{ padding: 20, background: '#F0F8FF', borderRadius: 8 }}>
+          <p style={{ fontSize: 12, fontWeight: 600, color: '#003DA5', textTransform: 'uppercase', marginBottom: 8 }}>{program.steps.heading}</p>
+          <p style={{ fontSize: 14, color: '#333333', lineHeight: 1.6, whiteSpace: 'pre-line' }}>{program.steps.text}</p>
+        </div>
+      )}
     </article>
   );
 }
