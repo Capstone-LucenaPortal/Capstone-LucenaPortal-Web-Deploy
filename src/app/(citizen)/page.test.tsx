@@ -101,6 +101,18 @@ describe('Home page carousels', () => {
     expect(currentDots(LCC_SLIDES)).toEqual(['Go to slide 4 of 5']);
   });
 
+  it.each([
+    [2, 'City Programs', '/hero-programs.jpg'],
+    [3, 'Lucena News', '/hero-news.jpg'],
+  ])('shows slide %i, %s, over its own photo', async (n, title, image) => {
+    await renderHome();
+    fireEvent.click(screen.getByRole('button', { name: `Go to slide ${n} of ${TOP_SLIDES}` }));
+    expect(screen.getByRole('heading', { level: 1, name: title })).toBeInTheDocument();
+    const hero = screen.getByRole('heading', { level: 1, name: title }).closest('section')!;
+    const background = hero.querySelector<HTMLElement>('section > div > div')!;
+    expect(background.style.background).toContain(image);
+  });
+
   it('moves the current dot when a Convention Center image is clicked', async () => {
     await renderHome();
     fireEvent.click(screen.getByText('Sports Arena'));

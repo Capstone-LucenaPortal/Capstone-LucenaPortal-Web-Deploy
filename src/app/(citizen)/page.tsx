@@ -28,8 +28,13 @@ export default function HomePage() {
 
   const heroSlides = [
     { title: 'Welcome to Lucena City Portal', desc: 'Your gateway to city services and community information', image: '/lucena-city-hall.jpg', buttonText: 'Learn More', link: '/announcements', color: '#003DA5' },
-    { title: 'City Programs', desc: 'Ongoing initiatives in health, livelihood, and infrastructure for Lucenahins', image: '/lucena-city-hall.jpg', buttonText: 'Learn More', link: '#city-programs', color: '#7C3F00' },
-    { title: 'Lucena News', desc: 'Stay updated with the latest city news and developments', buttonText: 'Learn More', link: '/news', color: '#0E7490' },
+    // The photo is square, so a wide screen shows only a band of it; 55% keeps
+    // the "City of Lucena, Quezon" title and the people in that band.
+    { title: 'City Programs', desc: 'Ongoing initiatives in health, livelihood, and infrastructure for Lucenahins', image: '/hero-programs.jpg', imagePosition: 'center 55%', buttonText: 'Learn More', link: '#city-programs', color: '#7C3F00' },
+    // A banner with its own big lettering: cropped to fill the screen, that
+    // lettering lands under the slide's title. Shown whole across the top
+    // instead, on its own edge blue, so the title sits below it.
+    { title: 'Lucena News', desc: 'Stay updated with the latest city news and developments', image: '/hero-news.jpg', imagePosition: 'center top', imageSize: 'contain', buttonText: 'Learn More', link: '/news', color: '#2E4CC2' },
     { title: 'Lucena Events', desc: 'Discover upcoming events and community activities', image: '/lcc-1.jpg', buttonText: 'Book Venue', link: '/lcc', color: '#166534' },
   ];
 
@@ -87,7 +92,7 @@ export default function HomePage() {
             position: 'absolute',
             inset: 0,
             background: heroSlides[heroSlide].image
-              ? `url('${heroSlides[heroSlide].image}') center/cover no-repeat`
+              ? `url('${heroSlides[heroSlide].image}') ${heroSlides[heroSlide].imagePosition ?? 'center'}/${heroSlides[heroSlide].imageSize ?? 'cover'} no-repeat ${heroSlides[heroSlide].color}`
               : `linear-gradient(135deg, ${heroSlides[heroSlide].color}E6, ${heroSlides[heroSlide].color}CC)`,
             transition: 'background 0.5s ease'
           }} />
