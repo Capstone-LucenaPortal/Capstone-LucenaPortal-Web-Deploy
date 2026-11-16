@@ -11,6 +11,17 @@ describe('ProgramImage', () => {
     );
   });
 
+  it('crops a photo to fill its frame unless told to show it whole', () => {
+    render(
+      <>
+        <ProgramImage image={{ src: '/programs/a.jpg', alt: 'A photo' }} />
+        <ProgramImage image={{ src: '/programs/b.jpg', alt: 'A poster', fit: 'contain' }} />
+      </>,
+    );
+    expect(screen.getByRole('img', { name: 'A photo' })).toHaveStyle({ objectFit: 'cover' });
+    expect(screen.getByRole('img', { name: 'A poster' })).toHaveStyle({ objectFit: 'contain' });
+  });
+
   it('holds the space with a labelled placeholder until then', () => {
     const { container } = render(<ProgramImage image={{ src: null, alt: 'Wedding image placeholder' }} />);
     expect(screen.getByRole('img', { name: 'Wedding image placeholder' })).toBeInTheDocument();

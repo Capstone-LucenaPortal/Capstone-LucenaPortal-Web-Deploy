@@ -8,7 +8,6 @@ describe('ProgramsSummary', () => {
     const categories = within(screen.getByRole('list', { name: 'Program categories' }));
     expect(categories.getAllByRole('link').map((link) => link.getAttribute('href'))).toEqual([
       '/programs/agricultural',
-      '/programs/animal',
       '/programs/baptism',
       '/programs/business',
       '/programs/education',

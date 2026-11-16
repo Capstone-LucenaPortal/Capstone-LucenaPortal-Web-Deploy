@@ -6,7 +6,7 @@ const params = (category: string) => Promise.resolve({ category });
 
 describe('/programs/[category]', () => {
   it('prerenders one page per category', () => {
-    expect(generateStaticParams()).toHaveLength(9);
+    expect(generateStaticParams()).toHaveLength(8);
     expect(generateStaticParams()).toContainEqual({ category: 'senior-citizen' });
   });
 
@@ -15,8 +15,8 @@ describe('/programs/[category]', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Senior Citizen Programs' })).toBeInTheDocument();
   });
 
-  it('answers 404 for an address that is not a category', async () => {
-    await expect(ProgramCategoryRoute({ params: params('health') })).rejects.toThrow(/NEXT_HTTP_ERROR_FALLBACK;404/);
+  it('answers 404 for an address that is not a category, Animal included now that it is gone', async () => {
+    await expect(ProgramCategoryRoute({ params: params('animal') })).rejects.toThrow(/NEXT_HTTP_ERROR_FALLBACK;404/);
   });
 
   it('serves only the prerendered categories, so anything else is a real 404 status', () => {

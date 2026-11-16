@@ -14,7 +14,15 @@ export default function ProgramImage({ image, height = 320 }: ProgramImageProps)
         src={image.src}
         alt={image.alt}
         loading="lazy"
-        style={{ width: '100%', height, objectFit: 'cover', display: 'block', borderRadius: 8 }}
+        style={{
+          width: '100%',
+          height,
+          objectFit: image.fit ?? 'cover',
+          display: 'block',
+          borderRadius: 8,
+          // Fills the bands either side of an image shown whole.
+          background: image.fit === 'contain' ? '#E8EDF3' : undefined,
+        }}
       />
     );
   }

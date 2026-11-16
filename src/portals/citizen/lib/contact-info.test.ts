@@ -119,10 +119,17 @@ describe('no Yellow Card office hardcoded into a page', () => {
    */
   const OFFICE_NAME_HOME = join(PORTAL, 'lib', 'contact-info.ts');
 
+  /**
+   * City Programs content names the offices that run each program — the City
+   * Health Office co-leads the farmers' program — which is no claim about who
+   * processes Yellow Cards.
+   */
+  const PROGRAMS_CONTENT = join(PORTAL, 'features', 'content', 'lib', 'programs.ts');
+
   it('leaves the office name to one module, and names it in no page', () => {
     const offenders: string[] = [];
     for (const file of citizenSourceFiles()) {
-      if (file === OFFICE_NAME_HOME) continue;
+      if (file === OFFICE_NAME_HOME || file === PROGRAMS_CONTENT) continue;
       const text = readFileSync(file, 'utf8');
       for (const claim of CLAIMS) {
         if (text.includes(claim)) offenders.push(`${file}: ${claim}`);

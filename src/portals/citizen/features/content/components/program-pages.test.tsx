@@ -11,7 +11,7 @@ describe('ProgramsOverview', () => {
   it('lists every category in the sidebar with none marked current', () => {
     render(<ProgramsOverview />);
     const links = sidebar().getAllByRole('link');
-    expect(links).toHaveLength(9);
+    expect(links).toHaveLength(8);
     expect(links.filter((link) => link.hasAttribute('aria-current'))).toEqual([]);
   });
 
@@ -91,19 +91,11 @@ describe('ProgramCategoryPage', () => {
     expect(screen.getByText(/bring your Senior Citizen ID/)).toBeInTheDocument();
   });
 
-  it.each(['agricultural', 'senior-citizen', 'wellness'])(
-    'gives %s places for its photos before they arrive',
-    (slug) => {
-      render(<ProgramCategoryPage category={getProgramCategory(slug)!} />);
-      expect(screen.getAllByRole('img').length).toBeGreaterThan(0);
-    },
-  );
-
-  it('leaves no placeholder text outside the Animal category, only photo boxes', () => {
-    for (const category of PROGRAM_CATEGORIES.filter(({ slug }) => slug !== 'animal')) {
-      const { unmount } = render(<ProgramCategoryPage category={category} />);
-      const placeholders = screen.queryAllByText(/placeholder/i).map((element) => element.textContent);
-      expect(placeholders.filter((text) => text !== 'Image placeholder')).toEqual([]);
+  it('shows every category with real photos and no placeholder anywhere', () => {
+    for (const category of PROGRAM_CATEGORIES) {
+      const { container, unmount } = render(<ProgramCategoryPage category={category} />);
+      expect(screen.queryAllByText(/placeholder/i)).toEqual([]);
+      expect(container.querySelectorAll('article img').length).toBeGreaterThan(0);
       unmount();
     }
   });

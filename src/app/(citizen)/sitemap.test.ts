@@ -8,7 +8,6 @@ describe('sitemap', () => {
       expect.arrayContaining([
         '/programs',
         '/programs/agricultural',
-        '/programs/animal',
         '/programs/baptism',
         '/programs/business',
         '/programs/education',
@@ -18,5 +17,6 @@ describe('sitemap', () => {
         '/programs/wellness',
       ]),
     );
+    expect(paths).not.toContain('/programs/animal');
   });
 });
