@@ -1,7 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import type { MyYellowCardApplication } from '@/portals/citizen/features/yellow-card/types';
+import {
+  isYellowCardApplicationStatus,
+  type MyYellowCardApplication,
+  type YellowCardApplicationStatus,
+} from '@/portals/citizen/features/yellow-card/types';
 import { yellowCardService } from '@/portals/citizen/features/yellow-card/lib/yellow-card';
 import { actionRow, inlineError, inlineNotice, primaryAction, secondaryAction } from '../lib/action-styles';
 
@@ -16,10 +20,13 @@ interface Props {
  * actively holding it and the SLA is running against them. The DB remains the
  * authority; this only decides whether to render a control at all.
  */
-const WITHDRAWABLE = new Set(['pending', 'revision_requested']);
+const WITHDRAWABLE: ReadonlySet<YellowCardApplicationStatus> = new Set<YellowCardApplicationStatus>([
+  'pending',
+  'revision_requested',
+]);
 
 /**
- * Withdraw a live application.
+ * Withdraw an application whose status is in `WITHDRAWABLE`.
  *
  * `submit_yellow_card_application`'s own 23505 duplicate error tells the
  * citizen to withdraw before applying again — an instruction the portal used to
@@ -31,7 +38,10 @@ export default function YellowCardActions({ application, onChanged }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!WITHDRAWABLE.has(application.status)) return null;
+  // A status the frontend does not know renders nothing.
+  const { status } = application;
+  if (!isYellowCardApplicationStatus(status)) return null;
+  if (!WITHDRAWABLE.has(status)) return null;
 
   const withdraw = async () => {
     setBusy(true);

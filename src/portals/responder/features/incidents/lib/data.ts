@@ -9,12 +9,15 @@ import type {
   IncidentPhoto,
   PhotoKind,
   ResponderNotification,
+  UnreadNotification,
+  VisibleIncidentStatus,
 } from "@/portals/responder/features/incidents/types";
 
 /**
  * SEAM 1 — the only module in this feature that talks to Supabase.
  *
- * Pages and server actions import from here and from nowhere else, and tests
+ * Pages and server actions read Supabase through here and nowhere else (the
+ * Inbox reads through lib/inbox.ts, which is built on this module), and tests
  * fake THIS module. The rejected alternative was faking the Supabase client
  * itself, which means asserting on query-builder chains: tests that break when
  * a column is reordered and pass when the view is wrong.
@@ -266,17 +269,48 @@ export const getNotifications = cache(
   },
 );
 
-/** The nav badge. head+count, so no rows cross the wire. */
-export const getUnreadCount = cache(async (): Promise<number> => {
-  const supabase = await createClient();
-  const { count, error } = await supabase
-    .from("my_notifications")
-    .select("id", { count: "exact", head: true })
-    .is("read_at", null);
+/**
+ * The unread rows, for the nav badge: just enough of each to tell a stale
+ * arrival from a live one (#138), which a head+count could not. Unread lists
+ * are short. The count itself is lib/inbox.ts's getUnreadCount.
+ */
+export const getUnreadNotifications = cache(
+  async (): Promise<UnreadNotification[]> => {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("my_notifications")
+      .select("id, event_code, record_id")
+      .is("read_at", null);
 
-  if (error) fail("getUnreadCount", error);
-  return count ?? 0;
-});
+    if (error) fail("getUnreadNotifications", error);
+    return (data as unknown as UnreadNotification[]) ?? [];
+  },
+);
+
+/**
+ * Which of these incidents my department can still see, and in what status:
+ * the lookup behind stale arrivals (#138). ONE query for the whole list.
+ *
+ * Not cache()d: cache() keys on argument identity, and every caller builds a
+ * fresh array. An empty list asks nothing.
+ *
+ * ⚠️ An id missing from the result means "rerouted away or rejected", so an
+ * ERROR must never come back as [] -- that would mark every arrival stale.
+ */
+export async function getVisibleIncidentStatuses(
+  ids: readonly string[],
+): Promise<VisibleIncidentStatus[]> {
+  if (ids.length === 0) return [];
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("responder_incidents")
+    .select("id, status")
+    .in("id", [...ids]);
+
+  if (error) fail("getVisibleIncidentStatuses", error);
+  return (data as unknown as VisibleIncidentStatus[]) ?? [];
+}
 
 /**
  * Limits the database will actually enforce.

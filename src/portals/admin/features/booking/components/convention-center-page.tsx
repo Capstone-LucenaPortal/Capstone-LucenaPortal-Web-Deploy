@@ -265,12 +265,20 @@ export function ConventionCenterPage() {
   // venue in the catalog still gets a row, with 0 when nobody booked it.
   const venueRequests = useMemo(() => bookingRequestsPerVenue(filtered, venues), [filtered, venues]);
 
+  // `rows` start empty and only hold real data once a load succeeds, so an
+  // export before then is a header-only CSV that looks like a real report
+  // (#146, the #141 rule). The button is disabled on this, and
+  // handleExportBookings checks it again as a backstop. An empty range after
+  // a good load is still exportable.
+  const canExport = !isLoading && !error;
+
   // The CSV carries no organiser PII — every column here also appears in the
   // visible table — so it reads the already-filtered `rows` state directly
   // rather than going through the audited readBookingPii RPC (contrast with
   // Yellow Card's exportApplications, which releases applicant identity and
   // must be audited).
   function handleExportBookings() {
+    if (!canExport) return;
     downloadCsv(
       "convention-center-bookings.csv",
       ["Reference", "Event", "Venue", "Event date", "Status", "Cancellation Reason"],
@@ -380,7 +388,7 @@ export function ConventionCenterPage() {
       <section className="rounded-none border border-gray-200 bg-white">
         <div className="flex flex-wrap items-center justify-between gap-3 px-6 pt-6">
           <h2 className="text-lg font-semibold text-gray-900">Recent bookings</h2>
-          <Button variant="secondary" onClick={handleExportBookings}>
+          <Button variant="secondary" onClick={handleExportBookings} disabled={!canExport}>
             ↓ Export
           </Button>
         </div>

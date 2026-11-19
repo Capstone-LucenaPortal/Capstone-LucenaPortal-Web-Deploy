@@ -1,7 +1,7 @@
 import { Check } from "lucide-react";
 import { markNotificationRead } from "@/portals/responder/features/incidents/actions";
-import { timeOfDay } from "@/portals/responder/features/incidents/lib/work";
-import type { ResponderNotification } from "@/portals/responder/features/incidents/types";
+import { timeOrDate } from "@/portals/responder/features/incidents/lib/work";
+import type { InboxEntry } from "@/portals/responder/features/incidents/types";
 import { cn } from "@/portals/responder/lib/utils";
 
 /**
@@ -13,16 +13,24 @@ import { cn } from "@/portals/responder/lib/utils";
  * Each mark-read is a form posting a server action, so nothing here becomes a
  * client component. Read rows keep no button: `mark_notification_read` is
  * idempotent, but an affordance that does nothing is worse than no affordance.
+ *
+ * A stale arrival (#138) says "No longer in your pool" and is never styled
+ * unread, whatever its read_at: there is nothing left in the pool to act on, so
+ * it gets no dot, no "Unread" and no Read button. Its stored title and body are
+ * shown as written -- in_app rows are rendered at write time on purpose (l08).
  */
 export function NotificationList({
   items,
+  now,
 }: {
-  items: ResponderNotification[];
+  items: InboxEntry[];
+  /** Read once by the page; older rows carry their date against it (#139). */
+  now: Date;
 }) {
   return (
     <ul className="overflow-hidden rounded-lg border border-gray-200">
       {items.map((item) => {
-        const unread = item.read_at === null;
+        const unread = item.read_at === null && !item.stale;
 
         return (
           <li
@@ -56,9 +64,14 @@ export function NotificationList({
                 </p>
               )}
               <p className="mt-1 flex items-center gap-1.5 text-[11px] text-gray-500">
-                {item.created_at && <span>{timeOfDay(item.created_at)}</span>}
+                {item.created_at && <span>{timeOrDate(item.created_at, now)}</span>}
                 {unread && (
                   <span className="font-semibold text-lucena-blue">Unread</span>
+                )}
+                {item.stale && (
+                  <span className="font-semibold text-gray-600">
+                    No longer in your pool
+                  </span>
                 )}
               </p>
             </div>

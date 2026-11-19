@@ -9,8 +9,6 @@ export type IncidentCategoryRow =
 export type BookingEventTypeRow =
   Database["public"]["Views"]["public_booking_event_types"]["Row"];
 export type BarangayRow = Database["public"]["Views"]["public_barangays"]["Row"];
-export type IncidentConfigRow =
-  Database["public"]["Views"]["public_incident_config"]["Row"];
 
 /**
  * Catalog labels the admin analytics views do not carry.
@@ -87,27 +85,28 @@ export async function listBarangays(): Promise<BarangayRow[]> {
   return data ?? [];
 }
 
+/** The Yellow Card processing time target, as configured by Super Staff. */
+export interface YellowCardConfig {
+  processing_time_target_days: number;
+}
+
 /**
- * The city's incident SLA settings — critically, the PER-LEVEL response
- * targets (`sla_hours_critical` / `_high` / `_medium` / `_low`).
+ * The city's Yellow Card processing time target, in working days, which the
+ * Yellow Card page's Decided on time and Pending Review captions name (#132).
  *
- * Unlike the catalog lists above this is a single-row view with no
- * `sort_order`, so it is read with `.maybeSingle()`. A missing row returns
- * null rather than throwing: callers must treat "no config" as "no target to
- * judge against" (see incidentSlaHours/issueRangeStats in src/portals/admin/lib/aggregate.ts,
- * which surface that as a null breach count, not as zero breaches).
- *
- * These values are Super Staff-editable via `save_incident_config`, which is
- * exactly why the figures must be read from here rather than copied into the
- * frontend as literals.
+ * A one-row view, so it is read with `.maybeSingle()`, and
+ * a missing row (or a row with no target) returns null, which callers treat
+ * as "no target to name". Super Staff can change it in Configuration, which
+ * is why it is read here rather than written into a caption.
  */
-export async function getIncidentConfig(): Promise<IncidentConfigRow | null> {
+export async function getYellowCardConfig(): Promise<YellowCardConfig | null> {
   const supabase = createClient();
   const { data, error } = await supabase
-    .from("public_incident_config")
+    .from("public_yellow_card_config")
     .select("*")
     .maybeSingle();
 
   if (error) throw toPortalError(error);
-  return data ?? null;
+  const days = data?.processing_time_target_days;
+  return typeof days === "number" ? { processing_time_target_days: days } : null;
 }

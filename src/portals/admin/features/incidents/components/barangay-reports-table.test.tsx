@@ -19,7 +19,7 @@ function getHeaders(container: HTMLElement) {
 
 describe("BarangayReportsTable aria-sort", () => {
   it("defaults to Reports sorted descending, Barangay unsorted", () => {
-    const { container } = render(<BarangayReportsTable rows={rows} insight={insight} />);
+    const { container } = render(<BarangayReportsTable rows={rows} insight={insight} canExport />);
     const [barangayTh, reportsTh] = getHeaders(container);
 
     // Matches the component's initial state: useState<SortKey>("reports"),
@@ -29,7 +29,7 @@ describe("BarangayReportsTable aria-sort", () => {
   });
 
   it("the non-sortable Top Category header never gets an aria-sort attribute", () => {
-    const { container } = render(<BarangayReportsTable rows={rows} insight={insight} />);
+    const { container } = render(<BarangayReportsTable rows={rows} insight={insight} canExport />);
     const [, , topCategoryTh] = getHeaders(container);
 
     // Per the brief's Step 2, aria-sort belongs only on sortable columns —
@@ -39,7 +39,7 @@ describe("BarangayReportsTable aria-sort", () => {
 
   it("clicking the inactive Barangay header sorts it ascending and resets Reports to none", async () => {
     const user = userEvent.setup();
-    const { container } = render(<BarangayReportsTable rows={rows} insight={insight} />);
+    const { container } = render(<BarangayReportsTable rows={rows} insight={insight} canExport />);
     const [barangayTh, reportsTh] = getHeaders(container);
 
     await user.click(within(barangayTh).getByRole("button"));
@@ -50,7 +50,7 @@ describe("BarangayReportsTable aria-sort", () => {
 
   it("clicking the already-active Barangay header toggles ascending then descending", async () => {
     const user = userEvent.setup();
-    const { container } = render(<BarangayReportsTable rows={rows} insight={insight} />);
+    const { container } = render(<BarangayReportsTable rows={rows} insight={insight} canExport />);
     const [barangayTh] = getHeaders(container);
     const barangayButton = within(barangayTh).getByRole("button");
 
@@ -66,7 +66,7 @@ describe("BarangayReportsTable aria-sort", () => {
 
   it("clicking the already-active Reports header toggles descending then ascending", async () => {
     const user = userEvent.setup();
-    const { container } = render(<BarangayReportsTable rows={rows} insight={insight} />);
+    const { container } = render(<BarangayReportsTable rows={rows} insight={insight} canExport />);
     const [, reportsTh] = getHeaders(container);
     const reportsButton = within(reportsTh).getByRole("button");
 

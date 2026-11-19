@@ -6,6 +6,7 @@ import { authService } from '@/portals/citizen/features/auth/lib/auth';
 import { catalogService, type CatalogOption } from '@/portals/citizen/lib/supabase/catalogs';
 import type { CitizenProfileFields } from '@/portals/citizen/features/auth/types';
 import { LIMITS } from '@/portals/citizen/lib/validation';
+import { occupationField } from '@/portals/citizen/features/auth/lib/occupation-field';
 
 type Outcome = 'loading' | 'no-session' | 'exists' | 'completed' | 'not-a-citizen' | 'incomplete';
 
@@ -28,8 +29,9 @@ export default function CompleteSignupPage() {
   const [barangayCode, setBarangayCode] = useState('');
   const [street, setStreet] = useState('');
   const [houseNo, setHouseNo] = useState('');
-  const [workingInLucena, setWorkingInLucena] = useState('yes');
+  const [worksInLucena, setWorksInLucena] = useState(true);
   const [occupation, setOccupation] = useState('');
+  const occupationBox = occupationField(worksInLucena, occupation);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   useEffect(() => {
@@ -82,8 +84,7 @@ export default function CompleteSignupPage() {
         firstName, lastName, middleName, suffix,
         birthDate, genderCode, mobile, barangayCode,
         street, houseNo,
-        occupation: workingInLucena === 'yes' ? occupation : '',
-        worksInLucena: workingInLucena === 'yes',
+        ...occupationBox.submit,
         agreedToTerms,
       };
       await authService.completeProfile(fields);
@@ -231,16 +232,16 @@ export default function CompleteSignupPage() {
         <div style={{ flex: '0 0 calc(50% - 6px)' }}>
           <span id="signup-working-in-lucena" className={labelClass}>Working in Lucena City?</span>
           <div role="radiogroup" aria-labelledby="signup-working-in-lucena" className="flex items-center" style={{ gap: 20, paddingTop: 9 }}>
-            {['yes', 'no'].map((v) => (
-              <label key={v} className="flex items-center text-sm" style={{ gap: 6 }}>
+            {[true, false].map((works) => (
+              <label key={String(works)} className="flex items-center text-sm" style={{ gap: 6 }}>
                 <input
                   type="radio"
                   name="workingInLucena"
-                  value={v}
-                  checked={workingInLucena === v}
-                  onChange={() => setWorkingInLucena(v)}
+                  value={works ? 'yes' : 'no'}
+                  checked={worksInLucena === works}
+                  onChange={() => setWorksInLucena(works)}
                 />
-                {v === 'yes' ? 'Yes' : 'No'}
+                {works ? 'Yes' : 'No'}
               </label>
             ))}
           </div>
@@ -250,9 +251,9 @@ export default function CompleteSignupPage() {
           <input
             id="signup-occupation"
             className={inputClass}
-            value={occupation}
+            value={occupationBox.value}
             onChange={(e) => setOccupation(e.target.value)}
-            disabled={workingInLucena === 'no'}
+            disabled={occupationBox.disabled}
             maxLength={LIMITS.shortText}
           />
         </div>

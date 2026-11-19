@@ -19,7 +19,7 @@ import { AccountsPanel } from "./accounts-panel";
 import { ChecksPanel } from "./checks-panel";
 import { DatabaseActivityPanel, DeadRowsPanel, NotMeasuredNote } from "./database-panels";
 import { DeliveryPanel, FailureReasonsPanel } from "./delivery-panel";
-import { JobsPanel, RunHistoryPanel } from "./jobs-panel";
+import { findPurgeJob, JobsPanel, RunHistoryPanel } from "./jobs-panel";
 import { Panel, STATUS_WORD, StatusPill, TONE_STYLE } from "./panel";
 import { PerformancePanel } from "./performance-panel";
 import { ReachabilityPanel } from "./reachability-panel";
@@ -195,7 +195,14 @@ function sectionBody(key: SectionKey, { health, reachability, samples }: SystemH
       };
     }
     case "jobs": {
-      const jt = health.sections.jobs.detail.thresholds;
+      const { thresholds: jt, items } = health.sections.jobs.detail;
+      // Mirrors the snapshot's grading: with no readable purge interval, any run
+      // past the keep warns; otherwise only one older than the missed purges allow.
+      const purgeInterval = findPurgeJob(items)?.interval_seconds ?? null;
+      const historyWarning =
+        purgeInterval === null
+          ? "warning when any older run remains"
+          : `warning after ${jt.job_overdue_factor} missed purge${jt.job_overdue_factor === 1 ? "" : "s"}`;
       return {
         lead: "The scheduled jobs that sweep, send, sample and purge in the background.",
         panels: (
@@ -206,10 +213,7 @@ function sectionBody(key: SectionKey, { health, reachability, samples }: SystemH
         ),
         thresholds: [
           ["Job overdue", `no run in ${jt.job_overdue_factor}× its interval (warning)`],
-          [
-            "Run history",
-            `kept ${formatSeconds(jt.run_history_keep_seconds)} (warning after ${jt.job_overdue_factor} missed purges)`,
-          ],
+          ["Run history", `kept ${formatSeconds(jt.run_history_keep_seconds)} (${historyWarning})`],
         ],
       };
     }

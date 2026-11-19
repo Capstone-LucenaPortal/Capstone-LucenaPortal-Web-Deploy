@@ -15,7 +15,9 @@ import {
   eventTypeMix,
   formatDuration,
   formatRate,
-  incidentSlaHours,
+  incidentBacklogDeadlines,
+  incidentPastDueRows,
+  inServiceBacklog,
   issueRangeStats,
   monthlyCounts,
   percentDelta,
@@ -32,6 +34,14 @@ import type { YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yel
 import type { IncidentRow } from "@/portals/admin/features/incidents/lib/incidents";
 import type { BookingRow } from "@/portals/admin/features/booking/lib/bookings";
 import type { VenueRow } from "@/portals/admin/lib/supabase/catalogs";
+import {
+  REVIEWABLE_STATUSES,
+  STATUS_LABELS as YELLOW_CARD_STATUS_LABELS,
+} from "@/portals/staff/features/yellow-card/lib/status";
+import {
+  NEEDS_ACTION_STATUSES,
+  STATUS_LABELS as BOOKING_STATUS_LABELS,
+} from "@/portals/staff/features/booking/lib/status";
 
 function buildYellowCardRow(overrides: Partial<YellowCardRow> = {}): YellowCardRow {
   return {
@@ -773,49 +783,9 @@ describe("yellowCardRangeStats", () => {
   }
 });
 
-describe("incidentSlaHours", () => {
-  it("maps each public_incident_config column onto its incident_level key", () => {
-    const result = incidentSlaHours({
-      sla_hours_critical: 4,
-      sla_hours_high: 8,
-      sla_hours_medium: 24,
-      sla_hours_low: 72,
-      auto_close_day: 7,
-      confirmation_window_days: 3,
-      max_active_reports_per_citizen: 3,
-      max_photos_per_cycle: 3,
-      nudge_day: 5,
-    });
-
-    expect(result).toEqual({ critical: 4, high: 8, medium: 24, low: 72 });
-  });
-
-  it("returns null when the config row is null — an unfetched config is not a set of zero-hour targets", () => {
-    expect(incidentSlaHours(null)).toBeNull();
-  });
-
-  it("omits a level whose column is null rather than defaulting it to 0", () => {
-    const result = incidentSlaHours({
-      sla_hours_critical: 4,
-      sla_hours_high: null,
-      sla_hours_medium: 24,
-      sla_hours_low: 72,
-      auto_close_day: null,
-      confirmation_window_days: null,
-      max_active_reports_per_citizen: null,
-      max_photos_per_cycle: null,
-      nudge_day: null,
-    });
-
-    expect(result).toEqual({ critical: 4, medium: 24, low: 72 });
-  });
-});
-
 describe("issueRangeStats", () => {
   const range = { from: "2026-05-01", to: "2026-05-31" };
   const getDate = (row: IncidentRow) => row.submitted_at;
-  // The real public_incident_config values on this deployment.
-  const slaHours = { critical: 4, high: 8, medium: 24, low: 72 };
 
   it("counts reports and computes the resolution rate within range", () => {
     const rows = [
@@ -824,7 +794,7 @@ describe("issueRangeStats", () => {
       buildIncidentRow({ submitted_at: "2026-04-01T00:00:00Z", status: "resolved" }),
     ];
 
-    const result = issueRangeStats(rows, range, getDate, slaHours);
+    const result = issueRangeStats(rows, range, getDate);
 
     expect(result.reports).toBe(2);
     expect(result.resolutionRatePct).toBe(50);
@@ -835,7 +805,7 @@ describe("issueRangeStats", () => {
   // preset with no incidents filed is not the same claim as "nothing got
   // resolved". Render via formatRate, which turns this null into "—".
   it("resolutionRatePct is null, not 0, when there are zero incidents in range", () => {
-    const result = issueRangeStats([], range, getDate, slaHours);
+    const result = issueRangeStats([], range, getDate);
 
     expect(result.reports).toBe(0);
     expect(result.resolutionRatePct).toBeNull();
@@ -850,7 +820,7 @@ describe("issueRangeStats", () => {
       buildIncidentRow({ submitted_at: "2026-05-11T00:00:00Z", status: "in_progress" }),
     ];
 
-    const result = issueRangeStats(rows, range, getDate, slaHours);
+    const result = issueRangeStats(rows, range, getDate);
 
     expect(result.reports).toBe(2);
     expect(result.resolutionRatePct).toBe(0);
@@ -874,7 +844,7 @@ describe("issueRangeStats", () => {
       buildIncidentRow({ submitted_at, status: "in_progress" }),
     ];
 
-    const result = issueRangeStats(rows, range, getDate, slaHours);
+    const result = issueRangeStats(rows, range, getDate);
 
     expect(result.reports).toBe(8);
     expect(result.resolutionRatePct).toBe(60);
@@ -890,7 +860,7 @@ describe("issueRangeStats", () => {
       buildIncidentRow({ submitted_at, status: "closed", closure_reason: "invalid" }),
     ];
 
-    const result = issueRangeStats(rows, range, getDate, slaHours);
+    const result = issueRangeStats(rows, range, getDate);
 
     expect(result.reports).toBe(2);
     expect(result.resolutionRatePct).toBeNull();
@@ -903,7 +873,7 @@ describe("issueRangeStats", () => {
   it("resolutionRateDelta reads 'No comparable data' rather than a fabricated swing when the current period has zero incidents", () => {
     const rows = [buildIncidentRow({ submitted_at: "2026-04-10T00:00:00Z", status: "resolved" })];
 
-    const result = issueRangeStats(rows, range, getDate, slaHours);
+    const result = issueRangeStats(rows, range, getDate);
 
     expect(result.resolutionRatePct).toBeNull();
     expect(result.resolutionRateDelta.text).toBe("No comparable data vs previous period");
@@ -924,7 +894,7 @@ describe("issueRangeStats", () => {
       buildIncidentRow({ submitted_at: "2026-05-10T00:00:00Z", status: "resolved" }),
     ];
 
-    const result = issueRangeStats(rows, range, getDate, slaHours);
+    const result = issueRangeStats(rows, range, getDate);
 
     expect(result.openBacklog).toBe(2);
   });
@@ -937,7 +907,7 @@ describe("issueRangeStats", () => {
       buildIncidentRow({ submitted_at: "2026-05-10T00:00:00Z", status: "resolved" }),
     ];
 
-    const result = issueRangeStats(rows, range, getDate, slaHours, now);
+    const result = issueRangeStats(rows, range, getDate, now);
 
     expect(result.openBacklog).toBe(2);
   });
@@ -952,7 +922,7 @@ describe("issueRangeStats", () => {
     it("a report at exactly its due time is past due, not at risk", () => {
       const rows = [buildIncidentRow({ status: "open", sla_due_at: "2026-05-20T00:00:00Z", sla_at_risk: false })];
 
-      const result = issueRangeStats(rows, range, getDate, slaHours, now);
+      const result = issueRangeStats(rows, range, getDate, now);
 
       expect(result.backlogPastDue).toBe(1);
       expect(result.backlogAtRisk).toBe(0);
@@ -961,7 +931,7 @@ describe("issueRangeStats", () => {
     it("a report the view flagged at risk whose due time has since passed counts once, as past due", () => {
       const rows = [buildIncidentRow({ status: "in_progress", sla_due_at: "2026-05-19T23:59:59Z", sla_at_risk: true })];
 
-      const result = issueRangeStats(rows, range, getDate, slaHours, now);
+      const result = issueRangeStats(rows, range, getDate, now);
 
       expect(result.backlogPastDue).toBe(1);
       expect(result.backlogAtRisk).toBe(0);
@@ -970,7 +940,7 @@ describe("issueRangeStats", () => {
     it("a report flagged at risk a moment before its due time is at risk", () => {
       const rows = [buildIncidentRow({ status: "in_pool", sla_due_at: "2026-05-20T00:00:01Z", sla_at_risk: true })];
 
-      const result = issueRangeStats(rows, range, getDate, slaHours, now);
+      const result = issueRangeStats(rows, range, getDate, now);
 
       expect(result.backlogPastDue).toBe(0);
       expect(result.backlogAtRisk).toBe(1);
@@ -988,9 +958,57 @@ describe("issueRangeStats", () => {
       buildIncidentRow({ submitted_at: "2026-05-13T00:00:00Z", time_to_triage_hours: null }),
     ];
 
-    const result = issueRangeStats(rows, range, getDate, slaHours);
+    const result = issueRangeStats(rows, range, getDate);
 
     expect(result.avgTimeToTriageDays).toBe(6 / 24);
+  });
+});
+
+// The Service backlog's Yellow Card and booking halves are the Staff
+// Portal's own Backlog, so both Portals give the same number (#133).
+describe("inServiceBacklog", () => {
+  // Every status Staff knows: its label maps are exhaustive Records.
+  const yellowCardStatuses = Object.keys(YELLOW_CARD_STATUS_LABELS) as YellowCardRow["status"][];
+  const bookingStatuses = Object.keys(BOOKING_STATUS_LABELS) as BookingRow["status"][];
+
+  it("keeps a Yellow Card application exactly when the Staff Portal awaits its review", () => {
+    const rows = yellowCardStatuses.map((status, i) => buildYellowCardRow({ id: `app-${i}`, status }));
+    const kept = inServiceBacklog(rows, "yellowCard").map((row) => row.status);
+
+    expect(kept.sort()).toEqual([...REVIEWABLE_STATUSES].sort());
+  });
+
+  it("keeps a booking exactly when the Staff Portal says it needs action", () => {
+    const rows = bookingStatuses.map((status, i) => buildBookingRow({ id: `booking-${i}`, status }));
+    const kept = inServiceBacklog(rows, "bookings").map((row) => row.status);
+
+    expect(kept.sort()).toEqual([...NEEDS_ACTION_STATUSES].sort());
+  });
+});
+
+// SLA Reports' Past due now and the Incident Reports past-due table read the
+// open reports' deadlines directly, not through issueRangeStats (#127, #133).
+describe("incidentBacklogDeadlines and incidentPastDueRows", () => {
+  const now = new Date("2026-05-20T00:00:00Z");
+  const rows = [
+    // The view flagged it at risk when the page fetched; its due time has
+    // passed since, so it counts once, as past due.
+    buildIncidentRow({ id: "inc-1", status: "in_progress", sla_due_at: "2026-05-19T23:59:59Z", sla_at_risk: true }),
+    buildIncidentRow({ id: "inc-2", status: "in_pool", sla_due_at: "2026-05-20T06:00:00Z", sla_at_risk: true }),
+    buildIncidentRow({ id: "inc-3", status: "open", sla_due_at: "2026-05-25T00:00:00Z", sla_at_risk: false }),
+    buildIncidentRow({ id: "inc-4", status: "open", sla_due_at: "2026-05-20T00:00:00Z", sla_at_risk: false }),
+    // Not in the backlog: finished, however late.
+    buildIncidentRow({ id: "inc-5", status: "resolved", sla_due_at: "2026-05-01T00:00:00Z", sla_at_risk: true }),
+    // No due time, so no clock: neither past due nor at risk.
+    buildIncidentRow({ id: "inc-6", status: "open", sla_due_at: null, sla_at_risk: null }),
+  ];
+
+  it("counts a report whose due time passed after the fetch as past due, never also at risk", () => {
+    expect(incidentBacklogDeadlines(rows, now)).toEqual({ pastDue: 2, atRisk: 1 });
+  });
+
+  it("lists exactly the reports the past-due count counts", () => {
+    expect(incidentPastDueRows(rows, now).map((row) => row.id)).toEqual(["inc-1", "inc-4"]);
   });
 });
 

@@ -9,6 +9,7 @@ import { catalogService, type CatalogOption } from '@/portals/citizen/lib/supaba
 import { authService, MIN_ACCOUNT_AGE_YEARS } from '@/portals/citizen/features/auth/lib/auth';
 import { validatePassword, PASSWORD_RULES_TEXT } from '@/shared/auth/password-policy';
 import { LIMITS, birthDateError } from '@/portals/citizen/lib/validation';
+import { occupationField } from '@/portals/citizen/features/auth/lib/occupation-field';
 
 /**
  * The layout mounts this for the life of the page, so it holds only what
@@ -66,8 +67,9 @@ function AuthForm({ barangays }: { barangays: CatalogOption[] }) {
   const [barangay, setBarangay] = useState('');
   const [street, setStreet] = useState('');
   const [houseNo, setHouseNo] = useState('');
-  const [workingInLucena, setWorkingInLucena] = useState('yes');
+  const [worksInLucena, setWorksInLucena] = useState(true);
   const [occupation, setOccupation] = useState('');
+  const occupationBox = occupationField(worksInLucena, occupation);
   const [agreeTerms, setAgreeTerms] = useState(false);
 
 
@@ -108,8 +110,7 @@ function AuthForm({ barangays }: { barangays: CatalogOption[] }) {
           mobile,
           barangayCode: barangay,
           street, houseNo,
-          occupation: workingInLucena === 'yes' ? occupation : '',
-          worksInLucena: workingInLucena === 'yes',
+          ...occupationBox.submit,
           agreedToTerms: agreeTerms,
         });
         if (outcome === 'confirm-email') setSignupSubmittedEmail(email);
@@ -266,8 +267,10 @@ function AuthForm({ barangays }: { barangays: CatalogOption[] }) {
       <ModalShell labelledBy={headingId} onClose={closeAuthModal} panelClassName={modalClass} panelStyle={{ padding: 40, position: 'relative' }}>
         <ModalCloseButton onClose={closeAuthModal} />
         <h2 id={headingId} className="text-[28px] font-bold text-lucena-blue" style={{ marginBottom: 24 }}>Check Your Email</h2>
+        {/* The {' '} after </strong> is needed: Next's SWC drops a plain space there because the text
+            after it spans several lines and contains &apos; (#134). Don't tidy it away. */}
         <p className="text-sm text-dark-gray leading-relaxed" style={{ marginBottom: 24 }}>
-          If <strong>{signupSubmittedEmail}</strong> can be used for a new account, we&apos;ve sent a confirmation link to it.
+          If <strong>{signupSubmittedEmail}</strong>{' '}can be used for a new account, we&apos;ve sent a confirmation link to it.
           Open it to confirm your email address, then sign in.
           Already have an account? Sign in, or reset your password.
         </p>
@@ -422,10 +425,10 @@ function AuthForm({ barangays }: { barangays: CatalogOption[] }) {
                 <fieldset style={{ border: 0, padding: 0, margin: 0, minInlineSize: 0 }}>
                 <legend className={signupLabelClass} style={{ ...signupLabelStyle, padding: 0 }}>Are you working in Lucena City? <span className="text-lucena-error ml-0.5">*</span></legend>
                 <div className="flex items-center" style={{ gap: 20, paddingTop: 9, paddingBottom: 9 }}>
-                  {['yes','no'].map(v => (
-                    <label key={v} className="flex items-center text-sm text-text-dark cursor-pointer" style={{ gap: 6 }}>
-                      <input type="radio" name="workingInLucena" value={v} checked={workingInLucena === v} onChange={() => setWorkingInLucena(v)} className="accent-lucena-blue w-[15px] h-[15px]" />
-                      {v === 'yes' ? 'Yes' : 'No'}
+                  {[true, false].map(works => (
+                    <label key={String(works)} className="flex items-center text-sm text-text-dark cursor-pointer" style={{ gap: 6 }}>
+                      <input type="radio" name="workingInLucena" value={works ? 'yes' : 'no'} checked={worksInLucena === works} onChange={() => setWorksInLucena(works)} className="accent-lucena-blue w-[15px] h-[15px]" />
+                      {works ? 'Yes' : 'No'}
                     </label>
                   ))}
                 </div>
@@ -433,7 +436,7 @@ function AuthForm({ barangays }: { barangays: CatalogOption[] }) {
               </div>
               <div>
                 <label htmlFor={fid('occupation')} className={signupLabelClass} style={signupLabelStyle}>Occupation <span className="font-normal text-dark-gray text-[11px]">(Optional)</span></label>
-                <input id={fid('occupation')} name="occupation" autoComplete="organization-title" className={signupInputClass} value={occupation} onChange={(e) => setOccupation(e.target.value)} placeholder="Enter occupation" disabled={workingInLucena === 'no'} style={{ ...signupInputStyle, background: workingInLucena === 'no' ? '#F0F0F0' : undefined, color: workingInLucena === 'no' ? '#767676' : undefined }} maxLength={LIMITS.shortText} />
+                <input id={fid('occupation')} name="occupation" autoComplete="organization-title" className={signupInputClass} value={occupationBox.value} onChange={(e) => setOccupation(e.target.value)} placeholder="Enter occupation" disabled={occupationBox.disabled} style={{ ...signupInputStyle, background: occupationBox.disabled ? '#F0F0F0' : undefined, color: occupationBox.disabled ? '#767676' : undefined }} maxLength={LIMITS.shortText} />
               </div>
             </div>
           </div>

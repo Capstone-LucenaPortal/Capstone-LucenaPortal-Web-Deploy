@@ -6,6 +6,7 @@ import {
   resolvedHeadline,
   slaMarginMs,
   timeOfDay,
+  timeOrDate,
 } from "@/portals/responder/features/incidents/lib/work";
 import { anEvent, anIncident, aPhoto } from "@/portals/responder/features/incidents/lib/fixtures";
 
@@ -32,6 +33,61 @@ describe("timeOfDay", () => {
     expect(timeOfDay("2026-07-28T14:05:00+08:00")).toBe("2:05 PM");
     expect(timeOfDay("2026-07-28T00:07:00+08:00")).toBe("12:07 AM");
     expect(timeOfDay("2026-07-28T12:00:00+08:00")).toBe("12:00 PM");
+  });
+});
+
+describe("timeOrDate", () => {
+  // 9 AM on 15 Nov in Manila: the instant the page read off the clock.
+  const NOW = new Date("2026-11-15T09:00:00+08:00");
+
+  it("prints the time only for an entry from today", () => {
+    expect(timeOrDate("2026-11-15T00:07:00+08:00", NOW)).toBe("12:07 AM");
+  });
+
+  it("adds the month and day for an entry from an earlier day this year", () => {
+    expect(timeOrDate("2026-10-25T00:59:00+08:00", NOW)).toBe(
+      "Oct 25, 12:59 AM",
+    );
+  });
+
+  it("splits days at Manila midnight, not at UTC's", () => {
+    // 00:30 on 15 Nov in Manila, though still 14 Nov in UTC.
+    expect(timeOrDate("2026-11-14T16:30:00Z", NOW)).toBe("12:30 AM");
+    // 11:59 PM on 14 Nov in Manila.
+    expect(timeOrDate("2026-11-14T15:59:00Z", NOW)).toBe("Nov 14, 11:59 PM");
+  });
+
+  it("splits days at Manila midnight for `now` too", () => {
+    // 00:10 on 16 Nov in Manila is 15 Nov in UTC; a 15 Nov entry is yesterday.
+    const justAfterMidnight = new Date("2026-11-15T16:10:00Z");
+    expect(timeOrDate("2026-11-15T20:00:00+08:00", justAfterMidnight)).toBe(
+      "Nov 15, 8:00 PM",
+    );
+  });
+
+  it("adds the year for an entry from another year", () => {
+    expect(timeOrDate("2025-12-31T23:00:00+08:00", NOW)).toBe(
+      "Dec 31, 2025, 11:00 PM",
+    );
+  });
+
+  it("splits years at Manila's New Year, not UTC's", () => {
+    // 1 Jan 2027 00:30 in Manila is still 2026 in UTC.
+    const newYear = new Date("2026-12-31T16:30:00Z");
+    expect(timeOrDate("2026-12-31T23:00:00+08:00", newYear)).toBe(
+      "Dec 31, 2026, 11:00 PM",
+    );
+  });
+
+  it("prints plain ASCII only, so no U+202F before AM/PM", () => {
+    const outputs = [
+      timeOrDate("2026-11-15T00:07:00+08:00", NOW),
+      timeOrDate("2026-10-25T00:59:00+08:00", NOW),
+      timeOrDate("2025-12-31T23:00:00+08:00", NOW),
+    ];
+    for (const output of outputs) {
+      expect(output).toMatch(/^[\x20-\x7e]+$/);
+    }
   });
 });
 
@@ -100,6 +156,8 @@ describe("buildTimeline", () => {
    * so nothing is invented and this is the same thread the Staff portal reads.
    */
   const at = (time: string) => `2026-07-28T${time}:00+08:00`;
+  // Later the same Manila day, so every entry reads as today's.
+  const NOW = new Date(at("18:00"));
 
   const events = [
     anEvent({ event_type: "claimed", actor_name: "Juan", created_at: at("09:00") }),
@@ -122,7 +180,7 @@ describe("buildTimeline", () => {
   ];
 
   it("renders one entry per event, in the order the query returned them", () => {
-    expect(buildTimeline(events).map((e) => e.title)).toEqual([
+    expect(buildTimeline(events, NOW).map((e) => e.title)).toEqual([
       "Claimed",
       "En route",
       "Traffic on Quezon Ave",
@@ -132,14 +190,36 @@ describe("buildTimeline", () => {
 
   it("names the time and one accountable person on every entry", () => {
     // PRD §5 — the audit trail always names someone.
-    for (const entry of buildTimeline(events)) {
+    for (const entry of buildTimeline(events, NOW)) {
       expect(entry.meta).toContain("Juan");
     }
-    expect(buildTimeline(events)[0].meta).toBe("9:00 AM · Juan");
+    expect(buildTimeline(events, NOW)[0].meta).toBe("9:00 AM · Juan");
+  });
+
+  it("dates an entry from an earlier day and leaves today's at the time", () => {
+    // Issue #139: a claim from three weeks ago read "12:59 AM", like tonight's.
+    const [old, today] = buildTimeline(
+      [
+        anEvent({
+          event_type: "claimed",
+          actor_name: "Juan",
+          created_at: "2026-07-05T00:59:00+08:00",
+        }),
+        anEvent({
+          event_type: "released",
+          actor_name: "Juan",
+          created_at: at("09:00"),
+        }),
+      ],
+      NOW,
+    );
+
+    expect(old.meta).toBe("Jul 5, 12:59 AM · Juan");
+    expect(today.meta).toBe("9:00 AM · Juan");
   });
 
   it("renders a note's own text as its title and labels it in the meta", () => {
-    const note = buildTimeline(events).find(
+    const note = buildTimeline(events, NOW).find(
       (e) => e.title === "Traffic on Quezon Ave",
     )!;
 
@@ -156,7 +236,7 @@ describe("buildTimeline", () => {
         actor_name: "Juan Dela Cruz",
         created_at: at("11:00"),
       }),
-    ]);
+    ], NOW);
 
     expect(entry.title).toBe("Returned to the pool by a supervisor");
     expect(entry.meta).toContain("Juan Dela Cruz");
@@ -175,7 +255,7 @@ describe("buildTimeline", () => {
         note,
         created_at: at("11:00"),
       }),
-    ]);
+    ], NOW);
 
     expect(entry.title).toBe("Returned to the pool");
     expect(entry.meta).toContain("System");
@@ -187,7 +267,7 @@ describe("buildTimeline", () => {
       anEvent({ event_type: "submitted", actor_name: "Maria" }),
       anEvent({ event_type: "verified", actor_name: "Staff" }),
       anEvent({ event_type: "routed", actor_name: "Staff" }),
-    ]).map((e) => e.title);
+    ], NOW).map((e) => e.title);
 
     expect(titles).toEqual([
       "Reported by the citizen",
@@ -202,17 +282,17 @@ describe("buildTimeline", () => {
     const titles = buildTimeline([
       anEvent({ event_type: "photo_added", actor_role: "citizen" }),
       anEvent({ event_type: "photo_added", actor_role: "responder" }),
-    ]).map((e) => e.title);
+    ], NOW).map((e) => e.title);
 
     expect(titles).toEqual(["Photo added by the citizen", "After photo added"]);
   });
 
   it("is empty on a ticket with no events rather than inventing one", () => {
-    expect(buildTimeline([])).toHaveLength(0);
+    expect(buildTimeline([], NOW)).toHaveLength(0);
   });
 
   it("drops an event with no timestamp instead of rendering an Invalid Date", () => {
-    expect(buildTimeline([anEvent({ created_at: null })])).toHaveLength(0);
+    expect(buildTimeline([anEvent({ created_at: null })], NOW)).toHaveLength(0);
   });
 });
 

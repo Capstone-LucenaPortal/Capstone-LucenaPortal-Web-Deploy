@@ -44,6 +44,27 @@ export async function rows<T>(query: PromiseLike<Result<T[]>>): Promise<T[]> {
 }
 
 /**
+ * A list read sent with `{ count: "exact" }`, usually one `.range()` of a
+ * longer list: its rows, and how many rows match in all.
+ */
+export async function countedRows<T>(
+  query: PromiseLike<Result<T[]> & { count: number | null }>,
+): Promise<{ rows: T[]; count: number }> {
+  const { data, error, count } = await query;
+  if (error) throw toRpcError(error);
+  return { rows: data ?? [], count: count ?? 0 };
+}
+
+/** A count-only read, sent with `{ count: "exact", head: true }`. */
+export async function rowCount(
+  query: PromiseLike<{ error: DbErrorLike | null; count: number | null }>,
+): Promise<number> {
+  const { error, count } = await query;
+  if (error) throw toRpcError(error);
+  return count ?? 0;
+}
+
+/**
  * A list read that may pass PostgREST's 1,000-row cap, where `rows` would stop
  * at the cap without saying so. Every page or an error, never the pages so far.
  *

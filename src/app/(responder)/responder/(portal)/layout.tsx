@@ -12,8 +12,8 @@ import { getCurrentResponder } from "@/portals/responder/features/auth/lib/sessi
 import {
   getHeldTicket,
   getPool,
-  getUnreadCount,
 } from "@/portals/responder/features/incidents/lib/data";
+import { getUnreadCount } from "@/portals/responder/features/incidents/lib/inbox";
 
 /**
  * The authenticated shell. The request guard's role check has already turned

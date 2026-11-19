@@ -107,6 +107,35 @@ export function timeOfDay(iso: string): string {
   return `${hours12}:${minutes} ${hours24 < 12 ? "AM" : "PM"}`;
 }
 
+const MONTHS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+] as const;
+
+/**
+ * `timeOfDay` for today's entries, with the date in front of older ones (#139):
+ * "12:59 AM", "Oct 25, 12:59 AM", "Dec 31, 2025, 11:00 PM". Days and years
+ * split at Manila midnight, with the same fixed offset and no `Intl`, for the
+ * same reasons. `now` comes in from the page, which reads the clock once.
+ */
+export function timeOrDate(iso: string, now: Date): string {
+  const time = timeOfDay(iso);
+  const local = new Date(Date.parse(iso) + MANILA_OFFSET_MS);
+  const nowLocal = new Date(now.getTime() + MANILA_OFFSET_MS);
+  const year = local.getUTCFullYear();
+  const dayLabel = `${MONTHS[local.getUTCMonth()]} ${local.getUTCDate()}`;
+
+  if (year !== nowLocal.getUTCFullYear()) return `${dayLabel}, ${year}, ${time}`;
+  if (
+    local.getUTCMonth() === nowLocal.getUTCMonth() &&
+    local.getUTCDate() === nowLocal.getUTCDate()
+  ) {
+    return time;
+  }
+
+  return `${dayLabel}, ${time}`;
+}
+
 /**
  * Every event the shared timeline can carry, not only the ones this app writes.
  * A responder sees the citizen's submission and staff's routing on the same
@@ -169,8 +198,14 @@ function eventLabel(event: IncidentEvent): string {
  * Ordered by the query (created_at ascending). Chronological, oldest first: the
  * screen above it is a forward narrative ("Progress · tap as you go") and the
  * connector line reads as the job proceeding, not as a feed.
+ *
+ * An entry from an earlier Manila day carries its date (#139), so `now` is the
+ * instant the page read off the clock.
  */
-export function buildTimeline(events: IncidentEvent[]): TimelineEntry[] {
+export function buildTimeline(
+  events: IncidentEvent[],
+  now: Date,
+): TimelineEntry[] {
   return events
     .filter((event) => event.created_at !== null)
     .map((event) => {
@@ -186,7 +221,7 @@ export function buildTimeline(events: IncidentEvent[]): TimelineEntry[] {
         title: isNote ? event.note! : label,
         // PRD §5: the audit trail always names one accountable person.
         meta: [
-          timeOfDay(at),
+          timeOrDate(at, now),
           event.actor_name,
           isNote ? "Note" : (!isNote && event.note) || null,
         ]

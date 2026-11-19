@@ -1,11 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { authService, RESET_LINK_UNUSABLE_MESSAGE } from '@/portals/citizen/features/auth/lib/auth';
 import { validatePassword, PASSWORD_RULES_TEXT } from '@/shared/auth/password-policy';
 import { useAuth } from '@/portals/citizen/features/auth/hooks/use-auth';
-import { PROFILE_TAB_SECURITY } from '@/portals/citizen/features/profile/lib/tabs';
+import { useResetPasswordState } from '@/portals/citizen/features/auth/hooks/use-reset-password-state';
+import { useCancelPasswordReset } from '@/portals/citizen/features/auth/hooks/use-cancel-password-reset';
+import { usePasswordUpdateInFlight, useTrackPasswordUpdate } from '@/portals/citizen/features/auth/hooks/use-password-update-in-flight';
+import { PROFILE_TAB_SECURITY, profileTabHref } from '@/portals/citizen/features/profile/lib/tabs';
 
 const inputClass = 'w-full bg-white border border-[#CCCCCC] rounded text-[15px] text-text-dark font-sans transition-all focus:outline-none focus:border-lucena-blue focus:shadow-[0_0_0_3px_rgba(0,61,165,0.1)]';
 const labelClass = 'block text-xs font-semibold text-[#666666] uppercase tracking-[0.03em]';
@@ -13,18 +16,17 @@ const toggleBtnStyle = { position: 'absolute' as const, right: 12, top: '50%', t
 
 export default function ResetPasswordPage() {
   const router = useRouter();
-  const { user, loading, isPasswordRecovery, logout, openAuthModal } = useAuth();
+  const { logout, openAuthModal } = useAuth();
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [showPasswords, setShowPasswords] = useState({ new: false, confirm: false });
-  const [done, setDone] = useState(false);
+  const [passwordUpdated, setPasswordUpdated] = useState(false);
   const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
-  // Read once, on the first render: supabase-js strips `code` from the address
-  // as soon as it has exchanged it, which is before PASSWORD_RECOVERY fires.
-  const [openedFromLink] = useState(
-    () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('code'),
-  );
+  // Shared with the reset-mode navbar, whose "Sign out" is off while it's on.
+  const saving = usePasswordUpdateInFlight();
+  const trackUpdate = useTrackPasswordUpdate();
+  const state = useResetPasswordState(passwordUpdated);
+  const cancelReset = useCancelPasswordReset();
 
   const submit = async () => {
     if (saving) return;
@@ -32,20 +34,19 @@ export default function ResetPasswordPage() {
     const policyError = validatePassword(password);
     if (policyError) { setError(policyError); return; }
     if (password !== confirm) { setError('Passwords do not match.'); return; }
-    setSaving(true);
-    try {
-      await authService.updatePassword(password); // uses the recovery session from the email link
-      // That recovery session's only job was letting them set a new password.
-      // End it here rather than silently carrying them into a signed-in state
-      // — they must prove the new password by signing in with it, same as
-      // completing a reset anywhere else.
-      await logout();
-      setDone(true);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not update the password.');
-    } finally {
-      setSaving(false);
-    }
+    await trackUpdate(async () => {
+      try {
+        await authService.updatePassword(password); // uses the recovery session from the email link
+        // That recovery session's only job was letting them set a new password.
+        // End it here rather than silently carrying them into a signed-in state
+        // — they must prove the new password by signing in with it, same as
+        // completing a reset anywhere else.
+        await logout();
+        setPasswordUpdated(true);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not update the password.');
+      }
+    });
   };
 
   const goSignIn = () => {
@@ -53,31 +54,17 @@ export default function ResetPasswordPage() {
     router.push('/');
   };
 
-  const goSecurity = () => router.push(`/profile?tab=${PROFILE_TAB_SECURITY}`);
+  const goSecurity = () => router.push(profileTabHref(PROFILE_TAB_SECURITY));
 
   const requestNewLink = () => {
     openAuthModal('forgot');
     router.push('/');
   };
 
-  // The recovery link establishes its session asynchronously while auth
-  // bootstraps; until then there is nothing to decide yet.
-  const linkUnusable = !loading && !user;
-  // Only the reset link's recovery session may set a password without the
-  // current one. Any other signed-in visit (issue #16: typing the address on
-  // an unattended, signed-in browser) is a password change, and that belongs
-  // to Profile, which asks for the current password first. A page opened
-  // from the link is not redirected (see `openedFromLink`).
-  const signedInWithoutRecovery = !loading && !!user && !isPasswordRecovery;
-
-  useEffect(() => {
-    if (signedInWithoutRecovery && !openedFromLink) router.replace(`/profile?tab=${PROFILE_TAB_SECURITY}`);
-  }, [signedInWithoutRecovery, openedFromLink, router]);
-
   return (
     <section style={{ padding: '64px clamp(20px, 5vw, 48px) 100px', maxWidth: 460, margin: '0 auto' }}>
       <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ padding: 32 }}>
-        {done ? (
+        {state === 'done' ? (
           <>
             <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#D1FAE5', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#047857" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -96,7 +83,7 @@ export default function ResetPasswordPage() {
               Sign In
             </button>
           </>
-        ) : loading ? null : signedInWithoutRecovery ? (
+        ) : state === 'waiting' || state === 'cancelling' ? null : state === 'signedInWithoutRecovery' ? (
           <>
             <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#E6EDF9', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#003DA5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -116,7 +103,7 @@ export default function ResetPasswordPage() {
               Go to Security &amp; Password
             </button>
           </>
-        ) : linkUnusable ? (
+        ) : state === 'linkUnusable' ? (
           <>
             <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#FDECEA', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C62828" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -207,6 +194,15 @@ export default function ResetPasswordPage() {
               style={{ padding: '12px 28px', background: '#003DA5', opacity: saving ? 0.7 : 1, width: '100%' }}
             >
               {saving ? 'Updating…' : 'Update Password'}
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={cancelReset}
+              className="inline-flex items-center justify-center bg-white text-lucena-blue border border-[#CCCCCC] rounded text-[15px] font-semibold cursor-pointer transition-all hover:bg-[#F2F5FB] disabled:cursor-not-allowed"
+              style={{ padding: '12px 28px', marginTop: 12, opacity: saving ? 0.7 : 1, width: '100%' }}
+            >
+              Cancel and sign out
             </button>
           </>
         )}

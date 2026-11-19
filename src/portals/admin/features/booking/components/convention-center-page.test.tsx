@@ -924,4 +924,59 @@ describe("ConventionCenterPage", () => {
       expect(screen.queryByText(/^Updated /)).not.toBeInTheDocument();
     });
   });
+
+  // #146 (the #141 rule): the CSV is built from the loaded rows, which are
+  // empty before a load succeeds, so an export then would be a header-only
+  // file that looks like a real report. The button is off until the data is
+  // ready.
+  describe("Export is off until the bookings have loaded", () => {
+    const exportButton = () => screen.getByRole("button", { name: "↓ Export" });
+
+    it("is disabled while the bookings are loading, and a click downloads nothing", async () => {
+      const user = userEvent.setup();
+      mockListBookings.mockReturnValue(new Promise<BookingRow[]>(() => {}));
+
+      render(<ConventionCenterPage />);
+
+      expect(exportButton()).toBeDisabled();
+      await user.click(exportButton());
+      expect(mockDownloadCsv).not.toHaveBeenCalled();
+    });
+
+    it("is enabled once a load succeeds, even with no bookings in range", async () => {
+      mockListBookings.mockResolvedValue([]);
+
+      render(<ConventionCenterPage />);
+
+      await waitFor(() => expect(exportButton()).toBeEnabled());
+    });
+
+    it("is disabled after a failed load, and stays disabled for the whole of a Retry until it succeeds", async () => {
+      // Retry only shows on the error state, so the page never reloads over
+      // good data; the case to pin is a Retry with its request held open.
+      const user = userEvent.setup();
+      mockListBookings.mockRejectedValueOnce({ kind: "unknown", message: "boom" });
+      let resolveRetry: (rows: BookingRow[]) => void = () => {};
+      mockListBookings.mockReturnValueOnce(
+        new Promise<BookingRow[]>((resolve) => {
+          resolveRetry = resolve;
+        })
+      );
+
+      render(<ConventionCenterPage />);
+      await screen.findByText("Unable to load bookings: boom");
+
+      expect(exportButton()).toBeDisabled();
+
+      await user.click(screen.getByRole("button", { name: "Retry" }));
+
+      expect(screen.getByRole("status")).toHaveTextContent("Loading bookings…");
+      expect(exportButton()).toBeDisabled();
+
+      resolveRetry([buildRow({ id: "b-1", reference_number: "CC-2026-000001" })]);
+      await screen.findByText("CC-2026-000001");
+
+      expect(exportButton()).toBeEnabled();
+    });
+  });
 });

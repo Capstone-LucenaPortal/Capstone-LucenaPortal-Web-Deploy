@@ -1,14 +1,13 @@
 // src/portals/admin/features/incidents/components/issue-reports-page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import {
   barangayIncidentRows,
   categoryMix,
   formatDuration,
   formatRate,
   incidentPastDueRows,
-  incidentSlaHours,
   issueDateAccessor,
   issueRangeStats,
   recentMonthlyCounts,
@@ -25,15 +24,17 @@ import {
 import { listIncidents, IncidentRow } from "@/portals/admin/features/incidents/lib/incidents";
 import { formatTargetGap, incidentMet, incidentsResolvedOnTime } from "@/portals/admin/features/sla/lib/sla";
 import { INCIDENT_REPORTS_PATH } from "@/portals/admin/features/sla/lib/sla-links";
-import { useSlaRowFilter } from "@/portals/admin/features/sla/hooks/use-sla-row-filter";
+import {
+  NO_SLA_ROW_FILTER,
+  useSlaRowFilter,
+  type SlaRowFilterState,
+} from "@/portals/admin/features/sla/hooks/use-sla-row-filter";
 import { SlaRowFilterBanner } from "@/portals/admin/features/sla/components/sla-row-filter-banner";
 import {
   listDepartments,
   DepartmentRow,
   listIncidentCategories,
   IncidentCategoryRow,
-  getIncidentConfig,
-  IncidentConfigRow,
 } from "@/portals/admin/lib/supabase/catalogs";
 import type { PortalError } from "@/portals/admin/lib/supabase/errors";
 import { Tabs } from "@/portals/admin/components/ui/tabs";
@@ -134,9 +135,28 @@ function filterRows(rows: IncidentRow[], tab: (typeof STATUS_TABS)[number]["valu
 }
 
 export function IssueReportsPage() {
+  // Only the part that reads the address waits for it. While a build
+  // prerenders the page there is no address, so the page goes out as it
+  // first loads, hero and skeletons, unfiltered; the browser then renders it
+  // from the address (#133).
+  return (
+    <Suspense fallback={<IssueReportsView sla={NO_SLA_ROW_FILTER} />}>
+      <IssueReportsAtAddress />
+    </Suspense>
+  );
+}
+
+function IssueReportsAtAddress() {
   // Arriving from SLA Reports' Finished late or Past due now (#127): the link
   // seeds the range and date type, and narrows the Recent reports table.
-  const { link, filter: slaFilter, clear: clearSlaFilter } = useSlaRowFilter(INCIDENT_REPORTS_PATH, BASIS_VALUES);
+  // The body starts afresh on each address it lands on, so the filter always
+  // matches the address (#131).
+  const sla = useSlaRowFilter(INCIDENT_REPORTS_PATH, BASIS_VALUES);
+  return <IssueReportsView key={sla.arrival} sla={sla} />;
+}
+
+function IssueReportsView({ sla }: { sla: SlaRowFilterState<IssueDateBasis> }) {
+  const { link, filter: slaFilter, clear: clearSlaFilter } = sla;
   const [preset, setPreset] = useState<DateFilterPreset>(link?.preset ?? "Month");
   // Seeded from the current Manila month rather than from literals written
   // the day this page was authored — see the yellow-card page for the same
@@ -153,10 +173,6 @@ export function IssueReportsPage() {
   const [error, setError] = useState<PortalError | null>(null);
   const [departments, setDepartments] = useState<DepartmentRow[]>([]);
   const [categories, setCategories] = useState<IncidentCategoryRow[]>([]);
-  // null means "not read" — NOT "no SLA". Nothing on the page reads the
-  // targets for a figure any more: Open Backlog's past-due note uses each
-  // report's own due time (l112).
-  const [incidentConfig, setIncidentConfig] = useState<IncidentConfigRow | null>(null);
   // Set only inside the fetch effect's success path below, never on every
   // render — this is what lets the "Updated {time} (Asia/Manila)" stamp near
   // the title show only after data has actually loaded at least once, not
@@ -233,21 +249,6 @@ export function IssueReportsPage() {
         // Swallowed on purpose — see comment above.
       });
 
-    // Same "display nicety, not a load gate" reasoning again: a caller who
-    // cannot read public_incident_config should still see the report list.
-    // As of Task 1.3, though, this fetch's result has no effect on anything
-    // rendered right now (see the comment on `incidentConfig` and on
-    // `slaHours` below) — it is kept fetched anyway, not removed, for the
-    // same future-revival reason.
-    getIncidentConfig()
-      .then((data) => {
-        if (!active) return;
-        setIncidentConfig(data);
-      })
-      .catch(() => {
-        // Swallowed on purpose — see comment above.
-      });
-
     return () => {
       active = false;
       controller.abort();
@@ -265,14 +266,6 @@ export function IssueReportsPage() {
   function handleRetry() {
     setRetryCount((count) => count + 1);
   }
-
-  // The city's per-level response targets (critical/high/medium/low), read
-  // from public_incident_config rather than hardcoded: Super Staff can change
-  // any of them through save_incident_config, and they differ from each other
-  // by more than an order of magnitude, so no single literal is right for all
-  // four. issueRangeStats no longer reads them (see its doc comment in
-  // src/portals/admin/lib/aggregate.ts).
-  const slaHours = useMemo(() => incidentSlaHours(incidentConfig), [incidentConfig]);
 
   const departmentLabel = useMemo(() => {
     const byCode = new Map(departments.map((dept) => [dept.code, dept.label]));
@@ -306,9 +299,14 @@ export function IssueReportsPage() {
   // (issue #24).
   const getDate = issueDateAccessor(dateBasis);
   const rangeLabel = useMemo(() => formatManilaRangeLabel(dateRange), [dateRange]);
+  // Every past-due figure on the page counts against one moment, the fetch's,
+  // so Open Backlog's past due and the past-due table always agree however
+  // long the page stays open (#131). Before the first load there are no rows,
+  // so the moment doesn't matter.
+  const asOf = lastUpdatedAt ?? undefined;
   const stats = useMemo(
-    () => issueRangeStats(rows, dateRange, getDate, slaHours),
-    [rows, dateRange, getDate, slaHours]
+    () => issueRangeStats(rows, dateRange, getDate, asOf),
+    [rows, dateRange, getDate, asOf]
   );
   // Scored by the rules every page shares (slaCompliance), on the page's
   // date type, so on the filing date it is the Dashboard's incident SLA
@@ -330,10 +328,10 @@ export function IssueReportsPage() {
   // range scored late by the rule SLA Reports counts with (incidentMet). Past
   // due now is the open reports past their due time, whatever the range.
   const tableRows = useMemo(() => {
-    if (slaFilter === "past-due") return filterRows(incidentPastDueRows(rows), activeTab);
+    if (slaFilter === "past-due") return filterRows(incidentPastDueRows(rows, asOf), activeTab);
     if (slaFilter === "late") return filtered.filter((row) => incidentMet(row) === false);
     return filtered;
-  }, [slaFilter, rows, activeTab, filtered]);
+  }, [slaFilter, rows, asOf, activeTab, filtered]);
   const categoryMixSlices = useMemo(() => categoryMix(filtered), [filtered]);
   const barangayRows = useMemo(() => barangayIncidentRows(filtered), [filtered]);
   // Unlike the two panels above, recentMonthlyCounts stays on the raw, unfiltered
@@ -368,12 +366,20 @@ export function IssueReportsPage() {
     };
   }, [barangayRowsWithLabels]);
 
+  // `rows` start empty and only hold real data once a load succeeds, so an
+  // export before then is a header-only CSV that looks like a real report
+  // (#146, the #141 rule). Both tables' Export buttons are disabled on this,
+  // and each handler checks it again as a backstop. An empty range after a
+  // good load is still exportable.
+  const canExport = !isLoading && !error;
+
   // The CSV carries no reporter PII — every column here also appears in the
   // visible table — so it reads the table's own rows directly, SLA Reports'
   // filter included (#127), rather than going through an audited RPC
   // (contrast with Yellow Card's exportApplications, which releases applicant
   // identity and must be audited).
   function handleExportReports() {
+    if (!canExport) return;
     downloadCsv(
       "issue-reports.csv",
       [
@@ -542,12 +548,12 @@ export function IssueReportsPage() {
         />
       </div>
 
-      <BarangayReportsTable rows={barangayRowsWithLabels} insight={hotspotInsight} />
+      <BarangayReportsTable rows={barangayRowsWithLabels} insight={hotspotInsight} canExport={canExport} />
 
       <section className="rounded-none border border-gray-200 bg-white">
         <div className="flex flex-wrap items-center justify-between gap-3 px-6 pt-6">
           <h2 className="text-lg font-semibold text-gray-900">Recent reports</h2>
-          <Button variant="secondary" onClick={handleExportReports}>
+          <Button variant="secondary" onClick={handleExportReports} disabled={!canExport}>
             ↓ Export
           </Button>
         </div>

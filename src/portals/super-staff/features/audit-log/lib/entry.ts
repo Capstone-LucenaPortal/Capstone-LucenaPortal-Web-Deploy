@@ -5,7 +5,7 @@ import type { AuditArea, AuditEntry } from "../types";
  * A row as `super_audit_log` hands it over. Every column is nullable because
  * PostgREST types a definer view that way — it cannot know the view's own
  * guarantees — so the narrowing back to `AuditEntry` happens here, in one
- * place, rather than in each of the three queries that read the view.
+ * place, rather than in each query that reads the view.
  */
 export type AuditRow = {
   id: string | null;

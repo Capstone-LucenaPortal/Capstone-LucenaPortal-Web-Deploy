@@ -12,7 +12,7 @@ import { type DocumentUploadProgress } from '@/portals/citizen/lib/storage/file-
 import type { SubmittedApplication, YellowCardFieldValues } from '@/portals/citizen/features/yellow-card/types';
 import { yellowCardService, YellowCardSubmitError, computeAgeError, liveApplicationNotice, liveNoticeCopy, type LiveApplicationNotice } from '@/portals/citizen/features/yellow-card/lib/yellow-card';
 import { ReceiptLink } from '@/portals/citizen/features/receipts/components/receipt-link';
-import { PROFILE_TAB_YELLOW_CARD } from '@/portals/citizen/features/profile/lib/tabs';
+import { PROFILE_TAB_YELLOW_CARD, profileTabHref } from '@/portals/citizen/features/profile/lib/tabs';
 import { AGENCY_NAME } from '@/portals/citizen/lib/contact-info';
 
 interface FormData extends YellowCardFieldValues {
@@ -261,7 +261,7 @@ function YellowCardContent() {
             </Button>
           )}
           {liveNotice.kind === 'approved' && (
-            <Button variant="primary" onClick={() => router.push(`/profile?tab=${PROFILE_TAB_YELLOW_CARD}`)}>
+            <Button variant="primary" onClick={() => router.push(profileTabHref(PROFILE_TAB_YELLOW_CARD))}>
               View Yellow Card Details
             </Button>
           )}

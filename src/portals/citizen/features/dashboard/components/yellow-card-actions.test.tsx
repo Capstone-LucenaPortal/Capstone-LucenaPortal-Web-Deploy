@@ -1,7 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import YellowCardActions from '@/portals/citizen/features/dashboard/components/yellow-card-actions';
-import type { MyYellowCardApplication } from '@/portals/citizen/features/yellow-card/types';
+import {
+  YELLOW_CARD_APPLICATION_STATUSES,
+  type MyYellowCardApplication,
+  type YellowCardApplicationStatus,
+} from '@/portals/citizen/features/yellow-card/types';
 
 const application = (status: string): MyYellowCardApplication => ({
   id: 'yc-1',
@@ -33,16 +37,39 @@ const application = (status: string): MyYellowCardApplication => ({
   document_count: 1,
 });
 
+// Typed against the union, so a misspelt status here fails the typecheck
+// instead of silently testing a status that does not exist.
+const WITHDRAWABLE: readonly YellowCardApplicationStatus[] = ['pending', 'revision_requested'];
+const NOT_WITHDRAWABLE: readonly YellowCardApplicationStatus[] = [
+  'resubmitted',
+  'approved',
+  'rejected',
+  'withdrawn',
+];
+
 describe('YellowCardActions', () => {
-  it.each(['pending', 'revision_requested'])('offers withdrawal on a %s application', (status) => {
+  // A status added to the union must be sorted into one list or the other, so
+  // it cannot go untested.
+  it('covers every application status exactly once', () => {
+    expect([...WITHDRAWABLE, ...NOT_WITHDRAWABLE].sort()).toEqual([...YELLOW_CARD_APPLICATION_STATUSES].sort());
+  });
+
+  it.each(WITHDRAWABLE)('offers withdrawal on a %s application', (status) => {
     render(<YellowCardActions application={application(status)} onChanged={vi.fn()} />);
     expect(screen.getByRole('button', { name: 'Withdraw application' })).toBeInTheDocument();
   });
 
   // Issue #89: `resubmitted` is live, but the DB refuses to withdraw it, so a
   // button here could only ever end in "can no longer be withdrawn".
-  it.each(['resubmitted', 'approved', 'rejected', 'withdrawn'])('renders nothing on a %s application', (status) => {
+  it.each(NOT_WITHDRAWABLE)('renders nothing on a %s application', (status) => {
     const { container } = render(<YellowCardActions application={application(status)} onChanged={vi.fn()} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  // Issue #109: `status` is a plain string on the row, so a value the frontend
+  // does not know must fall through the guard and render nothing.
+  it('renders nothing on an application with an unknown status', () => {
+    const { container } = render(<YellowCardActions application={application('archived')} onChanged={vi.fn()} />);
     expect(container).toBeEmptyDOMElement();
   });
 });

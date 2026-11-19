@@ -22,9 +22,11 @@ import { MANILA_TIME_ZONE } from "@/shared/dates/manila";
 import { filterByDateRange } from "@/portals/admin/lib/dates";
 import type { BookingRow } from "@/portals/admin/features/booking/lib/bookings";
 import type { IncidentRow } from "@/portals/admin/features/incidents/lib/incidents";
-import type { IncidentConfigRow, VenueRow } from "@/portals/admin/lib/supabase/catalogs";
+import type { VenueRow } from "@/portals/admin/lib/supabase/catalogs";
 import type { ClosureReasonValue } from "@/portals/admin/lib/status-labels";
 import type { YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yellow-card";
+import { REVIEWABLE_STATUSES } from "@/portals/staff/features/yellow-card/lib/status";
+import { NEEDS_ACTION_STATUSES } from "@/portals/staff/features/booking/lib/status";
 import type {
   ConventionDateBasis,
   ConventionRangeStats,
@@ -545,15 +547,17 @@ export function averageTriageDays(rows: IncidentRow[]): number | null {
 // the range (Admin CONTEXT.md; metrics sheet D2). A request whose next move is
 // the resident's is not in it: a Yellow Card in revision, a booking awaiting
 // payment, a resubmission or its organisation document. The Yellow Card and
-// booking sets are the Staff Portal's own Backlog (REVIEWABLE_STATUSES and
-// NEEDS_ACTION_STATUSES in its status.ts files), so both Portals give the same
-// number. A confirmed booking is in it: the office still records the balance.
-// The Dashboard counts all three; Pending Review and Open Backlog count their
-// own service from this same definition (#116).
-const SERVICE_BACKLOG_STATUSES = {
-  yellowCard: new Set(["pending", "resubmitted"]),
+// booking sets ARE the Staff Portal's own Backlog, read from its status.ts
+// files, so both Portals give the same number and a status Staff adds to
+// either set joins this one with no edit here (#133). A confirmed booking is
+// in it: the office still records the balance. The incident set is Admin's
+// own; Staff has no one set for it. The Dashboard counts all three; Pending
+// Review and Open Backlog count their own service from this same definition
+// (#116).
+const SERVICE_BACKLOG_STATUSES: Record<"yellowCard" | "incidents" | "bookings", ReadonlySet<string>> = {
+  yellowCard: new Set(REVIEWABLE_STATUSES),
   incidents: new Set(["open", "in_pool", "in_progress"]),
-  bookings: new Set(["awaiting_tier_review", "awaiting_quote", "payment_verification", "confirmed"]),
+  bookings: new Set(NEEDS_ACTION_STATUSES),
 };
 
 /** The rows of one service that are in the Service backlog. */
@@ -571,17 +575,55 @@ export interface BacklogDeadlines {
   atRisk: number;
 }
 
+// One service's Service backlog, split by deadline in a single pass over it:
+// every figure and table below reads this, so each call filters the backlog
+// once and reads each row's deadline once (#133).
+interface BacklogSplit<T> {
+  rows: T[];
+  pastDue: T[];
+  atRisk: number;
+}
+
+// The database's deadline_state, the Staff queue's own (l80, l112): it needs
+// Working Time, Office Hours and Holidays, so nothing here recomputes it.
+// sla_breached is no use here: a pending row never sets it.
+function splitYellowCardBacklog(rows: YellowCardRow[]): BacklogSplit<YellowCardRow> {
+  const backlog = inServiceBacklog(rows, "yellowCard");
+  const pastDue: YellowCardRow[] = [];
+  let atRisk = 0;
+  for (const row of backlog) {
+    if (row.deadline_state === "overdue") pastDue.push(row);
+    else if (row.deadline_state === "at_risk") atRisk += 1;
+  }
+  return { rows: backlog, pastDue, atRisk };
+}
+
+// Past due once now reaches the report's own due time, which the database
+// stamps when the clock arms (routed and verified), with the target of that
+// moment. A report with no due time has no clock: neither past due nor at
+// risk. At risk is the view's flag (l112, super_metrics' rule), read when the
+// page fetched; a report whose due time has passed since then counts once,
+// as past due.
+function splitIncidentBacklog(rows: IncidentRow[], now: Date): BacklogSplit<IncidentRow> {
+  const backlog = inServiceBacklog(rows, "incidents");
+  const nowMs = now.getTime();
+  const pastDue: IncidentRow[] = [];
+  let atRisk = 0;
+  for (const row of backlog) {
+    if (row.sla_due_at !== null && new Date(row.sla_due_at).getTime() <= nowMs) pastDue.push(row);
+    else if (row.sla_at_risk === true) atRisk += 1;
+  }
+  return { rows: backlog, pastDue, atRisk };
+}
+
 /**
  * Pending Review's "N past due · M at risk" (metrics sheet Y4), and the
  * Yellow Card half of SLA Reports' Past due now (S4). Reads ALL of `rows`,
  * whatever the range: the backlog is right now.
  */
 export function yellowCardBacklogDeadlines(rows: YellowCardRow[]): BacklogDeadlines {
-  const pendingRows = inServiceBacklog(rows, "yellowCard");
-  return {
-    pastDue: yellowCardPastDueRows(rows).length,
-    atRisk: pendingRows.filter((row) => row.deadline_state === "at_risk").length,
-  };
+  const { pastDue, atRisk } = splitYellowCardBacklog(rows);
+  return { pastDue: pastDue.length, atRisk };
 }
 
 /**
@@ -591,10 +633,7 @@ export function yellowCardBacklogDeadlines(rows: YellowCardRow[]): BacklogDeadli
  * `rows`, whatever the range.
  */
 export function yellowCardPastDueRows(rows: YellowCardRow[]): YellowCardRow[] {
-  // The database's deadline_state, the Staff queue's own (l80, l112): it
-  // needs Working Time, Office Hours and Holidays, so nothing here
-  // recomputes it. sla_breached is no use here: a pending row never sets it.
-  return inServiceBacklog(rows, "yellowCard").filter((row) => row.deadline_state === "overdue");
+  return splitYellowCardBacklog(rows).pastDue;
 }
 
 /**
@@ -603,21 +642,8 @@ export function yellowCardPastDueRows(rows: YellowCardRow[]): YellowCardRow[] {
  * whatever the range, against `now`.
  */
 export function incidentBacklogDeadlines(rows: IncidentRow[], now: Date = new Date()): BacklogDeadlines {
-  const openRows = inServiceBacklog(rows, "incidents");
-  // At risk is the view's flag (l112, super_metrics' rule), read when the
-  // page fetched; a report whose due time has passed since then counts once,
-  // as past due. A report with no due time has no clock: neither.
-  return {
-    pastDue: incidentPastDueRows(rows, now).length,
-    atRisk: openRows.filter((row) => row.sla_at_risk === true && !isIncidentPastDue(row, now)).length,
-  };
-}
-
-// Past due once now reaches the report's own due time, which the database
-// stamps when the clock arms (routed and verified), with the target of that
-// moment. A report with no due time has no clock, so it is never past due.
-function isIncidentPastDue(row: IncidentRow, now: Date): boolean {
-  return row.sla_due_at !== null && new Date(row.sla_due_at).getTime() <= now.getTime();
+  const { pastDue, atRisk } = splitIncidentBacklog(rows, now);
+  return { pastDue: pastDue.length, atRisk };
 }
 
 /**
@@ -627,7 +653,7 @@ function isIncidentPastDue(row: IncidentRow, now: Date): boolean {
  * whatever the range, against `now`.
  */
 export function incidentPastDueRows(rows: IncidentRow[], now: Date = new Date()): IncidentRow[] {
-  return inServiceBacklog(rows, "incidents").filter((row) => isIncidentPastDue(row, now));
+  return splitIncidentBacklog(rows, now).pastDue;
 }
 
 /**
@@ -663,8 +689,7 @@ export function yellowCardRangeStats(
 
   const barangaysReached = barangayCoverage(current).length;
 
-  const pendingRows = inServiceBacklog(rows, "yellowCard");
-  const deadlines = yellowCardBacklogDeadlines(rows);
+  const backlog = splitYellowCardBacklog(rows);
 
   return {
     applications: current.length,
@@ -674,9 +699,9 @@ export function yellowCardRangeStats(
     barangaysReached,
     barangaysTotal,
     barangaysWithZero: barangaysTotal === null ? null : Math.max(0, barangaysTotal - barangaysReached),
-    pendingReview: pendingRows.length,
-    pendingPastDue: deadlines.pastDue,
-    pendingAtRisk: deadlines.atRisk,
+    pendingReview: backlog.rows.length,
+    pendingPastDue: backlog.pastDue.length,
+    pendingAtRisk: backlog.atRisk,
   };
 }
 
@@ -718,49 +743,6 @@ function isClosedUnresolved(row: IncidentRow): boolean {
   return row.status === "closed" && row.closure_reason !== null && !CLOSURE_REASON_IS_RESOLUTION[row.closure_reason];
 }
 
-export type IncidentLevel = NonNullable<IncidentRow["incident_level"]>;
-
-/**
- * Response-time targets in hours, keyed by `incident_level`. A level may be
- * absent (see incidentSlaHours below) — absent means "no target on record",
- * never "zero hours".
- */
-export type IncidentSlaHours = Partial<Record<IncidentLevel, number>>;
-
-/**
- * Reshapes a `public_incident_config` row into a per-level lookup.
- *
- * The city sets a DIFFERENT response target for each severity — on this
- * deployment critical/high/medium/low are 4/8/24/72 hours — and Super Staff
- * can change any of them through `save_incident_config`. An earlier version
- * of issueRangeStats measured every incident against one hardcoded 72-hour
- * threshold, which is the LOW-priority figure: a critical incident open for
- * ten hours was already 2.5x past its real 4-hour target and still counted as
- * on time. Since l112, issueRangeStats reads each report's own `sla_due_at`
- * from `admin_incident_analytics` instead, so no count reads these targets.
- *
- * A null config row yields null, not an all-zero map: "we could not read the
- * targets" and "every target is zero hours" are opposite claims, and only one
- * of them is honest when the fetch fails. A level whose column is null is
- * omitted for the same reason.
- */
-export function incidentSlaHours(config: IncidentConfigRow | null): IncidentSlaHours | null {
-  if (!config) return null;
-
-  const byLevel: [IncidentLevel, number | null][] = [
-    ["critical", config.sla_hours_critical],
-    ["high", config.sla_hours_high],
-    ["medium", config.sla_hours_medium],
-    ["low", config.sla_hours_low],
-  ];
-
-  const hours: IncidentSlaHours = {};
-  for (const [level, value] of byLevel) {
-    if (typeof value === "number") hours[level] = value;
-  }
-  return hours;
-}
-
 /**
  * KPI-tile figures for the Incident Reports page, computed from `rows` the
  * page has already fetched via listIncidents(). Mirrors yellowCardRangeStats
@@ -768,10 +750,6 @@ export function incidentSlaHours(config: IncidentConfigRow | null): IncidentSlaH
  * (via `getDate`), while `openBacklog` and its past-due and at-risk counts
  * read ALL of `rows`, since an open backlog is a point-in-time queue, not a
  * per-period count.
- *
- * `slaHours` carries the city's per-level response targets, from
- * `public_incident_config` via incidentSlaHours above. Nothing here reads it
- * any more: past due and at risk come from each report's own clock (l112).
  *
  * `now` defaults to the real current time, and is what past due is read
  * against (mirroring presetDateRange's own `now` parameter in
@@ -781,7 +759,6 @@ export function issueRangeStats(
   rows: IncidentRow[],
   range: DateRange,
   getDate: (row: IncidentRow) => string | null,
-  slaHours: IncidentSlaHours | null,
   now: Date = new Date()
 ): IssueRangeStats {
   const current = filterByDateRange(rows, getDate, range);
@@ -796,8 +773,7 @@ export function issueRangeStats(
   const avgTimeToTriageDays = averageTriageDays(current);
   const previousAvgTimeToTriageDays = averageTriageDays(previous);
 
-  const openRows = inServiceBacklog(rows, "incidents");
-  const deadlines = incidentBacklogDeadlines(rows, now);
+  const backlog = splitIncidentBacklog(rows, now);
 
   return {
     reports: current.length,
@@ -809,9 +785,9 @@ export function issueRangeStats(
     avgTimeToResolveDelta: daysDelta(avgTimeToResolveDays, previousAvgTimeToResolveDays),
     avgTimeToTriageDays,
     avgTimeToTriageDelta: daysDelta(avgTimeToTriageDays, previousAvgTimeToTriageDays),
-    openBacklog: openRows.length,
-    backlogPastDue: deadlines.pastDue,
-    backlogAtRisk: deadlines.atRisk,
+    openBacklog: backlog.rows.length,
+    backlogPastDue: backlog.pastDue.length,
+    backlogAtRisk: backlog.atRisk,
   };
 }
 

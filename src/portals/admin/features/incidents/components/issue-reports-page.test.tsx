@@ -1,5 +1,5 @@
 // src/portals/admin/features/incidents/components/issue-reports-page.test.tsx
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import IssueReportsPage, { metadata } from "@/app/(admin)/admin/(shell)/issue-reports/page";
 import type { IncidentRow } from "@/portals/admin/features/incidents/lib/incidents";
@@ -15,7 +15,6 @@ const mockListIncidents = vi.fn();
 const mockReadIncidentPii = vi.fn();
 const mockListDepartments = vi.fn();
 const mockListIncidentCategories = vi.fn();
-const mockGetIncidentConfig = vi.fn();
 const mockDownloadCsv = vi.fn();
 
 vi.mock("../lib/incidents", () => ({
@@ -26,25 +25,7 @@ vi.mock("../lib/incidents", () => ({
 vi.mock("../../../lib/supabase/catalogs", () => ({
   listDepartments: () => mockListDepartments(),
   listIncidentCategories: () => mockListIncidentCategories(),
-  getIncidentConfig: () => mockGetIncidentConfig(),
 }));
-
-// The real public_incident_config values on this deployment: a DIFFERENT
-// response target per severity, which is the whole point of reading them
-// rather than hardcoding one number.
-function buildIncidentConfig() {
-  return {
-    sla_hours_critical: 4,
-    sla_hours_high: 8,
-    sla_hours_medium: 24,
-    sla_hours_low: 72,
-    auto_close_day: 7,
-    confirmation_window_days: 3,
-    max_active_reports_per_citizen: 3,
-    max_photos_per_cycle: 3,
-    nudge_day: 5,
-  };
-}
 
 function hoursAgo(hours: number): string {
   return new Date(Date.now() - hours * 3_600_000).toISOString();
@@ -133,8 +114,6 @@ describe("IssueReportsPage", () => {
     mockListDepartments.mockResolvedValue([]);
     mockListIncidentCategories.mockReset();
     mockListIncidentCategories.mockResolvedValue([]);
-    mockGetIncidentConfig.mockReset();
-    mockGetIncidentConfig.mockResolvedValue(buildIncidentConfig());
     mockDownloadCsv.mockReset();
     mockSearchParams = new URLSearchParams();
     mockReplace.mockReset();
@@ -1448,6 +1427,131 @@ describe("IssueReportsPage", () => {
       expect(tableReferences()).toEqual(["IR-OPEN-LATE", "IR-IN-PROGRESS-LATE"]);
     });
 
+    // #131: the address is the only source of the filter. The page doesn't
+    // remount when only the query string changes (the sidebar link, Back,
+    // Forward), so each test changes the search params and re-renders.
+    describe("the filter follows the address", () => {
+      it("goes when the sidebar link opens the plain page, and comes back with Back", async () => {
+        mockSearchParams = new URLSearchParams("sla=past-due");
+        mockListIncidents.mockResolvedValue([
+          buildRow({ id: "open-late", reference_number: "IR-OPEN-LATE", status: "open", sla_due_at: hoursAgo(24) }),
+          buildRow({ id: "open-in-time", reference_number: "IR-OPEN-IN-TIME", status: "open", sla_due_at: hoursAgo(-24) }),
+        ]);
+
+        const { rerender } = render(<IssueReportsPage />);
+        await screen.findByText("IR-OPEN-LATE");
+        expect(tableReferences()).toEqual(["IR-OPEN-LATE"]);
+
+        // The sidebar's plain Incident Reports link.
+        mockSearchParams = new URLSearchParams();
+        rerender(<IssueReportsPage />);
+
+        await screen.findByText("IR-OPEN-IN-TIME");
+        expect(screen.queryByText(/^Showing only reports/)).not.toBeInTheDocument();
+        expect(tableReferences()).toEqual(["IR-OPEN-LATE", "IR-OPEN-IN-TIME"]);
+
+        // Back.
+        mockSearchParams = new URLSearchParams("sla=past-due");
+        rerender(<IssueReportsPage />);
+
+        expect(await screen.findByText("Showing only reports past due now, whatever the date range")).toBeInTheDocument();
+        await waitFor(() => expect(tableReferences()).toEqual(["IR-OPEN-LATE"]));
+
+        // Forward.
+        mockSearchParams = new URLSearchParams();
+        rerender(<IssueReportsPage />);
+
+        await screen.findByText("IR-OPEN-IN-TIME");
+        expect(screen.queryByText(/^Showing only reports/)).not.toBeInTheDocument();
+      });
+
+      // Pinned mid-June: a report resolved in April is in the Quarter by its
+      // resolution date, but filed in March, outside it by its filing date.
+      it("brings back the late filter's range and date type with Back", async () => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date("2026-06-15T12:00:00+08:00"));
+        try {
+          mockSearchParams = new URLSearchParams("sla=late&range=Quarter&basis=resolution");
+          mockListIncidents.mockResolvedValue([
+            buildRow({ id: "late-april", reference_number: "IR-LATE-APRIL", status: "resolved", submitted_at: "2026-03-30T02:00:00Z", resolved_at: "2026-04-08T02:00:00Z", sla_due_at: "2026-03-31T02:00:00Z", sla_met: false }),
+            buildRow({ id: "june", reference_number: "IR-JUNE", status: "open", submitted_at: "2026-06-10T02:00:00Z" }),
+          ]);
+
+          const { rerender } = render(<IssueReportsPage />);
+          await screen.findByText("IR-LATE-APRIL");
+          expect(tableReferences()).toEqual(["IR-LATE-APRIL"]);
+
+          mockSearchParams = new URLSearchParams();
+          rerender(<IssueReportsPage />);
+
+          // The plain page: this month, on the filing date.
+          await screen.findByText("IR-JUNE");
+          expect(tableReferences()).toEqual(["IR-JUNE"]);
+          expect(screen.getByLabelText("Date type")).toHaveValue("report");
+
+          mockSearchParams = new URLSearchParams("sla=late&range=Quarter&basis=resolution");
+          rerender(<IssueReportsPage />);
+
+          await screen.findByText("IR-LATE-APRIL");
+          expect(tableReferences()).toEqual(["IR-LATE-APRIL"]);
+          expect(screen.getByLabelText("Date type")).toHaveValue("resolution");
+          expect(screen.getByText("Showing only reports that finished late in the selected range")).toBeInTheDocument();
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it("Clear leaves a clean address and keeps the range", async () => {
+        const user = userEvent.setup();
+        mockSearchParams = new URLSearchParams("sla=late&from=2026-06-01&to=2026-06-30&basis=report");
+        mockListIncidents.mockResolvedValue(juneReports());
+
+        const { rerender } = render(<IssueReportsPage />);
+        await screen.findByText("IR-LATE");
+
+        await user.click(screen.getByRole("button", { name: "Clear filter" }));
+        expect(mockReplace).toHaveBeenCalledWith("/admin/issue-reports", { scroll: false });
+        mockSearchParams = new URLSearchParams();
+        rerender(<IssueReportsPage />);
+
+        expect(screen.queryByText(/^Showing only reports/)).not.toBeInTheDocument();
+        expect(tableReferences()).toHaveLength(5);
+        expect(screen.getByLabelText("Custom range start")).toHaveValue("2026-06-01");
+        expect(mockListIncidents).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    // #131: the tile and the table count against one moment, the fetch's, so
+    // a due time passing while the page is open moves neither.
+    it("Open Backlog's past due always equals the past-due table, however long the page stays open", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-06-15T12:00:00+08:00"));
+      try {
+        const user = userEvent.setup();
+        mockSearchParams = new URLSearchParams("sla=past-due");
+        mockListIncidents.mockResolvedValue([
+          buildRow({ id: "late", reference_number: "IR-LATE", status: "open", sla_due_at: "2026-06-15T03:00:00Z" }),
+          // Due half an hour after the fetch.
+          buildRow({ id: "due-soon", reference_number: "IR-DUE-SOON", status: "in_progress", sla_due_at: "2026-06-15T04:30:00Z" }),
+        ]);
+
+        render(<IssueReportsPage />);
+        await screen.findByText("IR-LATE");
+        const tile = screen.getByText("Open Backlog", { selector: "p" }).closest("div")!;
+        expect(within(tile).getByText(/^1 past due/)).toBeInTheDocument();
+        expect(tableReferences()).toEqual(["IR-LATE"]);
+
+        vi.setSystemTime(new Date("2026-06-15T13:00:00+08:00"));
+        await user.click(screen.getByRole("tab", { name: "In Progress" }));
+        await user.click(screen.getByRole("tab", { name: "All" }));
+
+        expect(within(tile).getByText(/^1 past due/)).toBeInTheDocument();
+        expect(tableReferences()).toEqual(["IR-LATE"]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("an unknown filter is ignored", async () => {
       mockSearchParams = new URLSearchParams("sla=everything");
       mockListIncidents.mockResolvedValue([buildRow({ id: "inc-1", reference_number: "IR-2026-000001" })]);
@@ -1457,6 +1561,71 @@ describe("IssueReportsPage", () => {
       await screen.findByText("IR-2026-000001");
       expect(screen.queryByText(/^Showing only reports/)).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Clear filter" })).not.toBeInTheDocument();
+    });
+  });
+
+  // #146 (the #141 rule): both tables' CSVs are built from the loaded rows,
+  // which are empty before a load succeeds, so an export then would be a
+  // header-only file that looks like a real report. Each button is off until
+  // the data is ready.
+  describe.each([
+    { table: "Recent reports", filename: "issue-reports.csv" },
+    { table: "Reports by barangay", filename: "reports-by-barangay.csv" },
+  ])("the $table Export is off until the reports have loaded", ({ table, filename }) => {
+    const exportButton = () =>
+      within(screen.getByText(table, { selector: "h2" }).closest("section")!).getByRole("button", {
+        name: "↓ Export",
+      });
+
+    it("is disabled while the reports are loading, and a click downloads nothing", async () => {
+      const user = userEvent.setup();
+      mockListIncidents.mockReturnValue(new Promise<IncidentRow[]>(() => {}));
+
+      render(<IssueReportsPage />);
+
+      expect(exportButton()).toBeDisabled();
+      await user.click(exportButton());
+      expect(mockDownloadCsv).not.toHaveBeenCalled();
+    });
+
+    it("is enabled once a load succeeds, even with no reports in range, and exports its own file", async () => {
+      const user = userEvent.setup();
+      mockListIncidents.mockResolvedValue([]);
+
+      render(<IssueReportsPage />);
+
+      await waitFor(() => expect(exportButton()).toBeEnabled());
+      await user.click(exportButton());
+      expect(mockDownloadCsv).toHaveBeenCalledTimes(1);
+      expect(mockDownloadCsv.mock.calls[0][0]).toBe(filename);
+    });
+
+    it("is disabled after a failed load, and stays disabled for the whole of a Retry until it succeeds", async () => {
+      // Retry only shows on the error state, so the page never reloads over
+      // good data; the case to pin is a Retry with its request held open.
+      const user = userEvent.setup();
+      mockListIncidents.mockRejectedValueOnce({ kind: "unknown", message: "boom" });
+      let resolveRetry: (rows: IncidentRow[]) => void = () => {};
+      mockListIncidents.mockReturnValueOnce(
+        new Promise<IncidentRow[]>((resolve) => {
+          resolveRetry = resolve;
+        })
+      );
+
+      render(<IssueReportsPage />);
+      await screen.findByText("Unable to load reports: boom");
+
+      expect(exportButton()).toBeDisabled();
+
+      await user.click(screen.getByRole("button", { name: "Retry" }));
+
+      expect(screen.getByRole("status")).toHaveTextContent("Loading reports…");
+      expect(exportButton()).toBeDisabled();
+
+      resolveRetry([buildRow({ id: "inc-1", reference_number: "IR-2026-000001" })]);
+      await screen.findByText("IR-2026-000001");
+
+      expect(exportButton()).toBeEnabled();
     });
   });
 });

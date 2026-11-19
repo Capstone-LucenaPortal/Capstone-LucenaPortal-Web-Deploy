@@ -49,7 +49,7 @@ _Avoid_: staff (when meaning all four roles — **Staff** is only the Staff Port
 ### Cycle
 
 **Cycle**:
-One pass of an incident to resolved. The first cycle runs from the report being filed, and only a **Reopen** starts the next one, back in the department pool; a responder's release or rejection is recorded in the cycle already under way. A new cycle starts over what a responder must do before resolving, while the incident's timeline keeps every cycle. The database numbers them in `cycle_number` on each event and photo, and the highest is the current one.
+One pass of an incident to resolved. The first cycle runs from the report being filed, and only a **Reopen** starts the next one, back in the department pool; a responder's release or reject is recorded in the cycle already under way. A new cycle starts over what a responder must do before resolving, while the incident's timeline keeps every cycle. The database numbers them in `cycle_number` on each event and photo, and the highest is the current one.
 _Avoid_: round, attempt
 
 ### Reopen
@@ -57,6 +57,12 @@ _Avoid_: round, attempt
 **Reopen**:
 The citizen's "not fixed" on a resolved report. Only the citizen who filed it can reopen it, giving a reason, and only while it is resolved: once they confirm the fix or it closes automatically, a new problem is a new report. A reopen sends the report back to its department's pool with no responder, so anyone there may claim it, starts a new **Cycle** and restarts the SLA clock. The database spells it `reopen_incident`, a `reopened` event and the incident's `reopened_count`.
 _Avoid_: release (that is a responder handing a ticket back, within the same cycle), dispute
+
+### Reroute
+
+**Reroute**:
+Staff routing a report that was routed before. Only a report nobody holds can be rerouted; a held one must be released first. A reroute to another department takes the report out of the old department's pool and makes it a pool arrival in the new one's; a reroute to the same department, say to change its level, is not an arrival. A reroute is not a new **Cycle**, does not restart the SLA clock, and is not told to the citizen. Routing a report again after a responder's **Reject** is a reroute too. The database spells it a `rerouted` event. See **Routing** in the Staff glossary, and **Reroute** and **Reject** in the Responder glossary.
+_Avoid_: transfer, reassign (nobody is assigned until a responder claims it)
 
 ### Monitoring
 

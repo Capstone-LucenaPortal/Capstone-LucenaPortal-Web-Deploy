@@ -16,8 +16,12 @@ import { computeYellowCardStatus } from '@/portals/citizen/features/dashboard/li
 import { authService, AuthError } from '@/portals/citizen/features/auth/lib/auth';
 import { PASSWORD_RULES_TEXT } from '@/shared/auth/password-policy';
 import { LIMITS } from '@/portals/citizen/lib/validation';
-import { profileTabFromQuery, type ProfileTab } from '@/portals/citizen/features/profile/lib/tabs';
+import { profileTabFromQuery, profileTabHref, type ProfileTab } from '@/portals/citizen/features/profile/lib/tabs';
 import { formatManilaDate } from '@/shared/dates/manila';
+import { settle } from '@/portals/citizen/lib/loaded';
+import LoadFailure from '@/portals/citizen/components/ui/load-failure';
+
+const YELLOW_CARD_LOAD_ERROR = 'Could not load your Yellow Card information right now. Please try again later.';
 
 const emptyFormData = {
   firstName: '',
@@ -46,7 +50,7 @@ function ProfileContent() {
    *  `replace`, not `push`: tabbing around should not fill the back button. */
   const selectTab = (tab: ProfileTab) => {
     setActiveTab(tab);
-    router.replace(`/profile?tab=${tab}`, { scroll: false });
+    router.replace(profileTabHref(tab), { scroll: false });
   };
   const [editMode, setEditMode] = useState(false);
   const [profile, setProfile] = useState<MyProfile | null>(null);
@@ -59,6 +63,12 @@ function ProfileContent() {
   const [formData, setFormData] = useState(emptyFormData);
   const [applications, setApplications] = useState<MyYellowCardApplication[]>([]);
   const [cards, setCards] = useState<MyYellowCard[]>([]);
+  // The Yellow Card reads load apart from the profile, so "Try again" on a
+  // failed one re-reads only them: reloading the profile would reset the
+  // Account Details form, which may hold unsaved edits (#110).
+  const [yellowCardLoading, setYellowCardLoading] = useState(true);
+  const [yellowCardError, setYellowCardError] = useState('');
+  const [yellowCardAttempt, setYellowCardAttempt] = useState(0);
 
   const applyProfile = (p: MyProfile) => {
     setProfile(p);
@@ -80,17 +90,13 @@ function ProfileContent() {
   useEffect(() => {
     (async () => {
       try {
-        const [p, b, g, a, c] = await Promise.all([
+        const [p, b, g] = await Promise.all([
           profileService.getMyProfile(),
           catalogService.getBarangays().catch(() => []),
           catalogService.getGenders().catch(() => []),
-          yellowCardService.getMyApplications().catch(() => []),
-          yellowCardService.getMyCards().catch(() => []),
         ]);
         setBarangays(b);
         setGenders(g);
-        setApplications(a);
-        setCards(c);
         if (p) applyProfile(p);
       } catch (err) {
         setProfileError(err instanceof Error ? err.message : 'Could not load your profile.');
@@ -100,6 +106,32 @@ function ProfileContent() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      settle(yellowCardService.getMyApplications(), YELLOW_CARD_LOAD_ERROR),
+      settle(yellowCardService.getMyCards(), YELLOW_CARD_LOAD_ERROR),
+    ]).then(([a, c]) => {
+      if (cancelled) return;
+      // Either read failing fails the tab: without the cards an issued card
+      // would read as an application, and without the applications a citizen
+      // with one would be told to apply.
+      setApplications(a.ok ? a.data : []);
+      setCards(c.ok ? c.data : []);
+      setYellowCardError(!a.ok ? a.error : !c.ok ? c.error : '');
+      setYellowCardLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [yellowCardAttempt]);
+
+  const handleRetryYellowCard = () => {
+    setYellowCardError('');
+    setYellowCardLoading(true);
+    setYellowCardAttempt((attempt) => attempt + 1);
+  };
 
   const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [showPasswords, setShowPasswords] = useState({ current: false, new: false, confirm: false });
@@ -362,10 +394,12 @@ function ProfileContent() {
       {/* Yellow Card Details Tab */}
       {activeTab === 'yellowcard' && (
         <div>
-          {profileLoading ? (
+          {yellowCardLoading ? (
             <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ padding: '24px 32px' }}>
               <p style={{ fontSize: 14, color: '#666666' }}>Loading your Yellow Card details…</p>
             </div>
+          ) : yellowCardError ? (
+            <LoadFailure heading="We couldn't load your Yellow Card details" message={yellowCardError} onRetry={handleRetryYellowCard} />
           ) : applications.length === 0 && !activeCard ? (
             <div style={{ background: 'white', border: '1px solid #DDDDDD', borderRadius: 8, padding: '64px 32px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', textAlign: 'center' }}>
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', margin: '0 auto 16px' }}>

@@ -26,3 +26,9 @@ export const PROFILE_TAB_YELLOW_CARD: ProfileTab = 'yellowcard';
 export function profileTabFromQuery(value: string | null | undefined): ProfileTab {
   return PROFILE_TABS.includes(value as ProfileTab) ? (value as ProfileTab) : 'account';
 }
+
+/** The address that opens `/profile` on a given tab; read back by
+ *  `profileTabFromQuery`. */
+export function profileTabHref(tab: ProfileTab): string {
+  return `/profile?tab=${tab}`;
+}

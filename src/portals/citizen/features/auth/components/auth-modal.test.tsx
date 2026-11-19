@@ -141,6 +141,23 @@ describe('AuthModal — sign up', () => {
     render(<AuthModal />);
     expect(screen.getByText(/Responders may call this number/i)).toBeInTheDocument();
   });
+
+  // Issue #135. "No" sends no occupation, yet the greyed-out box went on
+  // showing what was typed. It now shows empty, and the text is only hidden,
+  // so picking "Yes" again after a mis-click brings it back.
+  it('empties the Occupation box while "No" is picked and restores it on "Yes"', () => {
+    render(<AuthModal />);
+    const occupation = screen.getByLabelText(/^Occupation/);
+    fireEvent.change(occupation, { target: { value: 'Teacher' } });
+
+    fireEvent.click(screen.getByRole('radio', { name: 'No' }));
+    expect(occupation).toBeDisabled();
+    expect(occupation).toHaveValue('');
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Yes' }));
+    expect(occupation).toBeEnabled();
+    expect(occupation).toHaveValue('Teacher');
+  });
 });
 
 describe('AuthModal — sign up submit', { timeout: 20_000 }, () => {

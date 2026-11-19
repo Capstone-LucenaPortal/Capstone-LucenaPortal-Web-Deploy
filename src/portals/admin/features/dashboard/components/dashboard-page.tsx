@@ -6,7 +6,6 @@ import Link from "next/link";
 import { Button } from "@/portals/admin/components/ui/button";
 import { KpiTile, SplitKpiTile } from "@/portals/admin/components/ui/kpi-tile";
 import { LoadingStatus, Skeleton } from "@/portals/admin/components/ui/skeleton";
-import { useAuth } from "@/portals/admin/features/auth/hooks/use-auth";
 import { executiveRangeStats } from "@/portals/admin/features/dashboard/lib/dashboard";
 import {
   barangayCoverage,
@@ -15,11 +14,17 @@ import {
   conventionRangeStats,
   eventTypeMix,
   formatRate,
-  incidentSlaHours,
   issueRangeStats,
   yellowCardRangeStats,
 } from "@/portals/admin/lib/aggregate";
-import { getIncidentConfig, IncidentConfigRow, listDepartments, DepartmentRow } from "@/portals/admin/lib/supabase/catalogs";
+import {
+  listDepartments,
+  DepartmentRow,
+  listIncidentCategories,
+  IncidentCategoryRow,
+  listBookingEventTypes,
+  BookingEventTypeRow,
+} from "@/portals/admin/lib/supabase/catalogs";
 import { listApplications, YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yellow-card";
 import { listIncidents, IncidentRow } from "@/portals/admin/features/incidents/lib/incidents";
 import { listBookings, BookingRow } from "@/portals/admin/features/booking/lib/bookings";
@@ -34,9 +39,7 @@ import {
 import type { PortalError } from "@/portals/admin/lib/supabase/errors";
 import { filterByDateRange, formatManilaTimestamp, presetDateRange } from "@/portals/admin/lib/dates";
 import { AttentionItem } from "@/portals/admin/features/dashboard/types";
-import { DateRangeKey } from "@/portals/admin/lib/dates";
-
-const PRESETS: DateRangeKey[] = ["Today", "Week", "Month", "Quarter", "Annual"];
+import { DATE_RANGE_KEYS, type DateRangeKey } from "@/portals/admin/lib/dates";
 
 const RANGE_PHRASE: Record<DateRangeKey, string> = {
   Today: "today",
@@ -48,6 +51,13 @@ const RANGE_PHRASE: Record<DateRangeKey, string> = {
 
 function rangeCaption(noun: string, range: DateRangeKey): string {
   return `${noun} ${RANGE_PHRASE[range]}`;
+}
+
+// The incident card's resolution rate. It is null when every report in range
+// was closed as invalid, duplicate or expired: there was nothing to resolve,
+// which "— resolved" doesn't say (#133).
+function resolvedPhrase(ratePct: number | null): string {
+  return ratePct === null ? "none resolvable" : `${formatRate(ratePct)} resolved`;
 }
 
 const ATTENTION_ICON_CLASSES: Record<AttentionItem["tone"], string> = {
@@ -121,16 +131,9 @@ function ModuleCard({
   );
 }
 
-function displayNameFor(profile: ReturnType<typeof useAuth>["profile"]): string {
-  if (profile?.full_name) return profile.full_name;
-  if (profile?.email) return profile.email.split("@")[0];
-  return "";
-}
-
-export function DashboardPage() {
-  const { profile } = useAuth();
-  const displayName = displayNameFor(profile);
-
+// displayName comes from the page's server wrapper (adminDisplayName over the
+// cached profile read), so the greeting is in the first HTML.
+export function DashboardPage({ displayName }: { displayName: string }) {
   const [range, setRange] = useState<DateRangeKey>("Month");
 
   const [yellowCardRows, setYellowCardRows] = useState<YellowCardRow[]>([]);
@@ -154,18 +157,15 @@ export function DashboardPage() {
   // cannot reintroduce the duplicate-fetch-per-load problem Task 4.2 fixed.
   const [retryCount, setRetryCount] = useState(0);
 
-  // null means "not read" — NOT "no SLA". This currently has no visible
-  // effect either way: the incident-backlog-past-SLA needs-attention item
-  // this once fed was removed outright (Admin Portal Fix Plan, Task 1.3 —
-  // see the comment inside needsAttention below), not gated on this being
-  // non-null. Fetched and kept anyway, not deleted, so a future Phase
-  // 6-backed revival of that item does not have to re-wire this plumbing
-  // from scratch (Phase 1 final review, finding 4).
-  const [incidentConfig, setIncidentConfig] = useState<IncidentConfigRow | null>(null);
+  // Label catalogs for the module cards' footnotes (#142). Display data only:
+  // until they load, or if they fail, the cards show the raw code.
+  const [incidentCategories, setIncidentCategories] = useState<IncidentCategoryRow[]>([]);
+  const [bookingEventTypes, setBookingEventTypes] = useState<BookingEventTypeRow[]>([]);
 
   // A SINGLE fetch effect for every analytics table the dashboard reads —
   // Yellow Card, Incidents, Bookings and the department catalog — each read
-  // exactly ONCE per page load (Admin Portal Fix Plan, Task 4.2). Before this
+  // exactly ONCE per page load, along with the two label catalogs for the
+  // module cards (#142) (Admin Portal Fix Plan, Task 4.2). Before this
   // fix there were two separate effects: this one, and a second effect keyed
   // on `dateRange` that called getSlaByDepartment(dateRange)/
   // getSlaTrend(dateRange), each of which independently re-fetched
@@ -191,18 +191,22 @@ export function DashboardPage() {
     setIsLoading(true);
     setError(null);
 
-    // The city's per-level incident SLA targets. Fetched separately from the
-    // analytics lists below, and its failure swallowed — but as of Task 1.3
-    // nothing downstream actually branches on this succeeding or failing
-    // (see the comment on `incidentConfig` above and on `slaHours` below);
-    // kept fetched anyway for the same future-revival reason. Not threaded
-    // with the AbortController: getIncidentConfig has no signal parameter
-    // (out of this task's scope — see src/portals/admin/lib/supabase/catalogs.ts), and its result
-    // is discarded on failure regardless.
-    getIncidentConfig()
+    // The categoryMix/eventTypeMix codes' labels (#142). Display data, not a
+    // load gate, as on the Incident Reports and Convention Center pages: a
+    // failure leaves the raw code on the card and never reaches `error` or
+    // the "Updated" stamp, which belong to the analytics fetch below.
+    listIncidentCategories()
       .then((data) => {
         if (controller.signal.aborted) return;
-        setIncidentConfig(data);
+        setIncidentCategories(data);
+      })
+      .catch(() => {
+        // Swallowed on purpose — see comment above.
+      });
+    listBookingEventTypes()
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        setBookingEventTypes(data);
       })
       .catch(() => {
         // Swallowed on purpose — see comment above.
@@ -243,7 +247,7 @@ export function DashboardPage() {
     // `retryCount` is the only thing that can re-run this effect after
     // mount: clicking Retry below bumps it, which re-executes this exact
     // fetch (new AbortController, fresh listApplications/listIncidents/
-    // listBookings/listDepartments calls) rather than duplicating the fetch
+    // listBookings/listDepartments calls, and the two label catalogs) rather than duplicating the fetch
     // logic in a second function. No other state this component holds
     // (`range`, etc.) is in this array, so a preset click recomputes via the
     // useMemo derivations below with zero additional requests — Task 4.2's
@@ -306,15 +310,9 @@ export function DashboardPage() {
     () => yellowCardRangeStats(yellowCardRows, dateRange, (row) => row.submitted_at, null),
     [yellowCardRows, dateRange]
   );
-  // Per-level response targets from public_incident_config — critical/high/
-  // medium/low differ by more than an order of magnitude, so measuring the
-  // backlog against any single literal understates breaches at every level
-  // but the most lenient one. issueRangeStats no longer reads them: its
-  // past-due count uses each report's own due time (l112).
-  const slaHours = useMemo(() => incidentSlaHours(incidentConfig), [incidentConfig]);
   const issueStats = useMemo(
-    () => issueRangeStats(incidentRows, dateRange, (row) => row.submitted_at, slaHours),
-    [incidentRows, dateRange, slaHours]
+    () => issueRangeStats(incidentRows, dateRange, (row) => row.submitted_at),
+    [incidentRows, dateRange]
   );
   const conventionStats = useMemo(
     () => conventionRangeStats(bookingRows, dateRange, (row) => row.submitted_at),
@@ -332,6 +330,17 @@ export function DashboardPage() {
     const filtered = filterByDateRange(incidentRows, (row) => row.submitted_at, dateRange);
     return categoryMix(filtered)[0] ?? null;
   }, [incidentRows, dateRange]);
+
+  // categoryMix and eventTypeMix return codes; each label falls back to the
+  // code when its catalog has no entry or has not loaded (#142).
+  const categoryLabel = useMemo(() => {
+    const byCode = new Map(incidentCategories.map((category) => [category.code, category.label]));
+    return (code: string): string => byCode.get(code) ?? code;
+  }, [incidentCategories]);
+  const eventTypeLabel = useMemo(() => {
+    const byCode = new Map(bookingEventTypes.map((type) => [type.code, type.label]));
+    return (code: string): string => byCode.get(code) ?? code;
+  }, [bookingEventTypes]);
 
   const topEventType = useMemo(() => {
     const filtered = filterByDateRange(bookingRows, (row) => row.submitted_at, dateRange);
@@ -380,7 +389,7 @@ export function DashboardPage() {
         icon: "alert",
         tone: "red",
         title: `${dept.department} SLA at ${dept.compliancePct}% — ${Math.round((SLA_TARGET_PCT - dept.compliancePct) * 10) / 10} pts below target`,
-        detail: `${dept.requests} requests in range · below the ${SLA_NEEDS_ATTENTION_PCT}% "Needs attention" threshold`,
+        detail: `${dept.requests} request${dept.requests === 1 ? "" : "s"} in range · below the ${SLA_NEEDS_ATTENTION_PCT}% "Needs attention" threshold`,
         href: "/admin/sla-reports",
       });
     }
@@ -440,7 +449,7 @@ export function DashboardPage() {
             <div aria-hidden className="mt-3 h-0.5 w-10 bg-amber-400" />
           </div>
           <div className="flex" role="group" aria-label="Date range preset">
-            {PRESETS.map((key) => (
+            {DATE_RANGE_KEYS.map((key) => (
               <button
                 key={key}
                 type="button"
@@ -614,8 +623,8 @@ export function DashboardPage() {
                   : issueStats.reports === 0
                     ? "No incidents in range"
                     : topCategory
-                      ? `${formatRate(issueStats.resolutionRatePct)} resolved · top: ${topCategory.category}`
-                      : `${formatRate(issueStats.resolutionRatePct)} resolved · no reports in range`
+                      ? `${resolvedPhrase(issueStats.resolutionRatePct)} · top: ${categoryLabel(topCategory.category)}`
+                      : `${resolvedPhrase(issueStats.resolutionRatePct)} · no reports in range`
             }
           >
             <div className="h-1.5 w-full bg-gray-100">
@@ -642,7 +651,7 @@ export function DashboardPage() {
                 : status === "error"
                   ? "Unable to load data"
                   : topEventType
-                    ? `Top event type: ${topEventType.type} (${topEventType.count})`
+                    ? `Top event type: ${eventTypeLabel(topEventType.type)} (${topEventType.count})`
                     : "No bookings in range"
             }
           >

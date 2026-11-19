@@ -1,10 +1,12 @@
 // src/portals/admin/lib/dates.ts
 import { MANILA_TIME_ZONE } from "@/shared/dates/manila";
 
-// The five analytics date-range presets. Cross-cutting — consumed by
-// components/ui/date-filter-bar.tsx as well as every analytics page, so it
-// belongs here rather than inside any one feature slice.
-export type DateRangeKey = "Today" | "Week" | "Month" | "Quarter" | "Annual";
+// The five analytics date-range presets, in the order the range buttons show
+// them. Cross-cutting — the date filter bar, the Dashboard's range buttons and
+// SLA Reports' links (readSlaLink) all read this one list, so a preset added
+// here is offered everywhere and a link can always carry it (#133).
+export const DATE_RANGE_KEYS = ["Today", "Week", "Month", "Quarter", "Annual"] as const;
+export type DateRangeKey = (typeof DATE_RANGE_KEYS)[number];
 
 // This is a Philippines deployment (UTC+8, no DST). The bounds built here go
 // to export_yellow_card_applications(p_from date, p_to date), which reads each

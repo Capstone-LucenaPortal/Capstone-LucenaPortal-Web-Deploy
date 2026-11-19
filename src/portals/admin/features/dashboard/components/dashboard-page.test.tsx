@@ -1,7 +1,8 @@
 // src/portals/admin/features/dashboard/components/dashboard-page.test.tsx
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import DashboardPage, { metadata } from "@/app/(admin)/admin/(shell)/dashboard/page";
+import { metadata } from "@/app/(admin)/admin/(shell)/dashboard/page";
+import { DashboardPage } from "./dashboard-page";
 import type { YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yellow-card";
 import type { IncidentRow } from "@/portals/admin/features/incidents/lib/incidents";
 import type { BookingRow } from "@/portals/admin/features/booking/lib/bookings";
@@ -25,25 +26,9 @@ const mockListApplications = vi.fn();
 const mockListIncidents = vi.fn();
 const mockListBookings = vi.fn();
 const mockListDepartments = vi.fn();
-const mockGetIncidentConfig = vi.fn();
 const mockListBarangays = vi.fn();
-
-// The real public_incident_config values on this deployment: a DIFFERENT
-// response target per severity, which is why the dashboard reads them rather
-// than measuring every incident against one literal.
-function buildIncidentConfig() {
-  return {
-    sla_hours_critical: 4,
-    sla_hours_high: 8,
-    sla_hours_medium: 24,
-    sla_hours_low: 72,
-    auto_close_day: 7,
-    confirmation_window_days: 3,
-    max_active_reports_per_citizen: 3,
-    max_photos_per_cycle: 3,
-    nudge_day: 5,
-  };
-}
+const mockListIncidentCategories = vi.fn();
+const mockListBookingEventTypes = vi.fn();
 
 function hoursAgo(hours: number): string {
   return new Date(Date.now() - hours * 3_600_000).toISOString();
@@ -62,13 +47,10 @@ vi.mock("../../booking/lib/bookings", () => ({
 }));
 
 vi.mock("../../../lib/supabase/catalogs", () => ({
-  getIncidentConfig: () => mockGetIncidentConfig(),
   listBarangays: () => mockListBarangays(),
   listDepartments: () => mockListDepartments(),
-}));
-
-vi.mock("../../auth/hooks/use-auth", () => ({
-  useAuth: () => ({ profile: { full_name: "Juan Dela Cruz", email: "juan@lucena.gov.ph" } }),
+  listIncidentCategories: () => mockListIncidentCategories(),
+  listBookingEventTypes: () => mockListBookingEventTypes(),
 }));
 
 // The page's default preset is "Month", and every KPI/module card derives
@@ -185,17 +167,26 @@ describe("DashboardPage", () => {
     mockListIncidents.mockResolvedValue([]);
     mockListBookings.mockResolvedValue([]);
     mockListDepartments.mockResolvedValue([]);
-    mockGetIncidentConfig.mockReset();
-    mockGetIncidentConfig.mockResolvedValue(buildIncidentConfig());
     mockListBarangays.mockReset();
     mockListBarangays.mockResolvedValue([]);
+    mockListIncidentCategories.mockReset();
+    mockListIncidentCategories.mockResolvedValue([]);
+    mockListBookingEventTypes.mockReset();
+    mockListBookingEventTypes.mockResolvedValue([]);
   });
 
-  it("renders the header with the signed-in staff member's name instead of a hardcoded 'Admin User'", async () => {
-    render(<DashboardPage />);
+  // The name comes from the server wrapper, so it is there on the first
+  // render, not after the browser has read the session.
+  it("greets the admin by the name the server gave it, on the first render", () => {
+    render(<DashboardPage displayName="Juan Dela Cruz" />);
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
-    expect(await screen.findByText("Juan Dela Cruz · leadership view")).toBeInTheDocument();
+    expect(screen.getByText("Juan Dela Cruz · leadership view")).toBeInTheDocument();
     expect(screen.queryByText(/Admin User/)).not.toBeInTheDocument();
+  });
+
+  it("falls back to a nameless greeting without a name", () => {
+    render(<DashboardPage displayName="" />);
+    expect(screen.getByText("Leadership view")).toBeInTheDocument();
   });
 
   // The other four converted pages each pin both "an empty result renders an
@@ -203,7 +194,7 @@ describe("DashboardPage", () => {
   // permission message" (see e.g. src/portals/admin/features/yellow-card/components/yellow-card-page.test.tsx). The
   // Dashboard had neither — this brings it in line with the rest.
   it("shows no error banner, not a false permission/load-failure message, when all three fetches resolve to []", async () => {
-    render(<DashboardPage />);
+    render(<DashboardPage displayName="Juan Dela Cruz" />);
 
     await screen.findByText("Service requests filed");
     expect(screen.queryByText(/permission/i)).not.toBeInTheDocument();
@@ -216,7 +207,7 @@ describe("DashboardPage", () => {
       message: "caller is not an active Admin",
     });
 
-    render(<DashboardPage />);
+    render(<DashboardPage displayName="Juan Dela Cruz" />);
 
     expect(
       await screen.findByText("You do not have permission to view dashboard data.")
@@ -231,7 +222,7 @@ describe("DashboardPage", () => {
   it("on fetch error, none of the four hero KPI tiles show a number — not 0, not a stale value", async () => {
     mockListApplications.mockRejectedValue({ kind: "unknown", message: "network down" });
 
-    render(<DashboardPage />);
+    render(<DashboardPage displayName="Juan Dela Cruz" />);
 
     await screen.findByText(/Unable to load dashboard data/);
 
@@ -245,7 +236,7 @@ describe("DashboardPage", () => {
   });
 
   it("renders the four KPI tile labels", async () => {
-    render(<DashboardPage />);
+    render(<DashboardPage displayName="Juan Dela Cruz" />);
     expect(await screen.findByText("Service requests filed")).toBeInTheDocument();
     expect(screen.getByText("Service backlog")).toBeInTheDocument();
     expect(screen.getByText("SLA compliance")).toBeInTheDocument();
@@ -257,7 +248,7 @@ describe("DashboardPage", () => {
     mockListIncidents.mockResolvedValue([buildIncidentRow(), buildIncidentRow({ id: "inc-2" })]);
     mockListBookings.mockResolvedValue([buildBookingRow()]);
 
-    render(<DashboardPage />);
+    render(<DashboardPage displayName="Juan Dela Cruz" />);
 
     expect(await screen.findByText("4")).toBeInTheDocument();
   });
@@ -277,7 +268,7 @@ describe("DashboardPage", () => {
         buildYellowCardRow({ id: "app-3", status: "revision_requested" }),
       ]);
 
-      render(<DashboardPage />);
+      render(<DashboardPage displayName="Juan Dela Cruz" />);
 
       const tile = await backlogTile();
       await waitFor(() => expect(within(tile).getByText("2")).toBeInTheDocument());
@@ -290,7 +281,7 @@ describe("DashboardPage", () => {
         buildBookingRow({ id: "b-3", status: "fully_paid" }),
       ]);
 
-      render(<DashboardPage />);
+      render(<DashboardPage displayName="Juan Dela Cruz" />);
 
       const tile = await backlogTile();
       await waitFor(() => expect(within(tile).getByText("1")).toBeInTheDocument());
@@ -302,7 +293,7 @@ describe("DashboardPage", () => {
         buildIncidentRow({ id: "inc-2", status: "in_progress", resolved_at: null, submitted_at: daysAgoIso(400) }),
       ]);
 
-      render(<DashboardPage />);
+      render(<DashboardPage displayName="Juan Dela Cruz" />);
 
       const tile = await backlogTile();
       await waitFor(() => expect(within(tile).getByText("2")).toBeInTheDocument());
@@ -312,7 +303,7 @@ describe("DashboardPage", () => {
   });
 
   it("module cards link to their tabs", async () => {
-    render(<DashboardPage />);
+    render(<DashboardPage displayName="Juan Dela Cruz" />);
     await screen.findByText("Service requests filed");
     expect(screen.getByRole("link", { name: /^Yellow Card/ })).toHaveAttribute("href", "/admin/yellow-card");
     expect(screen.getByRole("link", { name: /^Incident Reports/ })).toHaveAttribute("href", "/admin/issue-reports");
@@ -330,7 +321,7 @@ describe("DashboardPage", () => {
       buildYellowCardRow({ id: "app-2", barangay_name: "Barangay One", status: "approved" }),
     ]);
 
-    render(<DashboardPage />);
+    render(<DashboardPage displayName="Juan Dela Cruz" />);
 
     const card = await screen.findByRole("link", { name: /^Yellow Card/ });
     expect(within(card).getByText(/100% approval rate · top: Barangay One/)).toBeInTheDocument();
@@ -343,7 +334,7 @@ describe("DashboardPage", () => {
   // decided applications in range"), not render "0% approval rate", which
   // would misreport a quiet period as a wave of rejections.
   it("the Yellow Card module card states a real gap, not a fabricated top barangay, when there are no rows in range", async () => {
-    render(<DashboardPage />);
+    render(<DashboardPage displayName="Juan Dela Cruz" />);
 
     const card = await screen.findByRole("link", { name: /^Yellow Card/ });
     expect(within(card).getByText("No decided applications in range")).toBeInTheDocument();
@@ -358,7 +349,7 @@ describe("DashboardPage", () => {
       buildIncidentRow({ id: "inc-2", status: "closed", closure_reason: "duplicate", resolved_at: null, sla_due_at: null, sla_met: null }),
     ]);
 
-    render(<DashboardPage />);
+    render(<DashboardPage displayName="Juan Dela Cruz" />);
 
     const card = await screen.findByRole("link", { name: /^Incident Reports/ });
     expect(await within(card).findByText(/^100% resolved · top:/)).toBeInTheDocument();
@@ -366,22 +357,93 @@ describe("DashboardPage", () => {
 
   // Reports were filed but every one was a duplicate: the card must not
   // claim there were no incidents beside a count of 2.
-  it("the Incident Reports card does not say 'No incidents in range' when every report was a duplicate", async () => {
-    const duplicate = { status: "closed" as const, closure_reason: "duplicate" as const, resolved_at: null, sla_due_at: null, sla_met: null };
-    mockListIncidents.mockResolvedValue([buildIncidentRow(duplicate), buildIncidentRow({ id: "inc-2", ...duplicate })]);
+  // Nor may it read "— resolved": there was nothing to resolve (#133).
+  it("the Incident Reports card says 'none resolvable' when every report was closed as invalid or a duplicate", async () => {
+    const closed = { status: "closed" as const, resolved_at: null, sla_due_at: null, sla_met: null };
+    mockListIncidents.mockResolvedValue([
+      buildIncidentRow({ ...closed, closure_reason: "duplicate" }),
+      buildIncidentRow({ ...closed, id: "inc-2", closure_reason: "invalid" }),
+    ]);
 
-    render(<DashboardPage />);
+    render(<DashboardPage displayName="Juan Dela Cruz" />);
 
     const card = await screen.findByRole("link", { name: /^Incident Reports/ });
-    expect(await within(card).findByText(/^— resolved · top:/)).toBeInTheDocument();
+    expect(await within(card).findByText(/^none resolvable · top:/)).toBeInTheDocument();
+    expect(within(card).queryByText(/resolved/)).not.toBeInTheDocument();
     expect(within(card).queryByText("No incidents in range")).not.toBeInTheDocument();
+  });
+
+  it("the Incident Reports card still reads a real 0% as '0% resolved'", async () => {
+    mockListIncidents.mockResolvedValue([buildIncidentRow({ status: "open", resolved_at: null, sla_met: null })]);
+
+    render(<DashboardPage displayName="Juan Dela Cruz" />);
+
+    const card = await screen.findByRole("link", { name: /^Incident Reports/ });
+    expect(await within(card).findByText(/^0% resolved · top:/)).toBeInTheDocument();
+  });
+
+  // #142: the analytics views carry only the code, so the card reads the
+  // label from the public catalog, as the Incident Reports page does.
+  describe("module card labels (#142)", () => {
+    it("the Incident Reports card names the top category by its label", async () => {
+      mockListIncidents.mockResolvedValue([buildIncidentRow({ category_code: "infrastructure" })]);
+      mockListIncidentCategories.mockResolvedValue([{ code: "infrastructure", label: "Infrastructure", sort_order: 1 }]);
+
+      render(<DashboardPage displayName="Juan Dela Cruz" />);
+
+      const card = await screen.findByRole("link", { name: /^Incident Reports/ });
+      expect(await within(card).findByText(/resolved · top: Infrastructure$/)).toBeInTheDocument();
+    });
+
+    it("the Convention Center card names the top event type by its label", async () => {
+      mockListBookings.mockResolvedValue([
+        buildBookingRow({ event_type_code: "wedding" }),
+        buildBookingRow({ id: "booking-2", event_type_code: "wedding" }),
+      ]);
+      mockListBookingEventTypes.mockResolvedValue([{ code: "wedding", label: "Wedding", sort_order: 1 }]);
+
+      render(<DashboardPage displayName="Juan Dela Cruz" />);
+
+      const card = await screen.findByRole("link", { name: /^Convention Center/ });
+      expect(await within(card).findByText("Top event type: Wedding (2)")).toBeInTheDocument();
+    });
+
+    it("both cards fall back to the raw code, with no error state, when the catalogs fail to load", async () => {
+      mockListIncidents.mockResolvedValue([buildIncidentRow({ category_code: "infrastructure" })]);
+      mockListBookings.mockResolvedValue([buildBookingRow({ event_type_code: "wedding" })]);
+      mockListIncidentCategories.mockRejectedValue({ kind: "unknown", message: "catalog down" });
+      mockListBookingEventTypes.mockRejectedValue({ kind: "unknown", message: "catalog down" });
+
+      render(<DashboardPage displayName="Juan Dela Cruz" />);
+
+      const incidentCard = await screen.findByRole("link", { name: /^Incident Reports/ });
+      expect(await within(incidentCard).findByText(/resolved · top: infrastructure$/)).toBeInTheDocument();
+      const conventionCard = screen.getByRole("link", { name: /^Convention Center/ });
+      expect(within(conventionCard).getByText("Top event type: wedding (1)")).toBeInTheDocument();
+      expect(screen.queryByText(/Unable to load/)).not.toBeInTheDocument();
+      expect(await screen.findByText(/^Updated .*\(Asia\/Manila\)$/)).toBeInTheDocument();
+    });
+
+    it("both cards fall back to the raw code when the catalog has no entry for it", async () => {
+      mockListIncidents.mockResolvedValue([buildIncidentRow({ category_code: "infrastructure" })]);
+      mockListBookings.mockResolvedValue([buildBookingRow({ event_type_code: "wedding" })]);
+      mockListIncidentCategories.mockResolvedValue([{ code: "health", label: "Health", sort_order: 1 }]);
+      mockListBookingEventTypes.mockResolvedValue([{ code: "conference", label: "Conference", sort_order: 1 }]);
+
+      render(<DashboardPage displayName="Juan Dela Cruz" />);
+
+      const incidentCard = await screen.findByRole("link", { name: /^Incident Reports/ });
+      expect(await within(incidentCard).findByText(/resolved · top: infrastructure$/)).toBeInTheDocument();
+      const conventionCard = screen.getByRole("link", { name: /^Convention Center/ });
+      expect(within(conventionCard).getByText("Top event type: wedding (1)")).toBeInTheDocument();
+    });
   });
 
   it("switching range presets re-derives the KPI and module card values from the same fetched rows", async () => {
     const user = userEvent.setup();
     mockListApplications.mockResolvedValue([buildYellowCardRow()]);
 
-    render(<DashboardPage />);
+    render(<DashboardPage displayName="Juan Dela Cruz" />);
     await screen.findByText("Service requests filed");
 
     await user.click(screen.getByRole("button", { name: "Today" }));
@@ -396,7 +458,7 @@ describe("DashboardPage", () => {
   // signals, and must be empty (with an honest empty state) when none of
   // those signals fire.
   it("shows an honest empty state when no real signal currently needs attention", async () => {
-    render(<DashboardPage />);
+    render(<DashboardPage displayName="Juan Dela Cruz" />);
 
     expect(await screen.findByText("No items currently need attention.")).toBeInTheDocument();
     expect(screen.getByText("Needs attention · 0")).toBeInTheDocument();
@@ -417,10 +479,25 @@ describe("DashboardPage", () => {
       buildIncidentRow({ id: "inc-5", assigned_department_code: "waste", sla_met: false }),
     ]);
 
-    render(<DashboardPage />);
+    render(<DashboardPage displayName="Juan Dela Cruz" />);
 
     const link = await screen.findByRole("link", { name: /Waste Management SLA at 20%/ });
     expect(link).toHaveAttribute("href", "/admin/sla-reports");
+    // #140: several requests keep the plural.
+    expect(screen.getByText(/^5 requests in range · below the 65% "Needs attention" threshold$/)).toBeInTheDocument();
+  });
+
+  // #140: the detail line said "1 requests in range" for an area resting on
+  // one request; metrics.md D6 promises "1 request".
+  it("says '1 request in range' for a department below the threshold on one request", async () => {
+    mockListDepartments.mockResolvedValue([buildDepartment({ code: "electrical", label: "Electrical" })]);
+    mockListIncidents.mockResolvedValue([
+      buildIncidentRow({ id: "inc-1", assigned_department_code: "electrical", sla_met: false }),
+    ]);
+
+    render(<DashboardPage displayName="Juan Dela Cruz" />);
+
+    expect(await screen.findByText(/^1 request in range · below the 65% "Needs attention" threshold$/)).toBeInTheDocument();
   });
 
   // The past-SLA needs-attention items were removed when nothing honest could
@@ -429,7 +506,7 @@ describe("DashboardPage", () => {
   it("does not surface a Yellow Card past-SLA needs-attention item, even for an overdue application", async () => {
     mockListApplications.mockResolvedValue([buildYellowCardRow({ status: "pending", sla_breached: true, deadline_state: "overdue" })]);
 
-    render(<DashboardPage />);
+    render(<DashboardPage displayName="Juan Dela Cruz" />);
     await screen.findByText("Service requests filed");
 
     expect(screen.queryByText(/Yellow Card application.*past SLA/)).not.toBeInTheDocument();
@@ -441,22 +518,11 @@ describe("DashboardPage", () => {
       buildIncidentRow({ status: "open", incident_level: "critical", submitted_at: hoursAgo(5), sla_due_at: hoursAgo(1) }),
     ]);
 
-    render(<DashboardPage />);
+    render(<DashboardPage displayName="Juan Dela Cruz" />);
     await screen.findByText("Service requests filed");
 
     expect(screen.queryByText(/incident report.*past its SLA/)).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /incident report.*past its SLA/ })).not.toBeInTheDocument();
-    expect(await screen.findByText("No items currently need attention.")).toBeInTheDocument();
-  });
-
-  it("raises no incident-SLA alert when the per-level targets could not be read either", async () => {
-    mockGetIncidentConfig.mockRejectedValue({ kind: "unknown", message: "boom" });
-    mockListIncidents.mockResolvedValue([
-      buildIncidentRow({ status: "open", incident_level: "critical", submitted_at: hoursAgo(5) }),
-    ]);
-
-    render(<DashboardPage />);
-
     expect(await screen.findByText("No items currently need attention.")).toBeInTheDocument();
   });
 
@@ -466,7 +532,7 @@ describe("DashboardPage", () => {
       buildIncidentRow({ id: "inc-1", submitted_at: recentDate, resolved_at: recentDate, sla_met: true }),
     ]);
 
-    render(<DashboardPage />);
+    render(<DashboardPage displayName="Juan Dela Cruz" />);
 
     const card = await screen.findByRole("link", { name: /^SLA Reports/ });
     const label = manilaMonthLabel(recentDate);
@@ -501,7 +567,7 @@ describe("DashboardPage", () => {
         waiting.map((status, index) => buildBookingRow({ id: `b-${index}`, status, event_date: today }))
       );
 
-      render(<DashboardPage />);
+      render(<DashboardPage displayName="Juan Dela Cruz" />);
       const tile = await eventDaysTile();
       await user.click(screen.getByRole("button", { name: "Today" }));
 
@@ -522,7 +588,7 @@ describe("DashboardPage", () => {
       const days = new Set([from, to]).size;
       const totalDays = (Date.parse(to) - Date.parse(from)) / 86_400_000 + 1;
 
-      render(<DashboardPage />);
+      render(<DashboardPage displayName="Juan Dela Cruz" />);
       const tile = await eventDaysTile();
       await user.click(screen.getByRole("button", { name: "Annual" }));
 
@@ -573,7 +639,7 @@ describe("DashboardPage", () => {
       mockListApplications.mockResolvedValue(threeOfFourYellowCardsOnTime());
       mockListIncidents.mockResolvedValue(oneOfTwoIncidentsOnTime());
 
-      render(<DashboardPage />);
+      render(<DashboardPage displayName="Juan Dela Cruz" />);
 
       const tile = await waitForSlaTile("75%");
       expect(within(tile).getByText("Yellow Card")).toBeInTheDocument();
@@ -592,7 +658,7 @@ describe("DashboardPage", () => {
         buildYellowCardRow({ id: "app-2", status: "withdrawn", sla_elapsed_seconds: 45 * 3600, sla_breached: true }),
       ]);
 
-      render(<DashboardPage />);
+      render(<DashboardPage displayName="Juan Dela Cruz" />);
 
       const tile = await waitForSlaTile("100%");
       expect(within(tile).getByText("15 pts above 85% project target")).toBeInTheDocument();
@@ -605,7 +671,7 @@ describe("DashboardPage", () => {
       ]);
       mockListIncidents.mockResolvedValue(oneOfTwoIncidentsOnTime());
 
-      render(<DashboardPage />);
+      render(<DashboardPage displayName="Juan Dela Cruz" />);
 
       const tile = await waitForSlaTile("50%");
       expect(within(tile).getByText("—")).toBeInTheDocument();
@@ -618,7 +684,7 @@ describe("DashboardPage", () => {
         buildYellowCardRow({ id: "app-1", status: "withdrawn", sla_elapsed_seconds: 45 * 3600, sla_breached: true }),
       ]);
 
-      render(<DashboardPage />);
+      render(<DashboardPage displayName="Juan Dela Cruz" />);
 
       expect(await screen.findByText("No items currently need attention.")).toBeInTheDocument();
       expect(screen.queryByRole("link", { name: /Yellow Card SLA at/ })).not.toBeInTheDocument();
@@ -637,7 +703,7 @@ describe("DashboardPage", () => {
         buildIncidentRow({ id: "inc-new", sla_met: false }),
       ]);
 
-      render(<DashboardPage />);
+      render(<DashboardPage displayName="Juan Dela Cruz" />);
       await screen.findByText("Service requests filed");
       await user.click(screen.getByRole("button", { name: "Today" }));
 
@@ -650,7 +716,7 @@ describe("DashboardPage", () => {
       mockListApplications.mockResolvedValue(threeOfFourYellowCardsOnTime());
       mockListIncidents.mockResolvedValue(oneOfTwoIncidentsOnTime());
 
-      render(<DashboardPage />);
+      render(<DashboardPage displayName="Juan Dela Cruz" />);
       await waitForSlaTile("75%");
 
       const card = screen.getByRole("link", { name: /^SLA Reports/ });
@@ -682,7 +748,7 @@ describe("DashboardPage", () => {
       buildIncidentRow({ id: "inc-1", assigned_department_code: "waste", sla_met: false }),
     ]);
 
-    render(<DashboardPage />);
+    render(<DashboardPage displayName="Juan Dela Cruz" />);
     expect(await screen.findByRole("link", { name: /Waste Management SLA at 0%/ })).toBeInTheDocument();
     const callsBeforeClick = mockListIncidents.mock.calls.length;
 
@@ -709,7 +775,7 @@ describe("DashboardPage", () => {
     mockListApplications.mockResolvedValue([buildYellowCardRow()]);
     mockListBookings.mockResolvedValue([buildBookingRow()]);
 
-    render(<DashboardPage />);
+    render(<DashboardPage displayName="Juan Dela Cruz" />);
     await screen.findByText("Service requests filed");
 
     expect(mockListApplications).toHaveBeenCalledTimes(1);
@@ -741,7 +807,7 @@ describe("DashboardPage", () => {
       // Second render pass (after Retry) succeeds.
       mockListApplications.mockResolvedValueOnce([]);
 
-      render(<DashboardPage />);
+      render(<DashboardPage displayName="Juan Dela Cruz" />);
 
       expect(await screen.findByText("Unable to load dashboard data: boom")).toBeInTheDocument();
       expect(mockListApplications).toHaveBeenCalledTimes(1);
@@ -766,7 +832,7 @@ describe("DashboardPage", () => {
         })
       );
 
-      render(<DashboardPage />);
+      render(<DashboardPage displayName="Juan Dela Cruz" />);
 
       expect(screen.queryByText(/^Updated /)).not.toBeInTheDocument();
 
@@ -790,7 +856,7 @@ describe("DashboardPage", () => {
         })
       );
 
-      render(<DashboardPage />);
+      render(<DashboardPage displayName="Juan Dela Cruz" />);
 
       expect(screen.getByRole("status")).toHaveTextContent("Loading dashboard data…");
 
@@ -809,7 +875,7 @@ describe("DashboardPage", () => {
     it("does not show the Updated stamp when the fetch fails", async () => {
       mockListApplications.mockRejectedValue({ kind: "unknown", message: "boom" });
 
-      render(<DashboardPage />);
+      render(<DashboardPage displayName="Juan Dela Cruz" />);
 
       expect(await screen.findByText("Unable to load dashboard data: boom")).toBeInTheDocument();
       expect(screen.queryByText(/^Updated /)).not.toBeInTheDocument();
@@ -850,7 +916,7 @@ describe("DashboardPage", () => {
       buildIncidentRow({ id: "b10", submitted_at: monthB, resolved_at: monthB, sla_met: false }),
     ]);
 
-    render(<DashboardPage />);
+    render(<DashboardPage displayName="Juan Dela Cruz" />);
     await screen.findByText("Service requests filed");
     await user.click(screen.getByRole("button", { name: "Annual" }));
 

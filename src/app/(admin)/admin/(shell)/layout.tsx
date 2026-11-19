@@ -1,94 +1,65 @@
-"use client";
-
-import { ReactNode, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth } from "@/portals/admin/features/auth/hooks/use-auth";
-import { AccessRefusal, type AccessRefusalDecision } from "@/portals/admin/features/auth/components/access-refusal";
+import type { ReactNode } from "react";
+import { redirect } from "next/navigation";
 import { Sidebar } from "@/portals/admin/components/layout/sidebar";
+import { AccessRefusal } from "@/portals/admin/features/auth/components/access-refusal";
+import { ShellGate } from "@/portals/admin/features/auth/components/shell-gate";
+import { adminDisplayName } from "@/portals/admin/features/auth/lib/display-name";
+import { getAdminProfile, hasSession } from "@/portals/admin/features/auth/lib/profile";
 import { decideRoleAccess } from "@/portals/admin/lib/supabase/access";
 import { EMPLOYEE_SIGN_IN_PATH } from "@/shared/guard/portals";
 
-export default function AdminLayout({ children }: { children: ReactNode }) {
-  const { session, isLoading, profile } = useAuth();
-  const router = useRouter();
+// The Admin shell's gate, on the server, as Staff's and Super Staff's (portal)
+// layouts do it, so every Admin page is sent with its shell and first render
+// (issue #150). The shared request guard has already sent a signed-out or
+// refused session away; this is defense in depth, and the two judge the
+// profile with the same judgeStaffProfile (via decideRoleAccess).
+export default async function AdminShellLayout({ children }: { children: ReactNode }) {
+  // One read per page load. getAdminProfile is cache()d, so the pages beneath
+  // reuse it. A failed read throws to src/app/(admin)/error.tsx.
+  const profile = await getAdminProfile();
 
-  // AccessRefusal signs a deactivated account out on its own mount, which —
-  // because @supabase/ssr's browser client is a singleton — feeds a real
-  // SIGNED_OUT event back into the same AuthProvider this layout reads from,
-  // dropping `session` to null a moment later. Once a refusal has been decided, it is
-  // pinned here so that later drop doesn't fall through to the "no session"
-  // branch below and swap the screen for a /employee redirect before the user
-  // can read it (or recompute against a now-null profile and show a
-  // different message).
-  const [pinnedDecision, setPinnedDecision] = useState<AccessRefusalDecision | null>(null);
-
-  // Client-side half of the role gate — the proxy already redirects a
-  // refused session to /forbidden before these pages are served, but this
-  // branch stays as defense in depth (and covers a role change mid-session,
-  // which the proxy only sees on the next navigation). decideRoleAccess is
-  // the same function /forbidden calls, so the two gates cannot drift apart.
-  const liveDecision = !isLoading && session ? decideRoleAccess(profile) : null;
-  const liveRefusal: AccessRefusalDecision | null =
-    liveDecision && liveDecision.kind !== "allow" ? liveDecision : null;
-  const refusal = pinnedDecision ?? liveRefusal;
-
-  // Adjusting state during render (React's documented pattern for this —
-  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes)
-  // rather than in a useEffect: this pin only ever needs to happen once, and
-  // React discards this render's output and immediately re-renders when
-  // setState is called during render, so `refusal` is already
-  // `pinnedDecision` by the next pass — the guard can't fire twice. Same
-  // observable behavior as the effect it replaces (fires exactly once), just
-  // resolved one render-cycle earlier instead of after a commit + effect.
-  if (refusal && !pinnedDecision) {
-    setPinnedDecision(refusal);
+  // An empty read is either "not an employee" or "nobody signed in". Only the
+  // second goes to the sign-in, not a refusal.
+  if (!profile && !(await hasSession())) {
+    redirect(EMPLOYEE_SIGN_IN_PATH);
   }
 
-  useEffect(() => {
-    if (!isLoading && !session && !pinnedDecision) {
-      router.push(EMPLOYEE_SIGN_IN_PATH);
-    }
-  }, [isLoading, session, router, pinnedDecision]);
+  const decision = decideRoleAccess(profile);
 
-  if (refusal) {
-    return <AccessRefusal decision={refusal} />;
-  }
-
-  if (isLoading) {
-    return null;
-  }
-
-  if (!session) {
-    return null;
+  if (decision.kind !== "allow") {
+    // Rendered outside ShellGate, so nothing on this path redirects: the
+    // SIGNED_OUT a deactivated account's own sign-out sets off can't swap the
+    // message for the sign-in.
+    return <AccessRefusal decision={decision} />;
   }
 
   return (
-    // Column below md so Sidebar's mobile top bar sits above the content
-    // instead of being squeezed into a row alongside it; row from md up,
-    // matching Sidebar's own md breakpoint for switching from the off-canvas
-    // drawer to the static side column.
-    <div className="flex min-h-screen flex-col md:flex-row">
-      {/* First focusable element in the DOM, ahead of Sidebar's hamburger/nav
-          links, so it is the first Tab stop on every admin page. Visually
-          hidden until focused (sr-only / focus:not-sr-only), matching the
-          conventional skip-link pattern — this codebase has no prior
-          skip-link to match, so the visual treatment below (blue-900, rounded-
-          none, ring-white) is new but follows the site's existing focus-ring
-          and rounded-none conventions (see Modal.tsx / Sidebar.tsx). */}
-      <a
-        href="#main"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-none focus:bg-blue-900 focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2"
-      >
-        Skip to content
-      </a>
-      <Sidebar />
-      {/* Padding is coupled to PageHero's negative-margin bleed (see that
-          file) — keep these two in lockstep at every breakpoint.
-          tabIndex={-1} lets the skip link move focus here programmatically
-          (href="#main") without adding a stop to the normal Tab order. */}
-      <main id="main" tabIndex={-1} className="flex-1 overflow-y-auto p-4 md:p-8 focus:outline-none">
-        {children}
-      </main>
-    </div>
+    // Watches the browser's session for what happens after this render: a
+    // sign-out elsewhere, or a different user signing in.
+    <ShellGate>
+      {/* Column below md so Sidebar's mobile top bar sits above the content
+          instead of being squeezed into a row alongside it; row from md up,
+          matching Sidebar's own md breakpoint for switching from the off-canvas
+          drawer to the static side column. */}
+      <div className="flex min-h-screen flex-col md:flex-row">
+        {/* First focusable element in the DOM, ahead of Sidebar's hamburger/nav
+            links, so it is the first Tab stop on every admin page. Visually
+            hidden until focused (sr-only / focus:not-sr-only). */}
+        <a
+          href="#main"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-none focus:bg-blue-900 focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2"
+        >
+          Skip to content
+        </a>
+        <Sidebar displayName={adminDisplayName(profile)} />
+        {/* Padding is coupled to PageHero's negative-margin bleed (see that
+            file) — keep these two in lockstep at every breakpoint.
+            tabIndex={-1} lets the skip link move focus here programmatically
+            (href="#main") without adding a stop to the normal Tab order. */}
+        <main id="main" tabIndex={-1} className="flex-1 overflow-y-auto p-4 md:p-8 focus:outline-none">
+          {children}
+        </main>
+      </div>
+    </ShellGate>
   );
 }

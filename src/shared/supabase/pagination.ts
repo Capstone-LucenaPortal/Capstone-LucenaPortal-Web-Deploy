@@ -48,8 +48,8 @@ export interface RangeableQuery<Row> {
  * before the first page's request as well as every subsequent one. This is
  * what actually stops a cancelled fetch mid-pagination: `query` itself
  * should already carry the same signal via `.abortSignal()` (see Admin's
- * listIncidents or Super-staff's listAuditEntries), which cancels whichever
- * single HTTP request is currently in flight, but that alone does not stop
+ * listIncidents or Super-staff's listAuditEntriesForTarget), which cancels
+ * whichever single HTTP request is currently in flight, but that alone does not stop
  * this loop from immediately issuing the NEXT page's request the moment the
  * in-flight one settles — an aborted query still resolves (PostgREST's
  * client turns a fetch abort into `{ data: null, error }`, it does not

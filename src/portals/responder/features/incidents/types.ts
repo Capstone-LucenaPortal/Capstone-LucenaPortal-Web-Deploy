@@ -41,6 +41,21 @@ export type HistoryRow = Views["responder_history"]["Row"];
 export type ResponderNotification = Views["my_notifications"]["Row"];
 export type IncidentConfig = Views["public_incident_config"]["Row"];
 
+/** An unread Inbox row, cut to what the badge needs to leave stale arrivals out. */
+export type UnreadNotification = Pick<
+  ResponderNotification,
+  "id" | "event_code" | "record_id"
+>;
+
+/** One row of the stale-arrival lookup: a report my department can still see. */
+export type VisibleIncidentStatus = { id: string; status: IncidentStatus };
+
+/**
+ * An Inbox row as the page renders it. `stale` is a stale arrival: its report
+ * is no longer in my department's pool (#138, lib/stale-arrival.ts).
+ */
+export type InboxEntry = ResponderNotification & { stale: boolean };
+
 export type IncidentLevel = Database["public"]["Enums"]["incident_level"];
 export type IncidentStatus = Database["public"]["Enums"]["incident_status"];
 export type PhotoKind = Database["public"]["Enums"]["photo_kind"];

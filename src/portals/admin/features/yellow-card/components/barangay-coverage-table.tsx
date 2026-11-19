@@ -33,7 +33,15 @@ function SortStatusText({ active, dir }: { active: boolean; dir: SortDir }) {
   return <span className="sr-only"> ({label})</span>;
 }
 
-export function BarangayCoverageTable({ rows }: { rows: BarangayCoverage[] }) {
+export function BarangayCoverageTable({
+  rows,
+  canExport,
+}: {
+  rows: BarangayCoverage[];
+  // The parent page owns the fetch, so only it knows whether `rows` are a
+  // real load or the empty placeholder before one succeeds (#146).
+  canExport: boolean;
+}) {
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("applicants");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -68,6 +76,7 @@ export function BarangayCoverageTable({ rows }: { rows: BarangayCoverage[] }) {
   }
 
   function handleExport() {
+    if (!canExport) return;
     downloadCsv(
       "applicants-by-barangay.csv",
       ["Barangay", "Applicants"],
@@ -82,7 +91,7 @@ export function BarangayCoverageTable({ rows }: { rows: BarangayCoverage[] }) {
           <h2 className="text-lg font-semibold text-gray-900">Applicants by barangay</h2>
           <p className="text-sm text-gray-500">Ranked · click headers to sort</p>
         </div>
-        <Button variant="secondary" onClick={handleExport}>
+        <Button variant="secondary" onClick={handleExport} disabled={!canExport}>
           ↓ Export
         </Button>
       </div>

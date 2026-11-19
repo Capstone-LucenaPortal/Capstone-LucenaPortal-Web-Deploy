@@ -6,11 +6,24 @@ import { vi } from "vitest";
 // elsewhere in this file are. A relative path is required for the mock to be
 // registered against the same resolved module that src/portals/admin/features/yellow-card/lib/yellow-card.ts
 // imports.
+
+// One chainable builder stands in for both requests listViewNewestFirst
+// sends: the newest-row read, which is awaited, and the paged read, which
+// fetchAllRows drives through .range(). Every chain method returns the builder.
+const NEWEST = "2026-01-01T00:00:00.000649+00:00";
+let newestResponse: { data: { submitted_at: string | null }[] | null; error: unknown };
 const mockRange = vi.fn();
-const mockAbortSignal = vi.fn(() => ({ range: mockRange }));
-const mockOrder = vi.fn(() => ({ range: mockRange, abortSignal: mockAbortSignal }));
-const mockSelect = vi.fn(() => ({ order: mockOrder }));
-const mockFrom = vi.fn(() => ({ select: mockSelect }));
+const builder = {
+  select: vi.fn(() => builder),
+  order: vi.fn(() => builder),
+  limit: vi.fn(() => builder),
+  lte: vi.fn(() => builder),
+  abortSignal: vi.fn(() => builder),
+  range: mockRange,
+  then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) =>
+    Promise.resolve(newestResponse).then(resolve, reject),
+};
+const mockFrom = vi.fn(() => builder);
 const mockRpc = vi.fn();
 
 const mockSupabase = {
@@ -25,13 +38,14 @@ vi.mock("../../../../../shared/supabase/client", () => ({
 describe("listApplications", () => {
   beforeEach(() => {
     mockFrom.mockClear();
-    mockSelect.mockClear();
-    mockOrder.mockClear();
-    mockAbortSignal.mockClear();
+    for (const method of [builder.select, builder.order, builder.limit, builder.lte, builder.abortSignal]) {
+      method.mockClear();
+    }
     mockRange.mockReset();
+    newestResponse = { data: [{ submitted_at: NEWEST }], error: null };
   });
 
-  it("reads from admin_yellow_card_analytics, selects *, orders by submitted_at descending, and ranges over the first page", async () => {
+  it("reads admin_yellow_card_analytics: its newest submitted_at, then every row (select *) up to it, newest first by submitted_at then id", async () => {
     mockRange.mockResolvedValue({ data: [], error: null });
 
     await listApplications();
@@ -39,9 +53,15 @@ describe("listApplications", () => {
     // Assert the exact view name. That view deliberately carries no applicant
     // PII; reading a base table instead would 403, and reading a different
     // view would leak. This is the guard against someone "optimising" it away.
-    expect(mockFrom).toHaveBeenCalledWith("admin_yellow_card_analytics");
-    expect(mockSelect).toHaveBeenCalledWith("*");
-    expect(mockOrder).toHaveBeenCalledWith("submitted_at", { ascending: false });
+    expect(mockFrom.mock.calls).toEqual([["admin_yellow_card_analytics"], ["admin_yellow_card_analytics"]]);
+    expect(builder.select.mock.calls).toEqual([["submitted_at"], ["*"]]);
+    expect(builder.limit).toHaveBeenCalledWith(1);
+    expect(builder.lte).toHaveBeenCalledWith("submitted_at", NEWEST);
+    expect(builder.order.mock.calls).toEqual([
+      ["submitted_at", { ascending: false }],
+      ["submitted_at", { ascending: false }],
+      ["id", { ascending: false }],
+    ]);
     expect(mockRange).toHaveBeenCalledWith(0, 999);
   });
 
@@ -51,20 +71,22 @@ describe("listApplications", () => {
 
     await listApplications();
 
-    expect(mockAbortSignal).not.toHaveBeenCalled();
+    expect(builder.abortSignal).not.toHaveBeenCalled();
   });
 
-  it("attaches a given AbortSignal via .abortSignal() before ranging", async () => {
+  // Both requests carry the signal, so a cancelled load cancels whichever one
+  // is in flight; fetchAllRows gets it too, so no further page is asked for.
+  it("attaches a given AbortSignal to both requests via .abortSignal()", async () => {
     mockRange.mockResolvedValue({ data: [], error: null });
     const controller = new AbortController();
 
     await listApplications(controller.signal);
 
-    expect(mockAbortSignal).toHaveBeenCalledWith(controller.signal);
+    expect(builder.abortSignal.mock.calls).toEqual([[controller.signal], [controller.signal]]);
     expect(mockRange).toHaveBeenCalledWith(0, 999);
   });
 
-  it("stops before issuing any request when the given signal is already aborted", async () => {
+  it("asks for no page when the given signal is already aborted", async () => {
     const controller = new AbortController();
     controller.abort();
 
@@ -73,12 +95,13 @@ describe("listApplications", () => {
     expect(mockRange).not.toHaveBeenCalled();
   });
 
-  it("returns [] when the view returns [] — an empty gate result is not an error", async () => {
-    mockRange.mockResolvedValue({ data: [], error: null });
+  it("returns [] for an empty view, asking for no page — an empty gate result is not an error", async () => {
+    newestResponse = { data: [], error: null };
 
     const result = await listApplications();
 
     expect(result).toEqual([]);
+    expect(mockRange).not.toHaveBeenCalled();
   });
 
   it("returns whatever rows the view provides", async () => {
@@ -111,6 +134,16 @@ describe("listApplications", () => {
     });
 
     await expect(listApplications()).rejects.toMatchObject({ kind: "permission" });
+  });
+
+  it("throws a PortalError, asking for no page, when the newest-row read fails", async () => {
+    newestResponse = {
+      data: null,
+      error: { code: "42501", message: "caller is not an active Admin" },
+    };
+
+    await expect(listApplications()).rejects.toMatchObject({ kind: "permission" });
+    expect(mockRange).not.toHaveBeenCalled();
   });
 });
 

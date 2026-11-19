@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/portals/citizen/features/auth/hooks/use-auth';
 import { catalogService, type SiteInfo, type SiteInfoEntry } from '@/portals/citizen/lib/supabase/catalogs';
 import ProgramsSummary from '@/portals/citizen/features/content/components/programs-summary';
+import SlideshowToggle from '@/portals/citizen/features/content/components/slideshow-toggle';
+import { useCarousel } from '@/portals/citizen/features/content/hooks/use-carousel';
 import FacebookPageFeed from '@/portals/citizen/components/ui/facebook-page-feed';
 import { FACEBOOK_PAGE_URL } from '@/portals/citizen/lib/contact-info';
 
@@ -20,8 +22,6 @@ export default function HomePage() {
   const router = useRouter();
   const { user, openAuthModal } = useAuth();
 
-  const [heroSlide, setHeroSlide] = useState(0);
-  const [lccSlide, setLccSlide] = useState(0);
   const [lccHovered, setLccHovered] = useState<number | null>(null);
   const [emergencyHotlines, setEmergencyHotlines] = useState<SiteInfoEntry[]>([]);
   const [siteInfo, setSiteInfo] = useState<SiteInfo | null>(null);
@@ -48,19 +48,8 @@ export default function HomePage() {
     { date: 'Apr 15', text: 'Business permit renewal deadline extended to April 30.' },
   ];
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setHeroSlide(prev => (prev + 1) % heroSlides.length);
-    }, 5000);
-    return () => clearInterval(timer);
-  }, [heroSlides.length]);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setLccSlide(prev => (prev + 1) % lccSlides.length);
-    }, 4000);
-    return () => clearInterval(timer);
-  }, [lccSlides.length]);
+  const hero = useCarousel(heroSlides.length, 5000);
+  const lcc = useCarousel(lccSlides.length, 4000);
 
   // Hotlines, trunkline and office hours are LGU-editable config. They live in
   // `public_site_info*` and are rendered straight from there — deliberately with
@@ -82,14 +71,16 @@ export default function HomePage() {
     <>
       {/* Hero Carousel */}
       <section style={{ position: 'relative', height: 'calc(100vh - 88px)', overflow: 'hidden', marginBottom: 40 }}>
-        <div style={{ position: 'relative', height: '100%' }}>
+        {/* The carousel itself: hovering or focusing anything in here holds it
+            still. The Live ticker sits outside it, in the same spot. */}
+        <div {...hero.regionProps} style={{ position: 'relative', height: '100%' }}>
           {/* Background image — no color overlay */}
           <div style={{
             position: 'absolute',
             inset: 0,
-            background: heroSlides[heroSlide].image
-              ? `url('${heroSlides[heroSlide].image}') ${heroSlides[heroSlide].imagePosition ?? 'center'}/cover no-repeat ${heroSlides[heroSlide].color}`
-              : `linear-gradient(135deg, ${heroSlides[heroSlide].color}E6, ${heroSlides[heroSlide].color}CC)`,
+            background: heroSlides[hero.slide].image
+              ? `url('${heroSlides[hero.slide].image}') ${heroSlides[hero.slide].imagePosition ?? 'center'}/cover no-repeat ${heroSlides[hero.slide].color}`
+              : `linear-gradient(135deg, ${heroSlides[hero.slide].color}E6, ${heroSlides[hero.slide].color}CC)`,
             transition: 'background 0.5s ease'
           }} />
 
@@ -103,50 +94,54 @@ export default function HomePage() {
 
           {/* Slide Content — bottom left like Valenzuela */}
           <div style={{ position: 'absolute', bottom: 80, left: 'clamp(16px, 4vw, 48px)', zIndex: 2, color: 'white', maxWidth: 680 }}>
-            <h1 style={{ fontSize: 'clamp(28px, 6vw, 44px)', fontWeight: 700, marginBottom: 14, lineHeight: 1.15, textShadow: '0 2px 8px rgba(0,0,0,0.4)' }}>{heroSlides[heroSlide].title}</h1>
-            <p style={{ fontSize: 17, marginBottom: 28, color: 'rgba(255,255,255,0.9)', lineHeight: 1.6 }}>{heroSlides[heroSlide].desc}</p>
+            <h1 style={{ fontSize: 'clamp(28px, 6vw, 44px)', fontWeight: 700, marginBottom: 14, lineHeight: 1.15, textShadow: '0 2px 8px rgba(0,0,0,0.4)' }}>{heroSlides[hero.slide].title}</h1>
+            <p style={{ fontSize: 17, marginBottom: 28, color: 'rgba(255,255,255,0.9)', lineHeight: 1.6 }}>{heroSlides[hero.slide].desc}</p>
             <button
               onClick={() => {
-                if (heroSlides[heroSlide].link !== '#') {
-                  router.push(heroSlides[heroSlide].link);
+                if (heroSlides[hero.slide].link !== '#') {
+                  router.push(heroSlides[hero.slide].link);
                 }
               }}
               style={{ padding: '12px 32px', fontSize: 15, fontWeight: 700, background: 'white', color: '#003DA5', border: 'none', borderRadius: 4, cursor: 'pointer' }}
             >
-              {heroSlides[heroSlide].buttonText}
+              {heroSlides[hero.slide].buttonText}
             </button>
           </div>
 
           {/* Navigation Arrows */}
-          <button aria-label="Previous slide" onClick={() => setHeroSlide((heroSlide - 1 + heroSlides.length) % heroSlides.length)}
+          <button aria-label="Previous slide" onClick={() => hero.prev()}
             style={{ position: 'absolute', left: 24, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.25)', border: 'none', color: 'white', width: 48, height: 48, borderRadius: 4, cursor: 'pointer', fontSize: 20, zIndex: 3 }}>
             ←
           </button>
-          <button aria-label="Next slide" onClick={() => setHeroSlide((heroSlide + 1) % heroSlides.length)}
+          <button aria-label="Next slide" onClick={() => hero.next()}
             style={{ position: 'absolute', right: 24, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.25)', border: 'none', color: 'white', width: 48, height: 48, borderRadius: 4, cursor: 'pointer', fontSize: 20, zIndex: 3 }}>
             →
           </button>
 
-          {/* Slide Indicators */}
+          {/* Slide Indicators, with pause/play hung off their right end so the
+              dots stay centred where they were. */}
           <div style={{ position: 'absolute', bottom: 76, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 8, zIndex: 3 }}>
             {heroSlides.map((_, i) => (
-              <button key={i} aria-label={`Go to slide ${i + 1} of ${heroSlides.length}`} aria-current={i === heroSlide ? 'true' : undefined} onClick={() => setHeroSlide(i)}
-                style={{ width: i === heroSlide ? 32 : 8, height: 8, background: i === heroSlide ? 'white' : 'rgba(255,255,255,0.5)', border: 'none', borderRadius: 999, cursor: 'pointer', transition: 'all 0.3s' }} />
+              <button key={i} aria-label={`Go to slide ${i + 1} of ${heroSlides.length}`} aria-current={i === hero.slide ? 'true' : undefined} onClick={() => hero.goTo(i)}
+                style={{ width: i === hero.slide ? 32 : 8, height: 8, background: i === hero.slide ? 'white' : 'rgba(255,255,255,0.5)', border: 'none', borderRadius: 999, cursor: 'pointer', transition: 'all 0.3s' }} />
             ))}
+            <SlideshowToggle playing={hero.playing} onToggle={hero.toggle}
+              style={{ position: 'absolute', left: '100%', top: '50%', transform: 'translateY(-50%)', marginLeft: 12, width: 28, height: 28, borderRadius: 4, background: 'rgba(255,255,255,0.25)', color: 'white' }} />
           </div>
 
-          {/* Live Announcement Ticker */}
-          <button
-            type="button"
-            onClick={() => router.push('/announcements')}
-            style={{ position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 4, background: '#003DA5', color: 'white', padding: '10px clamp(16px, 5vw, 48px)', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', fontSize: 13, width: '100%', border: 'none', textAlign: 'left', font: 'inherit' }}
-          >
-            <span style={{ background: '#F5A623', color: '#000000', fontWeight: 700, fontSize: 10, letterSpacing: '0.05em', textTransform: 'uppercase', borderRadius: 999, padding: '3px 10px', flexShrink: 0 }}>Live</span>
-            <span style={{ fontWeight: 600, flexShrink: 0 }}>{announcements[0].date}</span>
-            <span style={{ opacity: 0.9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{announcements[0].text}</span>
-            <span style={{ marginLeft: 'auto', flexShrink: 0, opacity: 0.85 }}>View All →</span>
-          </button>
         </div>
+
+        {/* Live Announcement Ticker */}
+        <button
+          type="button"
+          onClick={() => router.push('/announcements')}
+          style={{ position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 4, background: '#003DA5', color: 'white', padding: '10px clamp(16px, 5vw, 48px)', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', fontSize: 13, width: '100%', border: 'none', textAlign: 'left', font: 'inherit' }}
+        >
+          <span style={{ background: '#F5A623', color: '#000000', fontWeight: 700, fontSize: 10, letterSpacing: '0.05em', textTransform: 'uppercase', borderRadius: 999, padding: '3px 10px', flexShrink: 0 }}>Live</span>
+          <span style={{ fontWeight: 600, flexShrink: 0 }}>{announcements[0].date}</span>
+          <span style={{ opacity: 0.9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{announcements[0].text}</span>
+          <span style={{ marginLeft: 'auto', flexShrink: 0, opacity: 0.85 }}>View All →</span>
+        </button>
       </section>
 
       {/* Mission & Vision */}
@@ -186,17 +181,19 @@ export default function HomePage() {
       <section style={{ padding: '40px 0', maxWidth: '100%', overflow: 'hidden', margin: '0 auto', marginBottom: 40, background: '#FAFAFA' }}>
         <h2 style={{ fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 700, color: '#003DA5', marginBottom: 32, textAlign: 'center' }}>Lucena Convention Center</h2>
 
-        <div style={{ position: 'relative', width: '100%', height: 'clamp(280px, 60vw, 500px)' }}>
+        <div {...lcc.regionProps} style={{ position: 'relative', width: '100%', height: 'clamp(280px, 60vw, 500px)' }}>
           <div style={{
             display: 'flex',
             height: '100%',
             alignItems: 'center',
             transition: 'transform 0.6s cubic-bezier(0.25, 1, 0.5, 1)',
-            transform: `translateX(calc(10% - ${lccSlide * 80}%))`
+            transform: `translateX(calc(10% - ${lcc.slide * 80}%))`
           }}>
             {lccSlides.map((slide, i) => {
-              const isActive = i === lccSlide;
-              const isHovered = lccHovered === i;
+              const isActive = i === lcc.slide;
+              // Hover shows any slide's name; keyboard focus anywhere in the
+              // carousel shows the centre slide's, since the slides take no focus.
+              const showText = lccHovered === i || (isActive && lcc.focusInside);
               return (
                 <div key={i} style={{ flexShrink: 0, width: '80%', height: '100%', padding: '0 11px', boxSizing: 'border-box' }}>
                   <div
@@ -210,15 +207,15 @@ export default function HomePage() {
                       boxShadow: isActive ? '0 20px 40px rgba(0,0,0,0.15)' : 'none',
                       cursor: isActive ? 'default' : 'pointer',
                     }}
-                    onClick={() => !isActive && setLccSlide(i)}
+                    onClick={() => !isActive && lcc.goTo(i)}
                     onMouseEnter={() => setLccHovered(i)}
                     onMouseLeave={() => setLccHovered(null)}
                   >
-                    {/* Hover overlay */}
+                    {/* Name and caption overlay */}
                     <div style={{
                       position: 'absolute', inset: 0,
                       background: 'linear-gradient(to top, rgba(0,30,80,0.85) 0%, rgba(0,30,80,0.2) 60%, transparent 100%)',
-                      opacity: isHovered ? 1 : 0,
+                      opacity: showText ? 1 : 0,
                       transition: 'opacity 0.3s ease',
                       display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
                       padding: '28px 24px',
@@ -233,20 +230,23 @@ export default function HomePage() {
             })}
           </div>
 
-          <button aria-label="Previous slide" onClick={() => setLccSlide((lccSlide - 1 + lccSlides.length) % lccSlides.length)}
+          <button aria-label="Previous slide" onClick={() => lcc.prev()}
             style={{ position: 'absolute', left: '12%', top: '50%', transform: 'translateY(-50%)', background: 'white', border: 'none', color: '#333333', width: 48, height: 48, borderRadius: '50%', cursor: 'pointer', fontSize: 20, zIndex: 3, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>
             ←
           </button>
-          <button aria-label="Next slide" onClick={() => setLccSlide((lccSlide + 1) % lccSlides.length)}
+          <button aria-label="Next slide" onClick={() => lcc.next()}
             style={{ position: 'absolute', right: '12%', top: '50%', transform: 'translateY(-50%)', background: 'white', border: 'none', color: '#333333', width: 48, height: 48, borderRadius: '50%', cursor: 'pointer', fontSize: 20, zIndex: 3, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>
             →
           </button>
 
+          {/* Dots, with pause/play hung off their right end. */}
           <div style={{ position: 'absolute', bottom: -30, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 10 }}>
             {lccSlides.map((_, i) => (
-              <button key={i} aria-label={`Go to slide ${i + 1} of ${lccSlides.length}`} aria-current={i === lccSlide ? 'true' : undefined} onClick={() => setLccSlide(i)}
-                style={{ width: i === lccSlide ? 32 : 8, height: 8, background: i === lccSlide ? '#003DA5' : '#DDDDDD', border: 'none', borderRadius: 999, cursor: 'pointer', transition: 'all 0.3s' }} />
+              <button key={i} aria-label={`Go to slide ${i + 1} of ${lccSlides.length}`} aria-current={i === lcc.slide ? 'true' : undefined} onClick={() => lcc.goTo(i)}
+                style={{ width: i === lcc.slide ? 32 : 8, height: 8, background: i === lcc.slide ? '#003DA5' : '#DDDDDD', border: 'none', borderRadius: 999, cursor: 'pointer', transition: 'all 0.3s' }} />
             ))}
+            <SlideshowToggle playing={lcc.playing} onToggle={lcc.toggle}
+              style={{ position: 'absolute', left: '100%', top: '50%', transform: 'translateY(-50%)', marginLeft: 12, width: 24, height: 24, borderRadius: '50%', background: 'white', color: '#333333', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
           </div>
         </div>
       </section>

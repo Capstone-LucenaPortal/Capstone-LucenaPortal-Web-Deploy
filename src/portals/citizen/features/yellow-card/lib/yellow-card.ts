@@ -489,7 +489,8 @@ export const yellowCardService = {
   },
 
   /**
-   * Withdraw a live application, freeing the citizen to submit a new one.
+   * Withdraw a `pending` or `revision_requested` application (see
+   * `translateWithdrawError`), freeing the citizen to submit a new one.
    * Mock mode is a no-op: mock records carry no application id.
    */
   async withdrawApplication(applicationId: string): Promise<void> {

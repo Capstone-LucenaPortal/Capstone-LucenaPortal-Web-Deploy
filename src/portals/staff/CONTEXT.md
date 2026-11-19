@@ -88,7 +88,8 @@ _Avoid_: Confirmed (that is a closure reason, and a different event).
 **Routing**:
 Handing an incident to a department. It is not handing it to a person — nobody
 owns an incident until a responder claims it, which is why a routed incident
-reads as *In Pool*.
+reads as *In Pool*. Routing an incident that was routed before is a **Reroute**,
+defined in [`CONTEXT-MAP.md`](../../../CONTEXT-MAP.md).
 _Avoid_: Assignment, allocation.
 
 **Breach**:

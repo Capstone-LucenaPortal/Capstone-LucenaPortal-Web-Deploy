@@ -319,6 +319,32 @@ describe("SLAReportsPage", () => {
       expect(within(partFor("Past due now", "Incidents")).getByText("3")).toBeInTheDocument();
     });
 
+    // #131: counted against the fetch, the moment the "Updated" stamp names,
+    // so a due time passing while the page stays open doesn't move it.
+    it("counts against the fetch time, and stays put until the next fetch", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-06-15T12:00:00+08:00"));
+      try {
+        const user = userEvent.setup();
+        mockListApplications.mockResolvedValue([]);
+        mockListIncidents.mockResolvedValue([
+          buildIncident({ id: "late", status: "open", submitted_at: "2026-06-01T02:00:00Z", resolved_at: null, sla_due_at: "2026-06-15T03:00:00Z" }),
+          // Due half an hour after the fetch.
+          buildIncident({ id: "due-soon", status: "in_progress", submitted_at: "2026-06-01T02:00:00Z", resolved_at: null, sla_due_at: "2026-06-15T04:30:00Z" }),
+        ]);
+
+        render(<SLAReportsPage />);
+        expect(await within(partFor("Past due now", "Incidents")).findByText("1")).toBeInTheDocument();
+
+        vi.setSystemTime(new Date("2026-06-15T13:00:00+08:00"));
+        await user.click(screen.getByRole("button", { name: "Annual" }));
+
+        expect(within(partFor("Past due now", "Incidents")).getByText("1")).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("reads 0, not a blank, when nothing waiting is past due", async () => {
       mockListApplications.mockResolvedValue([
         buildApplication({ id: "pending-on-track", status: "pending", decided_at: null, deadline_state: "on_track" }),
@@ -1115,6 +1141,71 @@ describe("SLAReportsPage", () => {
       ["Period", "Incidents resolved on time %", "Incidents finished late"],
       [[label, 100, 0]]
     );
+  });
+
+  // #141: the rows only exist once a load succeeds, so before then an export
+  // would be a CSV of "—" and 0 (or the previous load's numbers during a
+  // Retry). The button is off unless the data is ready.
+  describe("Export report is off until the data has loaded", () => {
+    const exportButton = () => screen.getByRole("button", { name: "↓ Export report" });
+
+    it("is disabled while the data is loading, and a click downloads nothing", async () => {
+      const user = userEvent.setup();
+      mockListIncidents.mockReturnValue(new Promise<IncidentRow[]>(() => {}));
+
+      render(<SLAReportsPage />);
+
+      expect(exportButton()).toBeDisabled();
+      await user.click(exportButton());
+      expect(mockDownloadCsv).not.toHaveBeenCalled();
+    });
+
+    it("is enabled once the first load succeeds", async () => {
+      render(<SLAReportsPage />);
+      await screen.findByText("No SLA data for this range.");
+
+      expect(exportButton()).toBeEnabled();
+    });
+
+    it("is disabled after a failed load, and enabled once a Retry succeeds", async () => {
+      const user = userEvent.setup();
+      mockListIncidents.mockRejectedValueOnce({ kind: "unknown", message: "boom" });
+      mockListIncidents.mockResolvedValueOnce([]);
+
+      render(<SLAReportsPage />);
+      await screen.findAllByText(/Unable to load SLA data: boom/);
+
+      expect(exportButton()).toBeDisabled();
+
+      await user.click(screen.getAllByRole("button", { name: "Retry" })[0]);
+      await screen.findByText("No SLA data for this range.");
+
+      expect(exportButton()).toBeEnabled();
+    });
+
+    it("stays disabled for the whole of a Retry, until the new load finishes", async () => {
+      // Retry only shows on the error states, so the page never reloads over
+      // good data; the case to pin is a Retry with its request held open.
+      const user = userEvent.setup();
+      mockListIncidents.mockRejectedValueOnce({ kind: "unknown", message: "boom" });
+      let resolveRetry: (rows: IncidentRow[]) => void = () => {};
+      mockListIncidents.mockReturnValueOnce(
+        new Promise<IncidentRow[]>((resolve) => {
+          resolveRetry = resolve;
+        })
+      );
+
+      render(<SLAReportsPage />);
+      await screen.findAllByText(/Unable to load SLA data: boom/);
+      await user.click(screen.getAllByRole("button", { name: "Retry" })[0]);
+
+      expect(screen.getByRole("status")).toHaveTextContent("Loading SLA data…");
+      expect(exportButton()).toBeDisabled();
+
+      resolveRetry([buildIncident({ sla_met: true })]);
+      expect(await within(partFor("Compliance", "Incidents")).findByText("100%")).toBeInTheDocument();
+      expect(exportButton()).toBeEnabled();
+    });
   });
 
   // Task 3.5: page.tsx is now a server-component wrapper whose only job is

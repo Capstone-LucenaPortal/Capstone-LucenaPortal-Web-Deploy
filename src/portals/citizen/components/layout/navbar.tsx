@@ -3,12 +3,16 @@
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/portals/citizen/features/auth/hooks/use-auth';
+import { useCancelPasswordReset } from '@/portals/citizen/features/auth/hooks/use-cancel-password-reset';
+import { usePasswordUpdateInFlight } from '@/portals/citizen/features/auth/hooks/use-password-update-in-flight';
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { notificationService, unreadCount } from '@/portals/citizen/features/notifications/lib/notifications';
 
 export default function Nav() {
   const pathname = usePathname();
   const { user, logout, openAuthModal, isPasswordRecovery } = useAuth();
+  const cancelReset = useCancelPasswordReset();
+  const savingNewPassword = usePasswordUpdateInFlight();
   const [mounted, setMounted] = useState(false);
   const [homeMenuOpen, setHomeMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -96,7 +100,7 @@ export default function Nav() {
     return (
       <nav aria-label="Main" className="fixed top-0 left-0 right-0 z-[1000] bg-white border-b-[3px] border-lucena-blue shadow-[0_2px_8px_rgba(0,0,0,0.1)]">
         <div style={{ display: 'flex', alignItems: 'center', padding: '12px clamp(16px, 4vw, 64px)', width: '100%', boxSizing: 'border-box' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/seal-128.png" alt="Lucena City Seal" className="w-14 h-14 object-contain" />
             <div>
@@ -104,8 +108,20 @@ export default function Nav() {
               <div className="text-[11px] text-dark-gray font-semibold tracking-[0.12em] uppercase">Portal</div>
             </div>
           </div>
-          <div style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 600, color: '#666666' }}>
-            Resetting your password
+          {/* No hamburger here, so "Sign out" sits inline; the label gives
+              way to it on the narrowest phones (issue #44). */}
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, paddingLeft: 12 }}>
+            <span className="hide-xs" style={{ fontSize: 13, fontWeight: 600, color: '#666666', minWidth: 0, textAlign: 'right' }}>
+              Resetting your password
+            </span>
+            {/* Off while a new password saves, like the form's cancel (#151). */}
+            <button
+              type="button"
+              disabled={savingNewPassword}
+              onClick={cancelReset}
+              className="bg-white text-lucena-blue border border-[#CCCCCC] rounded-md text-sm font-semibold cursor-pointer whitespace-nowrap transition-all hover:bg-[#F2F5FB] disabled:cursor-not-allowed"
+              style={{ padding: '8px 14px', flexShrink: 0, opacity: savingNewPassword ? 0.7 : 1 }}
+            >Sign out</button>
           </div>
         </div>
       </nav>

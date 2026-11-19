@@ -34,7 +34,9 @@ const db = vi.hoisted(() => ({
   photos: [] as unknown[],
   history: [] as unknown[],
   notifications: [] as unknown[],
-  unread: 0,
+  unread: [] as unknown[],
+  // What responder_incidents returns to the stale-arrival lookup (#138).
+  visible: [] as unknown[],
   config: {} as Record<string, number>,
 }));
 
@@ -47,7 +49,9 @@ vi.mock("@/portals/responder/features/incidents/lib/data", () => ({
   getPhotoUrl: async () => null,
   getHistory: async () => db.history,
   getNotifications: async () => db.notifications,
-  getUnreadCount: async () => db.unread,
+  getUnreadNotifications: async () => db.unread,
+  getVisibleIncidentStatuses: async (ids: string[]) =>
+    (db.visible as { id: string }[]).filter((row) => ids.includes(row.id)),
   getIncidentConfig: async () => db.config,
 }));
 
@@ -136,7 +140,8 @@ beforeEach(() => {
   db.photos = [];
   db.history = [];
   db.notifications = [];
-  db.unread = 0;
+  db.unread = [];
+  db.visible = [];
   db.config = { max_photos_per_cycle: 3, auto_close_day: 7 };
 });
 
@@ -671,6 +676,49 @@ describe("portal pages", () => {
     expect(
       screen.getByRole("button", { name: /mark as read/i }),
     ).toBeInTheDocument();
+  });
+
+  it("/responder/notifications says a stale arrival is no longer in the pool, and offers no Read", async () => {
+    // #138: INC-2026-000124 was rerouted to another department, so the
+    // department-scoped view no longer returns it.
+    db.notifications = [
+      aNotification({
+        id: "n1",
+        event_code: "incident_pool_arrival",
+        record_id: "inc-gone",
+        title: "New Level 2 incident in your pool",
+        read_at: null,
+      }),
+    ];
+
+    withProviders(await NotificationsPage());
+
+    expect(screen.getByText("New Level 2 incident in your pool")).toBeInTheDocument();
+    expect(screen.getByText("No longer in your pool")).toBeInTheDocument();
+    expect(screen.queryByText("Unread")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /mark as read/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("/responder/notifications leaves an arrival still in the pool unread, with its Read button", async () => {
+    db.notifications = [
+      aNotification({
+        id: "n1",
+        event_code: "incident_pool_arrival",
+        record_id: "inc-4501",
+        read_at: null,
+      }),
+    ];
+    db.visible = [{ id: "inc-4501", status: "in_pool" }];
+
+    withProviders(await NotificationsPage());
+
+    expect(screen.getByText("Unread")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /mark as read/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No longer in your pool")).not.toBeInTheDocument();
   });
 
   it("/responder/profile renders the signed-in responder with an initials avatar", () => {

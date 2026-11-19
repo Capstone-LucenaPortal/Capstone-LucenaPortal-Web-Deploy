@@ -100,9 +100,13 @@ describe("getAccountHistory", () => {
   });
 
   it("reads changes alongside the account's entries, matched on its id", async () => {
+    rows = [auditRow()];
+
     await getAccountHistory(ACCOUNT_ID);
 
-    const [url] = requests;
+    // The request that reads the entries, after the one that finds the newest.
+    const url = requests.find((u) => u.searchParams.has("offset"));
+    if (!url) throw new Error("No entries were read.");
     expect(url.searchParams.get("select")).toContain("changes");
     expect(url.searchParams.get("target_id")).toBe(`eq.${ACCOUNT_ID}`);
   });

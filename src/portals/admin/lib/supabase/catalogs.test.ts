@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 import {
-  getIncidentConfig,
+  getYellowCardConfig,
   listBarangays,
   listDepartments,
   listVenues,
@@ -279,55 +279,48 @@ describe("listBarangays", () => {
   });
 });
 
-describe("getIncidentConfig", () => {
+describe("getYellowCardConfig", () => {
   beforeEach(() => {
     mockFrom.mockClear();
     mockSelect.mockClear();
     mockMaybeSingle.mockReset();
   });
 
-  it("reads the single public_incident_config row via maybeSingle", async () => {
+  it("reads the single public_yellow_card_config row via maybeSingle", async () => {
     mockMaybeSingle.mockResolvedValue({ data: null, error: null });
 
-    await getIncidentConfig();
+    await getYellowCardConfig();
 
-    // public_incident_config is a one-row view with no sort_order column, so
-    // it is read with maybeSingle rather than the .order() every catalog list
-    // above uses.
-    expect(mockFrom).toHaveBeenCalledWith("public_incident_config");
+    expect(mockFrom).toHaveBeenCalledWith("public_yellow_card_config");
     expect(mockSelect).toHaveBeenCalledWith("*");
     expect(mockMaybeSingle).toHaveBeenCalled();
   });
 
-  it("returns the config row the view provides", async () => {
-    const row = {
-      sla_hours_critical: 4,
-      sla_hours_high: 8,
-      sla_hours_medium: 24,
-      sla_hours_low: 72,
-      auto_close_day: 7,
-      confirmation_window_days: 3,
-      max_active_reports_per_citizen: 3,
-      max_photos_per_cycle: 3,
-      nudge_day: 5,
-    };
-    mockMaybeSingle.mockResolvedValue({ data: row, error: null });
+  it("returns the configured processing time target", async () => {
+    mockMaybeSingle.mockResolvedValue({ data: { processing_time_target_days: 3 }, error: null });
 
-    expect(await getIncidentConfig()).toEqual(row);
+    expect(await getYellowCardConfig()).toEqual({ processing_time_target_days: 3 });
   });
 
+  // No row, or a row with no target, both mean "no target to name".
   it("returns null when the view has no row — not an error", async () => {
     mockMaybeSingle.mockResolvedValue({ data: null, error: null });
 
-    expect(await getIncidentConfig()).toBeNull();
+    expect(await getYellowCardConfig()).toBeNull();
+  });
+
+  it("returns null when the row carries no target", async () => {
+    mockMaybeSingle.mockResolvedValue({ data: { processing_time_target_days: null }, error: null });
+
+    expect(await getYellowCardConfig()).toBeNull();
   });
 
   it("throws a PortalError with kind: permission when the client returns { code: '42501' }", async () => {
     mockMaybeSingle.mockResolvedValue({
       data: null,
-      error: { code: "42501", message: "read permission denied on public_incident_config" },
+      error: { code: "42501", message: "read permission denied on public_yellow_card_config" },
     });
 
-    await expect(getIncidentConfig()).rejects.toMatchObject({ kind: "permission" });
+    await expect(getYellowCardConfig()).rejects.toMatchObject({ kind: "permission" });
   });
 });

@@ -6,20 +6,14 @@
 // yellow-card feature's yellow-card-page.tsx (see that file's header for why
 // it exists as a sibling rather than being merged back in here).
 import type { Metadata } from "next";
-import { Suspense } from "react";
 import { YellowCardPage } from "@/portals/admin/features/yellow-card/components/yellow-card-page";
 
 export const metadata: Metadata = {
   title: "Yellow Card Applications",
 };
 
-// The page reads SLA Reports' filter with useSearchParams (#127). A
-// production build refuses a prerendered page that does so outside a
-// Suspense boundary (node_modules/next/dist/docs/01-app/03-api-reference/04-functions/use-search-params.md).
+// The page reads SLA Reports' filter from the address (#127) inside its own
+// Suspense boundary, so the rest of it prerenders (#133).
 export default function Page() {
-  return (
-    <Suspense fallback={null}>
-      <YellowCardPage />
-    </Suspense>
-  );
+  return <YellowCardPage />;
 }

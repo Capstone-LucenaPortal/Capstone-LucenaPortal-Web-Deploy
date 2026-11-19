@@ -5,15 +5,13 @@
 // exactly the requests the tile counted (#127, metrics sheet S2 and S4). The
 // filter travels in the query string, so the link can be reloaded or shared.
 import type { DateFilterPreset } from "@/portals/admin/components/ui/date-filter-bar";
-import { customRangeError, type DateRangeKey } from "@/portals/admin/lib/dates";
+import { customRangeError, DATE_RANGE_KEYS } from "@/portals/admin/lib/dates";
 
 export const YELLOW_CARD_PATH = "/admin/yellow-card";
 export const INCIDENT_REPORTS_PATH = "/admin/issue-reports";
 
 /** "late": finished late in the range. "past-due": past due now, whatever the range. */
 export type SlaRowFilter = "late" | "past-due";
-
-const PRESET_KEYS: readonly DateRangeKey[] = ["Today", "Week", "Month", "Quarter", "Annual"];
 
 /**
  * Finished late's link: the target page opens on the same range, either the
@@ -74,7 +72,7 @@ export function readSlaLink<B extends string>(
   let preset: DateFilterPreset | null = null;
   let customFrom: string | null = null;
   let customTo: string | null = null;
-  if (known(PRESET_KEYS, range)) {
+  if (known(DATE_RANGE_KEYS, range)) {
     preset = range;
   } else if (from !== null && to !== null && customRangeError(from, to) === null) {
     preset = "Custom";

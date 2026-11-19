@@ -3,6 +3,7 @@ import {
   PROFILE_TABS,
   PROFILE_TAB_YELLOW_CARD,
   profileTabFromQuery,
+  profileTabHref,
 } from '@/portals/citizen/features/profile/lib/tabs';
 
 describe('profileTabFromQuery', () => {
@@ -30,5 +31,19 @@ describe('PROFILE_TAB_YELLOW_CARD', () => {
   // citizen on Account Details (issue #8).
   it('is a tab the profile page renders', () => {
     expect(PROFILE_TABS).toContain(PROFILE_TAB_YELLOW_CARD);
+  });
+});
+
+describe('profileTabHref', () => {
+  it('links to the Security & Password tab', () => {
+    expect(profileTabHref('security')).toBe('/profile?tab=security');
+  });
+
+  // The other end of the contract: every link it builds opens the tab it names.
+  it('builds a link the profile page reads back as the same tab', () => {
+    for (const tab of PROFILE_TABS) {
+      const query = new URL(profileTabHref(tab), 'https://example.test').searchParams.get('tab');
+      expect(profileTabFromQuery(query)).toBe(tab);
+    }
   });
 });

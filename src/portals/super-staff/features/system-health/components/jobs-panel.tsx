@@ -96,13 +96,18 @@ export function JobsPanel({ sections }: { sections: Sections }) {
 
 const PURGE_JOB = "purge-cron-history";
 
+/** The purge job among the jobs, or undefined when it isn't scheduled. */
+export function findPurgeJob(items: SectionJob[]): SectionJob | undefined {
+  return items.find((j) => j.name === PURGE_JOB);
+}
+
 /**
  * pg_cron's own run history, which counts against the database limit, and the
  * daily job that keeps it to 7 days: the one repair System Health makes.
  */
 export function RunHistoryPanel({ jobs }: { jobs: Sections["jobs"] }) {
   const { run_history_rows, run_history_oldest_seconds, thresholds, items } = jobs.detail;
-  const purge = items.find((j) => j.name === PURGE_JOB);
+  const purge = findPurgeJob(items);
   return (
     <Panel title="Run history">
       <div className="space-y-1 px-5 pb-4 text-sm text-gray-700">

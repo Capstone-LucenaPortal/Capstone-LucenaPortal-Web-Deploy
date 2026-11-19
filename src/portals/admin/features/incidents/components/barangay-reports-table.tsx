@@ -36,9 +36,13 @@ function SortStatusText({ active, dir }: { active: boolean; dir: SortDir }) {
 export function BarangayReportsTable({
   rows,
   insight,
+  canExport,
 }: {
   rows: BarangayIssueRow[];
   insight: { emphasis: string; text: string };
+  // The parent page owns the fetch, so only it knows whether `rows` are a
+  // real load or the empty placeholder before one succeeds (#146).
+  canExport: boolean;
 }) {
   const categories = useMemo(
     () => [...new Set(rows.map((row) => row.topCategory))].sort(),
@@ -73,6 +77,7 @@ export function BarangayReportsTable({
   }
 
   function handleExport() {
+    if (!canExport) return;
     downloadCsv(
       "reports-by-barangay.csv",
       ["Barangay", "Reports", "Top Category", "Top Category Count"],
@@ -87,7 +92,7 @@ export function BarangayReportsTable({
           <h2 className="text-lg font-semibold text-gray-900">Reports by barangay</h2>
           <p className="text-sm text-gray-500">Ranked hotspots · click headers to sort</p>
         </div>
-        <Button variant="secondary" onClick={handleExport}>
+        <Button variant="secondary" onClick={handleExport} disabled={!canExport}>
           ↓ Export
         </Button>
       </div>

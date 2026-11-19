@@ -35,21 +35,13 @@ function getFocusableElements(container: HTMLElement): HTMLElement[] {
   return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
 }
 
-function displayNameFor(profile: ReturnType<typeof useAuth>["profile"]): string {
-  if (profile?.full_name) {
-    return profile.full_name;
-  }
-  if (profile?.email) {
-    return profile.email.split("@")[0];
-  }
-  return "";
-}
-
-export function Sidebar() {
+// displayName comes from the (shell) layout's server read of the profile (see
+// adminDisplayName), so "Welcome back" is in the first HTML. useAuth is here
+// for sign-out only.
+export function Sidebar({ displayName }: { displayName: string }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { profile, signOut } = useAuth();
-  const displayName = displayNameFor(profile);
+  const { signOut } = useAuth();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [logoutError, setLogoutError] = useState<string | null>(null);
 

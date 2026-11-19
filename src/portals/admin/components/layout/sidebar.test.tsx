@@ -7,8 +7,7 @@ const pushMock = vi.fn();
 const replaceMock = vi.fn();
 const refreshMock = vi.fn();
 // Mutable so the route-change-closes-drawer test can simulate navigation by
-// changing this between renders/rerenders, the same way mockProfile below is
-// used to vary useAuth's return value per test.
+// changing this between renders/rerenders.
 let mockPathname = "/admin/dashboard";
 
 vi.mock("next/navigation", () => ({
@@ -17,15 +16,15 @@ vi.mock("next/navigation", () => ({
 }));
 
 const signOutMock = vi.fn();
-let mockProfile: { full_name: string | null; email: string | null } | null = null;
 
 // See src/portals/admin/features/auth/hooks/use-auth.test.tsx: vi.mock's first argument is a
 // plain string, not an import specifier, so it must be a relative path
-// rather than the `@/...` alias the SWC transform rewrites.
+// rather than the `@/...` alias the SWC transform rewrites. The Sidebar only
+// reads signOut from it: the name comes from the server, as a prop.
 vi.mock("../../features/auth/hooks/use-auth", () => ({
   useAuth: () => ({
     session: { user: { id: "user-1" } },
-    profile: mockProfile,
+    profile: null,
     isLoading: false,
     isAdmin: true,
     isDeactivated: false,
@@ -34,8 +33,8 @@ vi.mock("../../features/auth/hooks/use-auth", () => ({
   }),
 }));
 
-function renderSidebar() {
-  return render(<Sidebar />);
+function renderSidebar(displayName = "") {
+  return render(<Sidebar displayName={displayName} />);
 }
 
 async function openDrawer(user: ReturnType<typeof userEvent.setup>) {
@@ -56,7 +55,6 @@ describe("Sidebar", () => {
     refreshMock.mockClear();
     signOutMock.mockClear();
     signOutMock.mockResolvedValue({ error: null });
-    mockProfile = null;
     mockPathname = "/admin/dashboard";
   });
 
@@ -97,17 +95,15 @@ describe("Sidebar", () => {
     expect(screen.getByRole("link", { name: "Dashboard" })).not.toHaveAttribute("aria-current");
   });
 
-  it("shows the profile's full name rather than the hardcoded Admin User", () => {
-    mockProfile = { full_name: "Maria Santos", email: "maria.santos@lucena.local" };
-    renderSidebar();
+  it("welcomes the admin by the name the server gave it", () => {
+    renderSidebar("Maria Santos");
     expect(screen.getByText("Welcome back, Maria Santos")).toBeInTheDocument();
     expect(screen.queryByText(/Admin User/)).not.toBeInTheDocument();
   });
 
-  it("falls back to the email local-part when full_name is missing", () => {
-    mockProfile = { full_name: null, email: "juan.delacruz@lucena.local" };
-    renderSidebar();
-    expect(screen.getByText("Welcome back, juan.delacruz")).toBeInTheDocument();
+  it("shows no welcome line without a name", () => {
+    renderSidebar("");
+    expect(screen.queryByText(/Welcome back/)).not.toBeInTheDocument();
   });
 
   it("awaits signOut and replaces to /login (not push) with a refresh, on success", async () => {
@@ -267,7 +263,7 @@ describe("Sidebar", () => {
       expect(screen.getByTestId("mobile-nav-drawer")).toBeInTheDocument();
 
       mockPathname = "/admin/yellow-card";
-      rerender(<Sidebar />);
+      rerender(<Sidebar displayName="" />);
 
       expect(screen.queryByTestId("mobile-nav-drawer")).not.toBeInTheDocument();
     });

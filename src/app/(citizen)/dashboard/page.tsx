@@ -22,6 +22,12 @@ import { formatClockTime, formatPHP } from '@/portals/citizen/features/booking/l
 import { receiptService, receiptReferences } from '@/portals/citizen/features/receipts/lib/receipts';
 import { ReceiptLink } from '@/portals/citizen/features/receipts/components/receipt-link';
 import { formatManilaDate } from '@/shared/dates/manila';
+import { settle, type Loaded } from '@/portals/citizen/lib/loaded';
+import LoadFailure, { TileLoadFailure } from '@/portals/citizen/components/ui/load-failure';
+
+const INCIDENTS_LOAD_ERROR = 'Could not load your incident reports right now. Please try again later.';
+const BOOKINGS_LOAD_ERROR = 'Could not load booking information right now. Please try again later.';
+const YELLOW_CARD_LOAD_ERROR = 'Could not load your Yellow Card information right now. Please try again later.';
 
 function statusMetaFor(status: string, table: Record<string, StatusMeta>): StatusMeta {
   return table[status] ?? { label: status, color: '#6B7280', icon: '•' };
@@ -107,10 +113,12 @@ function DashboardContent() {
   const router = useRouter();
   const { user } = useAuth();
   const [dashboardTab, setDashboardTab] = useState<'yellowcard' | 'incident' | 'booking'>('yellowcard');
-  const [incidents, setIncidents] = useState<MyIncident[]>([]);
-  const [applications, setApplications] = useState<MyYellowCardApplication[]>([]);
-  const [cards, setCards] = useState<MyYellowCard[]>([]);
-  const [bookings, setBookings] = useState<MyBooking[]>([]);
+  const [incidentsRead, setIncidentsRead] = useState<Loaded<MyIncident[]>>({ ok: true, data: [] });
+  // A failed read is kept apart from an empty one, so the tab it feeds says it
+  // couldn't load rather than "nothing yet" (#110).
+  const [applicationsRead, setApplicationsRead] = useState<Loaded<MyYellowCardApplication[]>>({ ok: true, data: [] });
+  const [cardsRead, setCardsRead] = useState<Loaded<MyYellowCard[]>>({ ok: true, data: [] });
+  const [bookingsRead, setBookingsRead] = useState<Loaded<MyBooking[]>>({ ok: true, data: [] });
   const [incidentConfig, setIncidentConfig] = useState<IncidentConfig | null>(null);
   // Which references have an acknowledgement receipt. Submissions made before
   // the receipt layer shipped have none (DB ADR 0001), so the link is rendered
@@ -122,35 +130,53 @@ function DashboardContent() {
   // re-read rather than showing what the citizen just acted on.
   const [refreshKey, setRefreshKey] = useState(0);
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+  // "Try again" on a section that couldn't load re-runs the whole load, as
+  // `/yellow-card`'s does (#91): an outage that broke one read probably broke
+  // the others. The flag only labels the button while that re-read is out.
+  const [retrying, setRetrying] = useState(false);
+  const retry = useCallback(() => {
+    setRetrying(true);
+    refresh();
+  }, [refresh]);
 
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      getMyIncidents().catch(() => []),
-      yellowCardService.getMyApplications().catch(() => []),
-      yellowCardService.getMyCards().catch(() => []),
-      getMyBookings().catch(() => []),
+      settle(getMyIncidents(), INCIDENTS_LOAD_ERROR),
+      settle(yellowCardService.getMyApplications(), YELLOW_CARD_LOAD_ERROR),
+      settle(yellowCardService.getMyCards(), YELLOW_CARD_LOAD_ERROR),
+      settle(getMyBookings(), BOOKINGS_LOAD_ERROR),
       // The auto-close/confirmation deadlines shown on incident cards come from
       // the config view, not from a hardcoded day count that would drift.
       catalogService.getIncidentConfig().catch(() => null),
       receiptService.getMine().catch(() => []),
-    ]).then(([i, a, c, b, cfg, receipts]) => {
+    ]).then(([incidentsResult, applicationsResult, cardsResult, bookingsResult, cfg, receipts]) => {
       if (cancelled) return;
-      setIncidents(i);
-      setApplications(a);
-      setCards(c);
-      setBookings(b);
+      setIncidentsRead(incidentsResult);
+      setApplicationsRead(applicationsResult);
+      setCardsRead(cardsResult);
+      setBookingsRead(bookingsResult);
       setIncidentConfig(cfg);
       setReceiptRefs(receiptReferences(receipts));
       setLoading(false);
+      setRetrying(false);
     });
     return () => {
       cancelled = true;
     };
   }, [refreshKey]);
 
+  const incidents = incidentsRead.ok ? incidentsRead.data : [];
+  const applications = applicationsRead.ok ? applicationsRead.data : [];
+  const bookings = bookingsRead.ok ? bookingsRead.data : [];
   const totalRequests = incidents.length + applications.length + bookings.length;
-  const ycStatus = computeYellowCardStatus(applications, cards);
+  // Each tile is only as good as the reads it counts.
+  const totalRequestsLoaded = incidentsRead.ok && applicationsRead.ok && bookingsRead.ok;
+  // Without the cards, an approved application would read as merely approved,
+  // and a citizen with no applications as "Not Applied".
+  const ycStatus = applicationsRead.ok && cardsRead.ok
+    ? computeYellowCardStatus(applicationsRead.data, cardsRead.data)
+    : null;
 
   const statCardStyle: React.CSSProperties = {
     background: 'white', border: '1px solid #DDDDDD', borderRadius: 8,
@@ -189,7 +215,7 @@ function DashboardContent() {
         {/* Total Requests */}
         <div style={statCardStyle}>
           <div style={{ fontSize: 12, color: '#666666', marginBottom: 16, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Total Requests</div>
-          <DonutChart
+          {!totalRequestsLoaded ? <TileLoadFailure /> : <DonutChart
             total={totalRequests}
             centerLabel="Total"
             centerColor="#003DA5"
@@ -198,13 +224,13 @@ function DashboardContent() {
               { color: '#F97316', count: incidents.length, label: 'Incident' },
               { color: '#3B82F6', count: bookings.length, label: 'Bookings' },
             ]}
-          />
+          />}
         </div>
 
         {/* Yellow Card Status */}
         <div style={statCardStyle}>
           <div style={{ fontSize: 12, color: '#666666', marginBottom: 16, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Yellow Card Status</div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 190 }}>
+          {!ycStatus ? <TileLoadFailure /> : <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 190 }}>
             <div style={{ fontSize: 40, marginBottom: 8 }}>{ycStatus.icon}</div>
             <div style={{ fontSize: 18, fontWeight: 800, color: ycStatus.color, marginBottom: 6 }}>{ycStatus.label}</div>
             {ycStatus.ref && (
@@ -223,29 +249,29 @@ function DashboardContent() {
                 )}
               </>
             )}
-          </div>
+          </div>}
         </div>
 
         {/* Incident Reports */}
         <div style={statCardStyle}>
           <div style={{ fontSize: 12, color: '#666666', marginBottom: 16, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Incident Reports</div>
-          <DonutChart
+          {!incidentsRead.ok ? <TileLoadFailure /> : <DonutChart
             total={incidents.length}
             centerLabel="Reports"
             centerColor="#EA580C"
             segments={tallyByLabel(incidents.map(i => i.status), INCIDENT_STATUS_META)}
-          />
+          />}
         </div>
 
         {/* Venue Bookings */}
         <div style={statCardStyle}>
           <div style={{ fontSize: 12, color: '#666666', marginBottom: 16, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Venue Bookings</div>
-          <DonutChart
+          {!bookingsRead.ok ? <TileLoadFailure /> : <DonutChart
             total={bookings.length}
             centerLabel="Bookings"
             centerColor="#2563EB"
             segments={tallyByLabel(bookings.map(b => b.status), BOOKING_STATUS_META)}
-          />
+          />}
         </div>
       </div>
 
@@ -255,19 +281,19 @@ function DashboardContent() {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 6, marginBottom: 2 }}>
             <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 3H8a2 2 0 0 0-2 2v2h12V5a2 2 0 0 0-2-2z"/>
           </svg>
-          Yellow Card ({applications.length})
+          Yellow Card{applicationsRead.ok && ` (${applications.length})`}
         </button>
         <button style={tabBtnStyle(dashboardTab === 'incident')} onClick={() => setDashboardTab('incident')}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 6, marginBottom: 2 }}>
             <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
           </svg>
-          Incident Reports ({incidents.length})
+          Incident Reports{incidentsRead.ok && ` (${incidents.length})`}
         </button>
         <button style={tabBtnStyle(dashboardTab === 'booking')} onClick={() => setDashboardTab('booking')}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 6, marginBottom: 2 }}>
             <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
           </svg>
-          Venue Bookings ({bookings.length})
+          Venue Bookings{bookingsRead.ok && ` (${bookings.length})`}
         </button>
       </div>
 
@@ -275,7 +301,16 @@ function DashboardContent() {
       {dashboardTab === 'yellowcard' && (
         <div>
           <h2 style={{ fontSize: 20, fontWeight: 700, color: '#003DA5', marginBottom: 20 }}>Yellow Card Applications</h2>
-          {applications.length === 0 ? (
+          {/* The applications still list without the cards, but the status
+              tile can't be worked out; this says why and offers the retry. */}
+          {applicationsRead.ok && !cardsRead.ok && (
+            <div style={{ marginBottom: 16 }}>
+              <LoadFailure heading="We couldn't load your Yellow Card status" message={cardsRead.error} onRetry={retry} retrying={retrying} />
+            </div>
+          )}
+          {!applicationsRead.ok ? (
+            <LoadFailure heading="We couldn't load your Yellow Card applications" message={applicationsRead.error} onRetry={retry} retrying={retrying} />
+          ) : applications.length === 0 ? (
             <div style={{ background: 'white', border: '1px solid #DDDDDD', borderRadius: 8, padding: '64px 32px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', textAlign: 'center' }}>
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', margin: '0 auto 16px' }}>
                 <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 3H8a2 2 0 0 0-2 2v2h12V5a2 2 0 0 0-2-2z"/>
@@ -343,7 +378,9 @@ function DashboardContent() {
       {dashboardTab === 'incident' && (
         <div>
           <h2 style={{ fontSize: 20, fontWeight: 700, color: '#003DA5', marginBottom: 20 }}>Incident Reports</h2>
-          {incidents.length === 0 ? (
+          {!incidentsRead.ok ? (
+            <LoadFailure heading="We couldn't load your incident reports" message={incidentsRead.error} onRetry={retry} retrying={retrying} />
+          ) : incidents.length === 0 ? (
             <div style={{ background: 'white', border: '1px solid #DDDDDD', borderRadius: 8, padding: '64px 32px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', textAlign: 'center' }}>
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', margin: '0 auto 16px' }}>
                 <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
@@ -398,7 +435,9 @@ function DashboardContent() {
       {dashboardTab === 'booking' && (
         <div>
           <h2 style={{ fontSize: 20, fontWeight: 700, color: '#003DA5', marginBottom: 20 }}>Venue Bookings</h2>
-          {bookings.length === 0 ? (
+          {!bookingsRead.ok ? (
+            <LoadFailure heading="We couldn't load your venue bookings" message={bookingsRead.error} onRetry={retry} retrying={retrying} />
+          ) : bookings.length === 0 ? (
             <div style={{ background: 'white', border: '1px solid #DDDDDD', borderRadius: 8, padding: '64px 32px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', textAlign: 'center' }}>
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', margin: '0 auto 16px' }}>
                 <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>

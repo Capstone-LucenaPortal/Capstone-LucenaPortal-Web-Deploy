@@ -231,10 +231,14 @@ export function SLAReportsPage() {
     [incidentRows, applicationRows, dateRange, dateBasis]
   );
   // No dateRange or dateBasis in its deps: past due is right now, whatever
-  // the range, so a filter change leaves it alone (#126).
+  // the range, so a filter change leaves it alone (#126). "Now" is the
+  // fetch's moment, the one the "Updated" stamp names, so the figure only
+  // moves with a new fetch (#131). Before the first load there are no rows,
+  // so the moment doesn't matter.
+  const asOf = lastUpdatedAt ?? undefined;
   const pastDueNow = useMemo(
-    () => getSlaPastDueNow(incidentRows, applicationRows),
-    [incidentRows, applicationRows]
+    () => getSlaPastDueNow(incidentRows, applicationRows, asOf),
+    [incidentRows, applicationRows, asOf]
   );
   const monthlyHistory = useMemo(
     () => getSlaMonthlyHistory(incidentRows, dateRange, dateBasis),
@@ -258,8 +262,15 @@ export function SLAReportsPage() {
     return status === "loading" ? <Skeleton className="h-6 w-14" /> : "—";
   }
 
+  // `stats` is computed from the row arrays even when they are empty (first
+  // load, failed load) or stale (during a Retry), so its presence says
+  // nothing about whether there is a real report to export; only `status`
+  // does (#141). The button is disabled on this, and handleExport checks it
+  // again as a backstop.
+  const canExport = status === "ready";
+
   function handleExport() {
-    if (!stats) return;
+    if (!canExport) return;
     downloadCsv(
       "sla-report.csv",
       ["Period", "Incidents resolved on time %", "Incidents finished late"],
@@ -293,7 +304,7 @@ export function SLAReportsPage() {
             compare={compare}
             onCompareChange={setCompare}
           />
-          <Button variant="secondary" onClick={handleExport}>
+          <Button variant="secondary" onClick={handleExport} disabled={!canExport}>
             ↓ Export report
           </Button>
         </div>

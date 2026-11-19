@@ -5,8 +5,8 @@
 // Landing page for the shared request guard's role check
 // (src/shared/guard/decide.ts): an authenticated account that is not an
 // active admin is redirected here before any admin page — markup, bundle, or
-// data — is served to it. The (admin) layout keeps its own client-side gate
-// as defense in depth; it and the guard judge the profile with the same
+// data — is served to it. The (shell) layout keeps its own server gate as
+// defense in depth; it and the guard judge the profile with the same
 // judgeStaffProfile, and this page and the layout render the same
 // AccessRefusal screen, so the gates cannot drift apart.
 import { useEffect, useState } from "react";

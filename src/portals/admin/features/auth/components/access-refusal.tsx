@@ -2,11 +2,12 @@
 "use client";
 
 // The refusal screen shown to a signed-in account that may not use this
-// portal. Rendered from two places that must never drift apart: the (admin)
-// layout's client-side gate, and /forbidden — where the shared request guard
-// lands the same accounts before any admin page is served. Both
-// call src/portals/admin/lib/supabase/access.ts's decideRoleAccess on the same profile, so the
-// copy shown here can never disagree with the reason the guard redirected.
+// portal. Rendered from places that must never drift apart: the (shell)
+// layout's server gate and its browser-side ShellGate, and /forbidden — where
+// the shared request guard lands the same accounts before any admin page is
+// served. All call src/portals/admin/lib/supabase/access.ts's decideRoleAccess
+// on the same profile, so the copy shown here can never disagree with the
+// reason the guard redirected.
 import { useEffect, useState } from "react";
 
 import { Button } from "@/portals/admin/components/ui/button";

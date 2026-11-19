@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ToastProvider } from "@/portals/super-staff/components/providers/toast-provider";
+import { UnsavedChangesProvider } from "@/portals/super-staff/components/providers/unsaved-changes-provider";
 import { AccountDetailView } from "./account-detail-view";
 
 // Tested at the network: the supabase-js builder is real, so every read and
@@ -28,6 +29,8 @@ const ACCOUNT_ROW = {
   last_sign_in_at: null,
 };
 
+/** The row every read and RPC returns; a test may swap in another. */
+let accountRow: Record<string, unknown>;
 /** The `changes` of the audit row the RPC just wrote, as the read finds it. */
 let newestChanges: unknown;
 let auditReadFails: boolean;
@@ -49,7 +52,7 @@ async function fakePostgrest(
 
   if (path.startsWith("rpc/")) {
     rpcs.push(path.slice("rpc/".length));
-    return json(ACCOUNT_ROW);
+    return json(accountRow);
   }
   if (path === "super_accounts") {
     if (init?.method === "HEAD") {
@@ -58,7 +61,7 @@ async function fakePostgrest(
         headers: { "content-range": "0-0/1" },
       });
     }
-    return json([ACCOUNT_ROW]);
+    return json([accountRow]);
   }
   if (path === "super_audit_log") {
     // The History card reads the whole history; the toast reads one row.
@@ -82,11 +85,16 @@ vi.mock("@/shared/supabase/client", () => ({
     })),
 }));
 
+const { push } = vi.hoisted(() => ({ push: vi.fn() }));
+
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  usePathname: () => `/super-staff/accounts/${ACCOUNT_ID}`,
+  useRouter: () => ({ push }),
 }));
 
 beforeEach(() => {
+  push.mockReset();
+  accountRow = ACCOUNT_ROW;
   newestChanges = { status: { from: "active", to: "inactive" } };
   auditReadFails = false;
   rpcs = [];
@@ -95,7 +103,9 @@ beforeEach(() => {
 async function renderAccount() {
   render(
     <ToastProvider>
-      <AccountDetailView id={ACCOUNT_ID} />
+      <UnsavedChangesProvider>
+        <AccountDetailView id={ACCOUNT_ID} />
+      </UnsavedChangesProvider>
     </ToastProvider>,
   );
   await screen.findByRole("heading", { name: "Juan Dela Cruz" });
@@ -183,5 +193,113 @@ describe("AccountDetailView — saving", () => {
     await save();
 
     expect(await theToast()).toBe("Changes saved.");
+  });
+});
+
+describe("AccountDetailView — leaving with unsaved changes", () => {
+  it("asks before Cancel discards an edit, and stays on the page", async () => {
+    const user = userEvent.setup();
+    await renderAccount();
+
+    await user.type(screen.getByLabelText("Full name"), " Jr.");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.getByRole("dialog")).toHaveTextContent("Discard unsaved changes?");
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("Keep editing stays on the page with the edit intact", async () => {
+    const user = userEvent.setup();
+    await renderAccount();
+
+    await user.type(screen.getByLabelText("Full name"), " Jr.");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Keep editing" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Full name")).toHaveValue("Juan Dela Cruz Jr.");
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("Discard changes goes to the Accounts list", async () => {
+    const user = userEvent.setup();
+    await renderAccount();
+
+    await user.type(screen.getByLabelText("Full name"), " Jr.");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Discard changes" }));
+
+    expect(push).toHaveBeenCalledExactlyOnceWith("/super-staff/accounts");
+  });
+
+  it("Cancel with no edits leaves at once", async () => {
+    const user = userEvent.setup();
+    await renderAccount();
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(push).toHaveBeenCalledExactlyOnceWith("/super-staff/accounts");
+  });
+
+  it("Cancel leaves at once when a field is typed back to what was loaded", async () => {
+    const user = userEvent.setup();
+    await renderAccount();
+
+    await user.type(screen.getByLabelText("Full name"), " Jr.");
+    await user.type(screen.getByLabelText("Full name"), "{Backspace>4/}");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(push).toHaveBeenCalledExactlyOnceWith("/super-staff/accounts");
+  });
+
+  it("Cancel leaves at once when a module is unticked and ticked again", async () => {
+    accountRow = {
+      ...ACCOUNT_ROW,
+      role: "staff",
+      modules: ["yellow_card", "incidents"],
+      department_code: null,
+      department_label: null,
+      phone: null,
+      employee_id: null,
+    };
+    const user = userEvent.setup();
+    await renderAccount();
+
+    // Puts Yellow Card back at the end: same modules, another order.
+    await user.click(screen.getByRole("checkbox", { name: "Yellow Card" }));
+    await user.click(screen.getByRole("checkbox", { name: "Yellow Card" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(push).toHaveBeenCalledExactlyOnceWith("/super-staff/accounts");
+  });
+
+  it("Cancel leaves at once after a successful Save", async () => {
+    const user = userEvent.setup();
+    await renderAccount();
+
+    await user.type(screen.getByLabelText("Full name"), " Jr.");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await theToast()).toBe("Changes saved.");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(push).toHaveBeenCalledExactlyOnceWith("/super-staff/accounts");
+  });
+
+  it("warns on reload or close only while the form is edited", async () => {
+    const user = userEvent.setup();
+    await renderAccount();
+    const unload = () => {
+      const event = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+
+    expect(unload()).toBe(false);
+    await user.type(screen.getByLabelText("Full name"), " Jr.");
+    expect(unload()).toBe(true);
   });
 });

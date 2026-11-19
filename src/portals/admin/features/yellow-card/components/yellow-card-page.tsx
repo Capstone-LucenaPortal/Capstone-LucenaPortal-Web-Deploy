@@ -1,11 +1,12 @@
 // src/portals/admin/features/yellow-card/components/yellow-card-page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import {
   barangayCoverage,
   barangayTotal,
   formatRate,
+  inServiceBacklog,
   recentMonthlyCounts,
   yellowCardDateAccessor,
   yellowCardPastDueRows,
@@ -21,11 +22,16 @@ import {
 } from "@/portals/admin/lib/dates";
 import { YellowCardDateBasis } from "@/portals/admin/features/yellow-card/types";
 import { exportApplications, listApplications, YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yellow-card";
+import { yellowCardTargetDays } from "@/portals/admin/features/yellow-card/lib/target-days";
 import { applicationMet, formatTargetGap, yellowCardDecidedOnTime } from "@/portals/admin/features/sla/lib/sla";
 import { YELLOW_CARD_PATH } from "@/portals/admin/features/sla/lib/sla-links";
-import { useSlaRowFilter } from "@/portals/admin/features/sla/hooks/use-sla-row-filter";
+import {
+  NO_SLA_ROW_FILTER,
+  useSlaRowFilter,
+  type SlaRowFilterState,
+} from "@/portals/admin/features/sla/hooks/use-sla-row-filter";
 import { SlaRowFilterBanner } from "@/portals/admin/features/sla/components/sla-row-filter-banner";
-import { listBarangays } from "@/portals/admin/lib/supabase/catalogs";
+import { getYellowCardConfig, listBarangays } from "@/portals/admin/lib/supabase/catalogs";
 import type { PortalError } from "@/portals/admin/lib/supabase/errors";
 import { YELLOW_CARD_STATUS_LABELS, YELLOW_CARD_STATUS_ORDER, YellowCardStatusValue } from "@/portals/admin/lib/status-labels";
 import { getSlaVariant, getYellowCardStatusVariant } from "@/portals/admin/lib/status-colors";
@@ -81,15 +87,41 @@ function statusVariant(status: YellowCardRow["status"]): BadgeVariant {
   return status ? getYellowCardStatusVariant(status) : "default";
 }
 
+// A caption's target: "3-working-day target" when the rows it describes were
+// all scored against the configured days, else just "target" (#132). Never
+// hours such as "27h", which read like clock hours.
+function targetPhrase(days: number | null): string {
+  return days === null ? "target" : `${days}-working-day target`;
+}
+
 function filterRows(rows: YellowCardRow[], tab: (typeof STATUS_TABS)[number]["value"]): YellowCardRow[] {
   if (tab === "all") return rows;
   return rows.filter((row) => row.status === tab);
 }
 
 export function YellowCardPage() {
+  // Only the part that reads the address waits for it. While a build
+  // prerenders the page there is no address, so the page goes out as it
+  // first loads, hero and skeletons, unfiltered; the browser then renders it
+  // from the address (#133).
+  return (
+    <Suspense fallback={<YellowCardView sla={NO_SLA_ROW_FILTER} />}>
+      <YellowCardAtAddress />
+    </Suspense>
+  );
+}
+
+function YellowCardAtAddress() {
   // Arriving from SLA Reports' Finished late or Past due now (#127): the link
   // seeds the range and date type, and narrows the Recent applications table.
-  const { link, filter: slaFilter, clear: clearSlaFilter } = useSlaRowFilter(YELLOW_CARD_PATH, BASIS_VALUES);
+  // The body starts afresh on each address it lands on, so the filter always
+  // matches the address (#131).
+  const sla = useSlaRowFilter(YELLOW_CARD_PATH, BASIS_VALUES);
+  return <YellowCardView key={sla.arrival} sla={sla} />;
+}
+
+function YellowCardView({ sla }: { sla: SlaRowFilterState<YellowCardDateBasis> }) {
+  const { link, filter: slaFilter, clear: clearSlaFilter } = sla;
   const [preset, setPreset] = useState<DateFilterPreset>(link?.preset ?? "Month");
   // Seeded from the current Manila month rather than from literals written
   // the day this page was authored: a hardcoded "2026-05-01"/"2026-05-31"
@@ -111,6 +143,10 @@ export function YellowCardPage() {
   // list could not be read, which the tile renders as "N / —"; it must never
   // collapse to 0, which would read as "there are no barangays".
   const [barangayCount, setBarangayCount] = useState<number | null>(null);
+  // The configured processing time target in working days, which the Decided
+  // on time and Pending Review captions name (#132). null means the config
+  // could not be read or has no target: the captions then say "the target".
+  const [configuredTargetDays, setConfiguredTargetDays] = useState<number | null>(null);
   // Set only inside the fetch effect's success path below, never on every
   // render — this is what lets the "Updated {time} (Asia/Manila)" stamp near
   // the title show only after data has actually loaded at least once, not
@@ -179,6 +215,20 @@ export function YellowCardPage() {
         // Swallowed on purpose — see comment above.
       });
 
+    // The configured target the two captions name (#132). Same shape as the
+    // barangay list: a failed read must not break the page or its figures,
+    // it only drops the number from those captions.
+    getYellowCardConfig()
+      .then((config) => {
+        if (!active) return;
+        setConfiguredTargetDays(config?.processing_time_target_days ?? null);
+      })
+      .catch(() => {
+        // Swallowed, but a Retry whose read fails must not keep naming the
+        // number an earlier read returned.
+        if (active) setConfiguredTargetDays(null);
+      });
+
     return () => {
       active = false;
       controller.abort();
@@ -222,6 +272,23 @@ export function YellowCardPage() {
   // date type, so on the filing date it is the Dashboard's Yellow Card SLA
   // compliance for the same range (metrics sheet Y7).
   const decidedOnTime = useMemo(() => yellowCardDecidedOnTime(rows, dateRange, getDate), [rows, dateRange, getDate]);
+  // Each application keeps the target it was filed under, so a caption names
+  // the configured days only when every row behind its figure carries them
+  // (#132). Decided on time's rows are the ones it scores: in range, and
+  // scoreable by applicationMet (approved and rejected; a withdrawal is not).
+  // Pending Review's are the Yellow Card service backlog, whatever the range.
+  const decidedTargetDays = useMemo(
+    () =>
+      yellowCardTargetDays(
+        filterByDateRange(rows, getDate, dateRange).filter((row) => applicationMet(row) !== null),
+        configuredTargetDays
+      ),
+    [rows, getDate, dateRange, configuredTargetDays]
+  );
+  const pendingTargetDays = useMemo(
+    () => yellowCardTargetDays(inServiceBacklog(rows, "yellowCard"), configuredTargetDays),
+    [rows, configuredTargetDays]
+  );
   const filtered = useMemo(
     () => filterByDateRange(filterRows(rows, activeTab), getDate, dateRange),
     [rows, activeTab, getDate, dateRange]
@@ -263,6 +330,13 @@ export function YellowCardPage() {
   // keeps the trailing 6 Manila months present, never one after the current
   // month, counted by the picked date type.
   const monthlyApplications = useMemo(() => recentMonthlyCounts(rows, getDate), [rows, getDate]);
+
+  // `rows` start empty and only hold real data once a load succeeds, so the
+  // Applicants by barangay CSV, built from them, would be header-only before
+  // then and look like a real report (#146, the #141 rule). It does not apply
+  // to Recent applications' Export below: that one reads through the audited
+  // RPC, not `rows`.
+  const canExportCoverage = !isLoading && !error;
 
   // exportApplications is a separate audited RPC, not a client-side map over
   // the already-loaded `rows` state: it writes one pii_access audit row per
@@ -358,8 +432,8 @@ export function YellowCardPage() {
         />
         {/* The page's effectiveness figure: approved and rejected
             applications decided within the clock. A withdrawal is not
-            scored. The words say "3-working-day", never "27h", which reads
-            like 27 clock hours. */}
+            scored. The caption names the working-day target, never "27h",
+            which reads like 27 clock hours. */}
         <KpiTile
           label="Decided on time"
           value={isLoading ? <Skeleton className="h-7 w-16" /> : error ? "—" : formatRate(decidedOnTime.compliancePct)}
@@ -368,7 +442,7 @@ export function YellowCardPage() {
               ? undefined
               : decidedOnTime.scored === 0
                 ? "Nothing decided in range"
-                : `${decidedOnTime.onTime} of ${decidedOnTime.scored} within the 3-working-day target · ${formatTargetGap(decidedOnTime.gapToTargetPts)}`
+                : `${decidedOnTime.onTime} of ${decidedOnTime.scored} within the ${targetPhrase(decidedTargetDays)} · ${formatTargetGap(decidedOnTime.gapToTargetPts)}`
           }
           note={isLoading ? <Skeleton className="h-3 w-24" /> : error || !compare ? undefined : decidedOnTime.delta}
           direction="higher-is-better"
@@ -413,12 +487,12 @@ export function YellowCardPage() {
           noteTone="neutral"
         />
         {/* Past due and at risk are the Staff queue's own deadline state
-            (metrics sheet Y4). The words say "3-working-day", never "27h",
-            which reads like 27 clock hours. */}
+            (metrics sheet Y4). The caption names the working-day target,
+            never "27h", which reads like 27 clock hours. */}
         <KpiTile
           label="Pending Review"
           value={isLoading ? <Skeleton className="h-7 w-16" /> : error ? "—" : stats.pendingReview}
-          caption={isLoading || error ? undefined : "Past due = past 3-working-day target"}
+          caption={isLoading || error ? undefined : `Past due = past ${targetPhrase(pendingTargetDays)}`}
           note={
             isLoading ? (
               <Skeleton className="h-3 w-24" />
@@ -448,7 +522,7 @@ export function YellowCardPage() {
         />
       </div>
 
-      <BarangayCoverageTable rows={coverage} />
+      <BarangayCoverageTable rows={coverage} canExport={canExportCoverage} />
 
       <section className="rounded-none border border-gray-200 bg-white">
         <div className="flex flex-wrap items-center justify-between gap-3 px-6 pt-6">

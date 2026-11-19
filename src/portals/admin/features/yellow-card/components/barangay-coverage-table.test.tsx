@@ -18,7 +18,7 @@ function getHeaders(container: HTMLElement) {
 
 describe("BarangayCoverageTable aria-sort", () => {
   it("defaults to Applicants sorted descending, Barangay unsorted", () => {
-    const { container } = render(<BarangayCoverageTable rows={rows} />);
+    const { container } = render(<BarangayCoverageTable rows={rows} canExport />);
     const [barangayTh, applicantsTh] = getHeaders(container);
 
     // Matches the component's initial state: useState<SortKey>("applicants"),
@@ -29,7 +29,7 @@ describe("BarangayCoverageTable aria-sort", () => {
 
   it("clicking the inactive Barangay header sorts it ascending and resets Applicants to none", async () => {
     const user = userEvent.setup();
-    const { container } = render(<BarangayCoverageTable rows={rows} />);
+    const { container } = render(<BarangayCoverageTable rows={rows} canExport />);
     const [barangayTh, applicantsTh] = getHeaders(container);
 
     await user.click(within(barangayTh).getByRole("button"));
@@ -40,7 +40,7 @@ describe("BarangayCoverageTable aria-sort", () => {
 
   it("clicking the already-active Barangay header toggles ascending then descending", async () => {
     const user = userEvent.setup();
-    const { container } = render(<BarangayCoverageTable rows={rows} />);
+    const { container } = render(<BarangayCoverageTable rows={rows} canExport />);
     const [barangayTh] = getHeaders(container);
     const barangayButton = within(barangayTh).getByRole("button");
 
@@ -56,7 +56,7 @@ describe("BarangayCoverageTable aria-sort", () => {
 
   it("clicking the already-active Applicants header toggles descending then ascending", async () => {
     const user = userEvent.setup();
-    const { container } = render(<BarangayCoverageTable rows={rows} />);
+    const { container } = render(<BarangayCoverageTable rows={rows} canExport />);
     const [, applicantsTh] = getHeaders(container);
     const applicantsButton = within(applicantsTh).getByRole("button");
 

@@ -1,9 +1,10 @@
 // src/portals/admin/lib/supabase/access.ts
 //
-// "Who may use this portal", for the client-side call sites — the (admin)
-// layout and /forbidden, via src/portals/admin/features/auth/hooks/use-auth.tsx's
-// profile. The server-side gate is the shared request guard
-// (src/shared/guard/decide.ts), and both judge a profile with the same
+// "Who may use this portal", for the Admin call sites: the (shell) layout's
+// server gate (over getAdminProfile), its browser-side ShellGate and
+// /forbidden (over src/portals/admin/features/auth/hooks/use-auth.tsx's
+// profile). The request-level gate is the shared request guard
+// (src/shared/guard/decide.ts), and all of them judge a profile with the same
 // judgeStaffProfile, so a user the guard admits is never refused by the layout
 // and vice versa.
 //

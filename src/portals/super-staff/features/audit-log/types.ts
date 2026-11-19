@@ -47,3 +47,9 @@ export type AuditEntry = {
    *  Null for every other entry, and for every entry written before l104. */
   releasedReport: string | null;
 };
+
+/** A filter tab: one area, or All of them. */
+export type AreaFilter = AuditArea | "all";
+
+/** The filter tabs' counts: one per area, plus All. */
+export type AreaCounts = Record<AreaFilter, number>;

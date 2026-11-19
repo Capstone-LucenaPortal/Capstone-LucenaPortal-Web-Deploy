@@ -415,6 +415,35 @@ describe("System Health · section pages", () => {
 
       expect(thresholds()).toContain("Run history: kept 7 d (warning after 3 missed purges)");
     });
+
+    it("warns on any run past the keep when the purge isn't scheduled", async () => {
+      const health = healthySnapshot();
+      const { detail } = health.sections.jobs;
+      detail.items = detail.items.filter((j) => j.name !== "purge-cron-history");
+      vi.mocked(queries.getSystemHealth).mockResolvedValue(health);
+      await renderSection("jobs");
+
+      expect(thresholds()).toContain("Run history: kept 7 d (warning when any older run remains)");
+    });
+
+    it("warns on any run past the keep when the purge's schedule can't be read", async () => {
+      const health = healthySnapshot();
+      const purge = health.sections.jobs.detail.items.find((j) => j.name === "purge-cron-history")!;
+      purge.interval_seconds = null;
+      vi.mocked(queries.getSystemHealth).mockResolvedValue(health);
+      await renderSection("jobs");
+
+      expect(thresholds()).toContain("Run history: kept 7 d (warning when any older run remains)");
+    });
+
+    it("says one missed purge in the singular", async () => {
+      const health = healthySnapshot();
+      health.sections.jobs.detail.thresholds.job_overdue_factor = 1;
+      vi.mocked(queries.getSystemHealth).mockResolvedValue(health);
+      await renderSection("jobs");
+
+      expect(thresholds()).toContain("Run history: kept 7 d (warning after 1 missed purge)");
+    });
   });
 
   describe("Accounts & sign-in", () => {

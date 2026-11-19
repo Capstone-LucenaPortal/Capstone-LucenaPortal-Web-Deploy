@@ -1,232 +1,183 @@
 import { render, screen, within } from "@testing-library/react";
-import AdminLayout from "@/app/(admin)/admin/(shell)/layout";
-import { vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import AdminShellLayout from "@/app/(admin)/admin/(shell)/layout";
+import {
+  ProfileReadError,
+  getAdminProfile,
+  hasSession,
+  type AdminProfileRow,
+} from "@/portals/admin/features/auth/lib/profile";
 
-const pushMock = vi.fn();
+const redirect = vi.fn((path: string) => {
+  throw new Error(`NEXT_REDIRECT ${path}`);
+});
+const push = vi.fn();
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: pushMock }),
+  redirect: (path: string) => redirect(path),
+  useRouter: () => ({ push, replace: vi.fn(), refresh: vi.fn() }),
   usePathname: () => "/admin/dashboard",
 }));
 
-const mockSignOut = vi.fn();
-const mockSupabase = { auth: { signOut: mockSignOut } };
-
-// vi.mock's first argument is a plain string, not an import specifier, so
-// it must be a relative path rather than the `@/...` alias the SWC transform
-// rewrites — see src/portals/admin/features/auth/hooks/use-auth.test.tsx.
-vi.mock("../../../../shared/supabase/client", () => ({
-  createClient: () => mockSupabase,
+vi.mock("@/portals/admin/features/auth/lib/profile", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/portals/admin/features/auth/lib/profile")>()),
+  getAdminProfile: vi.fn(),
+  hasSession: vi.fn(),
 }));
 
-type MockSession = { user: { id: string } } | null;
-type MockProfile = { role: string | null; status: string | null } | null;
-
-let mockSession: MockSession = null;
-let mockIsLoading = false;
-let mockProfile: MockProfile = null;
-
-vi.mock("../../../../portals/admin/features/auth/hooks/use-auth", () => ({
-  useAuth: () => ({
-    session: mockSession,
-    profile: mockProfile,
-    isLoading: mockIsLoading,
-    isAdmin: mockProfile?.role === "admin" && mockProfile?.status === "active",
-    signIn: vi.fn(),
-    signOut: vi.fn(),
-  }),
+const signOut = vi.fn();
+vi.mock("@/shared/supabase/client", () => ({
+  createClient: () => ({ auth: { signOut } }),
 }));
 
-function renderLayout() {
-  return render(
-    <AdminLayout>
-      <p>protected content</p>
-    </AdminLayout>
-  );
+// useAuth's state: the browser's view of the session. The server render
+// always sees AuthProvider's first state: still loading, no session yet.
+let auth: { session: { user: { id: string } } | null; isLoading: boolean; profile: unknown };
+vi.mock("@/portals/admin/features/auth/hooks/use-auth", () => ({
+  useAuth: () => ({ ...auth, signOut: vi.fn() }),
+}));
+
+const ACTIVE_ADMIN: AdminProfileRow = {
+  id: "11111111-1111-1111-1111-111111111111",
+  full_name: "Maria Santos",
+  email: "maria.santos@lucenacity.gov.ph",
+  role: "admin",
+  status: "active",
+};
+
+async function renderLayout() {
+  return render(await AdminShellLayout({ children: <p>protected content</p> }));
 }
 
-describe("AdminLayout auth guard", () => {
+beforeEach(() => {
+  auth = { session: null, isLoading: true, profile: null };
+  signOut.mockResolvedValue({ error: null });
+  vi.mocked(hasSession).mockResolvedValue(true);
+});
+
+afterEach(() => {
+  vi.mocked(getAdminProfile).mockReset();
+  vi.mocked(hasSession).mockReset();
+  redirect.mockClear();
+  push.mockClear();
+  signOut.mockReset();
+});
+
+describe("AdminShellLayout: an active admin", () => {
   beforeEach(() => {
-    pushMock.mockClear();
-    mockSignOut.mockClear().mockResolvedValue({ error: null });
-    mockSession = null;
-    mockIsLoading = false;
-    mockProfile = null;
+    vi.mocked(getAdminProfile).mockResolvedValue(ACTIVE_ADMIN);
   });
 
-  it("renders nothing while the session is loading", () => {
-    mockIsLoading = true;
-    const { container } = renderLayout();
-    expect(container).toBeEmptyDOMElement();
-    expect(screen.queryByText("protected content")).not.toBeInTheDocument();
-    expect(pushMock).not.toHaveBeenCalled();
-  });
+  // Issue #150: this all used to wait for the browser to read the session.
+  it("renders the whole shell while the browser is still reading the session", async () => {
+    await renderLayout();
 
-  it("redirects to /login when there is no session", () => {
-    mockSession = null;
-    renderLayout();
-    expect(pushMock).toHaveBeenCalledWith("/employee");
-    expect(screen.queryByText("protected content")).not.toBeInTheDocument();
-  });
-
-  it("renders the sidebar and children for an active admin", () => {
-    mockSession = { user: { id: "user-1" } };
-    mockProfile = { role: "admin", status: "active" };
-    renderLayout();
-    expect(screen.getByText("protected content")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Dashboard" })).toBeInTheDocument();
-    expect(pushMock).not.toHaveBeenCalled();
-    expect(mockSignOut).not.toHaveBeenCalled();
-  });
-
-  // Task 3.5: a <main> landmark with id="main" is what the skip link below
-  // targets, and is what lets assistive tech jump straight to page content
-  // instead of walking the sidebar nav on every page.
-  it("renders the content inside a <main id=\"main\"> landmark for an active admin", () => {
-    mockSession = { user: { id: "user-1" } };
-    mockProfile = { role: "admin", status: "active" };
-    renderLayout();
     const main = screen.getByRole("main");
     expect(main).toHaveAttribute("id", "main");
+    expect(main).toHaveAttribute("tabindex", "-1");
     expect(within(main).getByText("protected content")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Dashboard" })).toBeInTheDocument();
+    expect(push).not.toHaveBeenCalled();
   });
 
-  // Task 3.5: the skip link must be reachable (an <a href="#main">) and must
-  // be the first focusable element in the authorized layout — ahead of the
-  // sidebar's hamburger button / nav links / logout — so it's the first Tab
-  // stop on every admin page.
-  it("renders a skip-to-content link, pointing at #main, ahead of the sidebar's controls in the DOM for an active admin", () => {
-    mockSession = { user: { id: "user-1" } };
-    mockProfile = { role: "admin", status: "active" };
-    renderLayout();
+  it("welcomes the admin by name from the server's read", async () => {
+    await renderLayout();
+    expect(screen.getByText("Welcome back, Maria Santos")).toBeInTheDocument();
+  });
+
+  // The skip link is the first Tab stop on every Admin page.
+  it("puts a skip link to #main ahead of every other link and button", async () => {
+    await renderLayout();
     const skipLink = screen.getByRole("link", { name: "Skip to content" });
     expect(skipLink).toHaveAttribute("href", "#main");
 
-    const focusable = screen
-      .getAllByRole("link")
-      .concat(screen.getAllByRole("button"))
-      .filter((el) => document.body.contains(el));
-    // compareDocumentPosition: DOCUMENT_POSITION_FOLLOWING (4) means the
-    // other node comes after this one — i.e. skipLink is first in the DOM
-    // relative to every other link/button the layout renders.
+    const focusable = [...screen.getAllByRole("link"), ...screen.getAllByRole("button")];
     for (const el of focusable) {
       if (el === skipLink) continue;
       expect(skipLink.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
   });
 
-  // Task 3.5: neither refusal screen renders the skip link or the <main>
-  // landmark — both belong to the authorized branch only (the AccessRefusal
-  // screen has its own, much simpler, tree).
-  it("does not render a skip link or a <main> landmark on the not-authorised screen", () => {
-    mockSession = { user: { id: "user-2" } };
-    mockProfile = { role: "staff", status: "active" };
-    renderLayout();
-    expect(screen.queryByRole("link", { name: "Skip to content" })).not.toBeInTheDocument();
+  it("never asks whether there is a session: the profile row already says so", async () => {
+    await renderLayout();
+    expect(hasSession).not.toHaveBeenCalled();
+  });
+});
+
+describe("AdminShellLayout: a refused account", () => {
+  it.each([
+    [
+      "a deactivated admin",
+      { ...ACTIVE_ADMIN, status: "inactive" },
+      /your account has been deactivated/i,
+    ],
+    ["another Portal's account", { ...ACTIVE_ADMIN, role: "staff" as const }, /wrong portal/i],
+    ["a signed-in non-employee", null, /this portal is for city employees/i],
+  ])("refuses %s from the server and withholds the shell", async (_who, row, reason) => {
+    vi.mocked(getAdminProfile).mockResolvedValue(row);
+
+    await renderLayout();
+
+    expect(screen.getByText(reason)).toBeInTheDocument();
+    expect(screen.queryByText("protected content")).not.toBeInTheDocument();
     expect(screen.queryByRole("main")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Skip to content" })).not.toBeInTheDocument();
+    expect(redirect).not.toHaveBeenCalled();
   });
 
-  it("shows the wrong-portal message, with a link to the account's own portal, for a signed-in non-admin", () => {
-    mockSession = { user: { id: "user-2" } };
-    mockProfile = { role: "staff", status: "active" };
-    renderLayout();
-    expect(screen.getByText(/wrong portal/i)).toBeInTheDocument();
+  it("names the account's own Portal to a wrong-portal account, and keeps its session", async () => {
+    vi.mocked(getAdminProfile).mockResolvedValue({ ...ACTIVE_ADMIN, role: "staff" });
+    await renderLayout();
     expect(
       screen.getByText(/you are signed in with a staff account\. use the staff portal instead\./i),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Go to the Staff portal" })).toBeInTheDocument();
-    expect(screen.queryByText("protected content")).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Dashboard" })).not.toBeInTheDocument();
-    expect(pushMock).not.toHaveBeenCalled();
+    expect(signOut).not.toHaveBeenCalled();
   });
 
-  it("shows the deactivated message, naming Super Staff, distinct from the wrong-portal message, for a deactivated admin", () => {
-    mockSession = { user: { id: "user-3" } };
-    mockProfile = { role: "admin", status: "inactive" };
-    renderLayout();
-    expect(screen.getByText(/your account has been deactivated/i)).toBeInTheDocument();
-    expect(screen.getByText(/contact your super staff to have it reactivated/i)).toBeInTheDocument();
-    expect(screen.queryByText(/system administrator/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/wrong portal/i)).not.toBeInTheDocument();
-    expect(screen.queryByText("protected content")).not.toBeInTheDocument();
-    expect(pushMock).not.toHaveBeenCalled();
-  });
-
-  it("shows the not-an-employee message for a signed-in account with no staff profile", () => {
-    mockSession = { user: { id: "user-4" } };
-    mockProfile = null;
-    renderLayout();
-    expect(screen.getByText(/this portal is for city employees/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Go to the citizen portal" })).toBeInTheDocument();
-  });
-
-  // A deactivated admin's session is ended on mount, in this browser only.
-  // Another Portal's account keeps its session (issue #19): every Portal
-  // shares one, and the request guard keeps it off every admin page anyway.
-  it("signs a deactivated admin out of this browser as soon as the refusal screen mounts", () => {
-    mockSession = { user: { id: "user-2" } };
-    mockProfile = { role: "admin", status: "inactive" };
-    renderLayout();
-    expect(mockSignOut).toHaveBeenCalledTimes(1);
-    expect(mockSignOut).toHaveBeenCalledWith({ scope: "local" });
-  });
-
-  it("keeps the session of another Portal's account", () => {
-    mockSession = { user: { id: "user-2" } };
-    mockProfile = { role: "staff", status: "active" };
-    renderLayout();
-    expect(mockSignOut).not.toHaveBeenCalled();
-  });
-
-  it("shows a link back to sign in from every refusal screen", () => {
-    mockSession = { user: { id: "user-3" } };
-    mockProfile = { role: "admin", status: "inactive" };
-    renderLayout();
-    expect(screen.getByRole("link", { name: "Back to sign in" })).toHaveAttribute(
-      "href",
-      "/employee",
-    );
-  });
-
-  // Regression guard: AccessRefusal's auto sign-out of a deactivated admin
-  // feeds a real SIGNED_OUT event back into AuthProvider (the browser
-  // Supabase client is a singleton), which drops `session` (and `profile`)
-  // to null a moment after this layout first renders the refusal. That must not swap the
-  // screen for a redirect to /login, and must not change the message by
-  // recomputing decideRoleAccess against the now-null profile.
-  it("keeps the refusal screen on screen — not a /login redirect — after sign-out clears the session mid-render", () => {
-    mockSession = { user: { id: "user-2" } };
-    mockProfile = { role: "admin", status: "inactive" };
-    const { rerender } = renderLayout();
-    expect(screen.getByText(/your account has been deactivated/i)).toBeInTheDocument();
-
-    // Simulate the SIGNED_OUT event's downstream effect on AuthProvider.
-    mockSession = null;
-    mockProfile = null;
-    rerender(
-      <AdminLayout>
-        <p>protected content</p>
-      </AdminLayout>,
-    );
-
-    expect(screen.getByText(/your account has been deactivated/i)).toBeInTheDocument();
-    expect(pushMock).not.toHaveBeenCalledWith("/employee");
-  });
-
-  it("shows the signed-out confirmation once sign-out actually succeeds", async () => {
-    mockSession = { user: { id: "user-2" } };
-    mockProfile = { role: "admin", status: "inactive" };
-    mockSignOut.mockResolvedValue({ error: null });
-    renderLayout();
+  it("signs a deactivated admin out of this browser", async () => {
+    vi.mocked(getAdminProfile).mockResolvedValue({ ...ACTIVE_ADMIN, status: "inactive" });
+    await renderLayout();
+    expect(signOut).toHaveBeenCalledWith({ scope: "local" });
     expect(await screen.findByText(/you have been signed out of this portal/i)).toBeInTheDocument();
   });
 
-  it("does not claim the user was signed out when sign-out fails, and shows a fallback instead", async () => {
-    mockSession = { user: { id: "user-2" } };
-    mockProfile = { role: "admin", status: "inactive" };
-    mockSignOut.mockResolvedValue({ error: { message: "network error" } });
-    renderLayout();
-    expect(await screen.findByText(/could not sign you out/i)).toBeInTheDocument();
-    expect(screen.queryByText(/you have been signed out of this portal/i)).not.toBeInTheDocument();
+  // The pin: that sign-out drops the browser's session a moment later. It
+  // must not swap the message for a redirect to the sign-in.
+  it("keeps the deactivated message on screen after the sign-out drops the session", async () => {
+    vi.mocked(getAdminProfile).mockResolvedValue({ ...ACTIVE_ADMIN, status: "inactive" });
+    auth = { session: { user: { id: "user-1" } }, isLoading: false, profile: null };
+    const element = await AdminShellLayout({ children: <p>protected content</p> });
+    const { rerender } = render(element);
+
+    auth = { session: null, isLoading: false, profile: null };
+    rerender(element);
+
+    expect(screen.getByText(/your account has been deactivated/i)).toBeInTheDocument();
+    expect(push).not.toHaveBeenCalled();
+  });
+});
+
+describe("AdminShellLayout: no session on the server", () => {
+  // The request guard should have caught this first.
+  it("sends the visitor to the employee sign-in, not a refusal", async () => {
+    vi.mocked(getAdminProfile).mockResolvedValue(null);
+    vi.mocked(hasSession).mockResolvedValue(false);
+
+    await expect(renderLayout()).rejects.toThrow("NEXT_REDIRECT /employee");
+    expect(redirect).toHaveBeenCalledWith("/employee");
+  });
+});
+
+describe("AdminShellLayout: a failed profile read", () => {
+  // No verdict on the account: it goes to the error page, not a refusal.
+  it("hands the error to the error page instead of refusing or redirecting", async () => {
+    vi.mocked(getAdminProfile).mockRejectedValue(
+      new ProfileReadError({ message: "timeout", code: "57014" }),
+    );
+
+    await expect(renderLayout()).rejects.toBeInstanceOf(ProfileReadError);
+    expect(redirect).not.toHaveBeenCalled();
+    expect(signOut).not.toHaveBeenCalled();
   });
 });

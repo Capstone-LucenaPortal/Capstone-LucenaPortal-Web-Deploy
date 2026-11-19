@@ -24,9 +24,9 @@ type UnsavedChangesGuard = {
 const UnsavedChangesContext = createContext<UnsavedChangesGuard | null>(null);
 
 // One guard for the whole portal shell: the page with unsaved edits reports
-// dirty, and every in-app way out (config tab rail, sidebar links) asks it
-// before leaving. Reload/close is covered by beforeunload. Browser Back/Forward
-// is not: App Router can't cancel a popstate navigation.
+// dirty, and every in-app way out (sidebar links, a page's own tabs or Cancel)
+// asks it before leaving. Reload/close is covered by beforeunload. Browser
+// Back/Forward is not: App Router can't cancel a popstate navigation.
 export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -62,8 +62,8 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
           Discard unsaved changes?
         </h3>
         <p className="mt-2 text-sm text-gray-600">
-          You have edits on this tab that haven&rsquo;t been saved. Leaving will
-          discard them.
+          You have edits on this page that haven&rsquo;t been saved. Leaving
+          will discard them.
         </p>
         <div className="mt-6 flex justify-end gap-3">
           <Button variant="secondary" onClick={() => setPending(null)}>

@@ -1,7 +1,7 @@
 import { BellOff } from "lucide-react";
 import { EmptyState } from "@/portals/responder/components/ui/empty-state";
 import { NotificationList } from "@/portals/responder/features/incidents/components/notification-list";
-import { getNotifications } from "@/portals/responder/features/incidents/lib/data";
+import { getInbox } from "@/portals/responder/features/incidents/lib/inbox";
 
 export const metadata = { title: "Notifications · LucenaPortal Responder" };
 
@@ -12,9 +12,14 @@ export const metadata = { title: "Notifications · LucenaPortal Responder" };
  * responder in the department on every one of the four paths a report can enter
  * the pool — INCLUDING responders with `on_duty = false`. Duty is a headcount;
  * it never decides who gets the record.
+ *
+ * A pool arrival whose report has since been rerouted away, rejected or closed
+ * is labelled "No longer in your pool" rather than removed (#138).
  */
 export default async function NotificationsPage() {
-  const notifications = await getNotifications();
+  const notifications = await getInbox();
+  // Read once, so every row is dated against the same instant (#139).
+  const now = new Date();
 
   return (
     <div className="mx-auto max-w-2xl px-3 py-3.5">
@@ -33,7 +38,7 @@ export default async function NotificationsPage() {
           className="py-12"
         />
       ) : (
-        <NotificationList items={notifications} />
+        <NotificationList items={notifications} now={now} />
       )}
     </div>
   );

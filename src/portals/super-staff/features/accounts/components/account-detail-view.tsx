@@ -10,6 +10,10 @@ import {
 } from "@/portals/super-staff/components/ui/history-timeline";
 import { Modal } from "@/portals/super-staff/components/ui/modal";
 import { useToast } from "@/portals/super-staff/components/providers/toast-provider";
+import {
+  useReportUnsavedChanges,
+  useUnsavedChanges,
+} from "@/portals/super-staff/components/providers/unsaved-changes-provider";
 import { formatDate } from "@/portals/super-staff/lib/utils";
 import { createClient } from "@/shared/supabase/client";
 import { Input } from "@/portals/super-staff/components/ui/input";
@@ -43,6 +47,22 @@ const toFormValue = (a: Account): AccountFormValue => ({
   employeeId: a.employeeId,
 });
 
+// Edited back to what was loaded counts as unchanged. Modules compare as a set:
+// unticking and reticking one moves it to the end of the array. Every other
+// field is compared by key, so a field added to the form is never skipped.
+function sameFormValue(a: AccountFormValue, b: AccountFormValue): boolean {
+  const { modules: aModules, ...aRest } = a;
+  const { modules: bModules, ...bRest } = b;
+  const keys = Object.keys({ ...aRest, ...bRest }) as (keyof typeof aRest)[];
+  return (
+    aModules.length === bModules.length &&
+    aModules.every((m) => bModules.includes(m)) &&
+    keys.every((k) => aRest[k] === bRest[k])
+  );
+}
+
+const ACCOUNTS_HREF = "/super-staff/accounts";
+
 export function AccountDetailView({ id }: { id: string }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -59,6 +79,12 @@ export function AccountDetailView({ id }: { id: string }) {
   // Until it arrives, or if the read fails, the account counts as someone
   // else's: update_staff_account still refuses a change to one's own role.
   const signedInId = useSignedInId();
+  // Called before the early returns below so the hook order stays stable;
+  // nothing counts as dirty until the account has loaded.
+  const dirty =
+    account !== null && value !== null && !sameFormValue(value, toFormValue(account));
+  useReportUnsavedChanges(dirty);
+  const { requestLeave } = useUnsavedChanges();
 
   const load = useCallback(async () => {
     const found = await getAccount(id);
@@ -84,7 +110,7 @@ export function AccountDetailView({ id }: { id: string }) {
         <p className="text-gray-500 mt-2">
           This account does not exist.{" "}
           <button
-            onClick={() => router.push("/super-staff/accounts")}
+            onClick={() => router.push(ACCOUNTS_HREF)}
             className="text-lucena-blue hover:text-lucena-blue-dark"
           >
             Back to accounts
@@ -227,7 +253,9 @@ export function AccountDetailView({ id }: { id: string }) {
               <div className="mt-6 flex items-center justify-end gap-3 border-t border-gray-200 pt-4">
                 <Button
                   variant="secondary"
-                  onClick={() => router.push("/super-staff/accounts")}
+                  onClick={() => {
+                    if (requestLeave(ACCOUNTS_HREF)) router.push(ACCOUNTS_HREF);
+                  }}
                 >
                   Cancel
                 </Button>

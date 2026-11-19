@@ -3,6 +3,7 @@ import type {
   Incident,
   IncidentEvent,
   IncidentPhoto,
+  InboxEntry,
   ResponderNotification,
 } from "@/portals/responder/features/incidents/types";
 
@@ -124,4 +125,12 @@ export function aNotification(
     read_at: null,
     ...overrides,
   } as ResponderNotification;
+}
+
+/** An Inbox row as the page hands it to NotificationList: live unless told. */
+export function anInboxEntry({
+  stale = false,
+  ...overrides
+}: Partial<InboxEntry> = {}): InboxEntry {
+  return { ...aNotification(overrides), stale };
 }

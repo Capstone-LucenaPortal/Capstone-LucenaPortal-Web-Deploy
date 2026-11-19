@@ -1,5 +1,5 @@
 // src/portals/admin/features/yellow-card/components/yellow-card-page.test.tsx
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import YellowCardPage, { metadata } from "@/app/(admin)/admin/(shell)/yellow-card/page";
 import type { ExportFilter, YellowCardExportRow, YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yellow-card";
@@ -14,10 +14,12 @@ const mockListApplications = vi.fn();
 const mockReadApplicationPii = vi.fn();
 const mockExportApplications = vi.fn();
 const mockListBarangays = vi.fn();
+const mockGetYellowCardConfig = vi.fn();
 const mockDownloadCsv = vi.fn();
 
 vi.mock("../../../lib/supabase/catalogs", () => ({
   listBarangays: () => mockListBarangays(),
+  getYellowCardConfig: () => mockGetYellowCardConfig(),
 }));
 
 function buildBarangays(count: number) {
@@ -73,7 +75,9 @@ function buildRow(overrides: Partial<YellowCardRow> = {}): YellowCardRow {
     status: "pending",
     submitted_at: defaultSubmittedAt(),
     decided_at: null,
-    sla_target_hours: 48,
+    // 3 working days × the database's 9-hour working day (l70a D5): the
+    // target every application filed since l70a carries at the default config.
+    sla_target_hours: 27,
     sla_elapsed_seconds: 1000,
     sla_breached: false,
     review_cycles: 0,
@@ -118,6 +122,8 @@ describe("YellowCardPage", () => {
     mockExportApplications.mockReset();
     mockListBarangays.mockReset();
     mockListBarangays.mockResolvedValue(buildBarangays(33));
+    mockGetYellowCardConfig.mockReset();
+    mockGetYellowCardConfig.mockResolvedValue({ processing_time_target_days: 3 });
     mockDownloadCsv.mockReset();
     mockSearchParams = new URLSearchParams();
     mockReplace.mockReset();
@@ -1226,6 +1232,112 @@ describe("YellowCardPage", () => {
       expect(mockExportApplications).toHaveBeenCalledTimes(1);
     });
 
+    // #131: the address is the only source of the filter. The page doesn't
+    // remount when only the query string changes (the sidebar link, Back,
+    // Forward), so each test changes the search params and re-renders.
+    describe("the filter follows the address", () => {
+      it("goes when the sidebar link opens the plain page, and comes back with Back", async () => {
+        mockSearchParams = new URLSearchParams("sla=past-due");
+        mockListApplications.mockResolvedValue([
+          buildRow({ id: "pending-overdue", reference_number: "YC-PENDING-OVERDUE", status: "pending", deadline_state: "overdue" }),
+          buildRow({ id: "pending-in-time", reference_number: "YC-PENDING-IN-TIME", status: "pending", deadline_state: null }),
+        ]);
+
+        const { rerender } = render(<YellowCardPage />);
+        await screen.findByText("YC-PENDING-OVERDUE");
+        expect(tableReferences()).toEqual(["YC-PENDING-OVERDUE"]);
+
+        // The sidebar's plain Yellow Card link.
+        mockSearchParams = new URLSearchParams();
+        rerender(<YellowCardPage />);
+
+        await screen.findByText("YC-PENDING-IN-TIME");
+        expect(screen.queryByText(/^Showing only applications/)).not.toBeInTheDocument();
+        expect(tableReferences()).toEqual(["YC-PENDING-OVERDUE", "YC-PENDING-IN-TIME"]);
+        expect(getApplicationsExportButton()).toBeEnabled();
+
+        // Back.
+        mockSearchParams = new URLSearchParams("sla=past-due");
+        rerender(<YellowCardPage />);
+
+        expect(await screen.findByText("Showing only applications past due now, whatever the date range")).toBeInTheDocument();
+        await waitFor(() => expect(tableReferences()).toEqual(["YC-PENDING-OVERDUE"]));
+        expect(getApplicationsExportButton()).toBeDisabled();
+
+        // Forward.
+        mockSearchParams = new URLSearchParams();
+        rerender(<YellowCardPage />);
+
+        await screen.findByText("YC-PENDING-IN-TIME");
+        expect(screen.queryByText(/^Showing only applications/)).not.toBeInTheDocument();
+        expect(getApplicationsExportButton()).toBeEnabled();
+      });
+
+      // Pinned mid-June: an application decided in April is in the Quarter by
+      // its decision date, but filed in March, outside it by its filing date.
+      it("brings back the late filter's range and date type with Back", async () => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date("2026-06-15T12:00:00+08:00"));
+        try {
+          mockSearchParams = new URLSearchParams("sla=late&range=Quarter&basis=completion");
+          mockListApplications.mockResolvedValue([
+            buildRow({ id: "late-april", reference_number: "YC-LATE-APRIL", status: "approved", submitted_at: "2026-03-30T02:00:00Z", decided_at: "2026-04-08T02:00:00Z", sla_breached: true }),
+            buildRow({ id: "june", reference_number: "YC-JUNE", status: "pending", submitted_at: "2026-06-10T02:00:00Z" }),
+          ]);
+
+          const { rerender } = render(<YellowCardPage />);
+          await screen.findByText("YC-LATE-APRIL");
+          expect(tableReferences()).toEqual(["YC-LATE-APRIL"]);
+
+          mockSearchParams = new URLSearchParams();
+          rerender(<YellowCardPage />);
+
+          // The plain page: this month, on the filing date.
+          await screen.findByText("YC-JUNE");
+          expect(tableReferences()).toEqual(["YC-JUNE"]);
+          expect(screen.getByLabelText("Date type")).toHaveValue("application");
+
+          mockSearchParams = new URLSearchParams("sla=late&range=Quarter&basis=completion");
+          rerender(<YellowCardPage />);
+
+          await screen.findByText("YC-LATE-APRIL");
+          expect(tableReferences()).toEqual(["YC-LATE-APRIL"]);
+          expect(screen.getByLabelText("Date type")).toHaveValue("completion");
+          expect(screen.getByText("Showing only applications that finished late in the selected range")).toBeInTheDocument();
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      // Clear drops only the filter: the range and date type the link set stay,
+      // and the clean address Clear leads to doesn't reset them.
+      it("Clear leaves a clean address and keeps the range", async () => {
+        const user = userEvent.setup();
+        mockSearchParams = new URLSearchParams("sla=late&from=2026-06-01&to=2026-06-30&basis=application");
+        mockListApplications.mockResolvedValue(juneApplications());
+
+        const { rerender } = render(<YellowCardPage />);
+        await screen.findByText("YC-LATE-APPROVED");
+
+        await user.click(screen.getByRole("button", { name: "Clear filter" }));
+        expect(mockReplace).toHaveBeenCalledWith("/admin/yellow-card", { scroll: false });
+        mockSearchParams = new URLSearchParams();
+        rerender(<YellowCardPage />);
+
+        expect(screen.queryByText(/^Showing only applications/)).not.toBeInTheDocument();
+        expect(tableReferences()).toHaveLength(5);
+        expect(screen.getByLabelText("Custom range start")).toHaveValue("2026-06-01");
+        expect(mockListApplications).toHaveBeenCalledTimes(1);
+
+        // Back to the filtered address, should the browser still hold it.
+        mockSearchParams = new URLSearchParams("sla=late&from=2026-06-01&to=2026-06-30&basis=application");
+        rerender(<YellowCardPage />);
+
+        expect(await screen.findByText("Showing only applications that finished late in the selected range")).toBeInTheDocument();
+        await waitFor(() => expect(tableReferences()).toEqual(["YC-LATE-APPROVED", "YC-LATE-REJECTED"]));
+      });
+    });
+
     it("an unknown filter is ignored", async () => {
       mockSearchParams = new URLSearchParams("sla=everything");
       mockListApplications.mockResolvedValue([buildRow({ id: "app-1", reference_number: "YC-2026-000001" })]);
@@ -1235,6 +1347,150 @@ describe("YellowCardPage", () => {
       await screen.findByText("YC-2026-000001");
       expect(screen.queryByText(/^Showing only applications/)).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Clear filter" })).not.toBeInTheDocument();
+    });
+  });
+
+  // #132: the captions name the configured working-day target only when every
+  // row the figure counts was scored against it; otherwise "the target".
+  describe("the target the captions name", () => {
+    function decidedRow(overrides: Partial<YellowCardRow>): YellowCardRow {
+      return buildRow({ status: "approved", decided_at: defaultSubmittedAt(), ...overrides });
+    }
+
+    it("names the configured days when every counted row carries them", async () => {
+      mockGetYellowCardConfig.mockResolvedValue({ processing_time_target_days: 2 });
+      mockListApplications.mockResolvedValue([
+        decidedRow({ id: "app-1", reference_number: "YC-2026-000001", sla_target_hours: 18 }),
+        buildRow({ id: "app-2", reference_number: "YC-2026-000002", status: "pending", sla_target_hours: 18 }),
+      ]);
+
+      render(<YellowCardPage />);
+
+      expect(
+        await within(getKpiTile("Decided on time")).findByText(/^1 of 1 within the 2-working-day target · /)
+      ).toBeInTheDocument();
+      const pending = screen.getByText("Pending Review", { selector: "p" }).closest("div")!;
+      expect(within(pending).getByText("Past due = past 2-working-day target")).toBeInTheDocument();
+      expect(screen.queryByText(/\d+h/)).not.toBeInTheDocument();
+    });
+
+    it("Decided on time drops the number when its rows mix the current and the legacy 48-hour target", async () => {
+      mockListApplications.mockResolvedValue([
+        decidedRow({ id: "app-1", reference_number: "YC-2026-000001", sla_target_hours: 27 }),
+        decidedRow({ id: "app-2", reference_number: "YC-2026-000002", sla_target_hours: 48 }),
+      ]);
+
+      render(<YellowCardPage />);
+      await screen.findByText("YC-2026-000001");
+
+      const tile = getKpiTile("Decided on time");
+      expect(within(tile).getByText(/^2 of 2 within the target · /)).toBeInTheDocument();
+      expect(within(tile).queryByText(/working-day/)).not.toBeInTheDocument();
+      // The backlog is empty, and the config was read: new filings get 3 days.
+      const pending = screen.getByText("Pending Review", { selector: "p" }).closest("div")!;
+      expect(within(pending).getByText("Past due = past 3-working-day target")).toBeInTheDocument();
+    });
+
+    it("Pending Review drops the number when the target changed and the backlog was filed under the old one", async () => {
+      mockGetYellowCardConfig.mockResolvedValue({ processing_time_target_days: 2 });
+      mockListApplications.mockResolvedValue([
+        buildRow({ id: "app-1", reference_number: "YC-2026-000001", status: "pending", sla_target_hours: 27 }),
+        buildRow({ id: "app-2", reference_number: "YC-2026-000002", status: "resubmitted", sla_target_hours: 27 }),
+      ]);
+
+      render(<YellowCardPage />);
+      await screen.findByText("YC-2026-000001");
+
+      const pending = screen.getByText("Pending Review", { selector: "p" }).closest("div")!;
+      expect(within(pending).getByText("Past due = past target")).toBeInTheDocument();
+    });
+
+    it.each([
+      ["errors", () => mockGetYellowCardConfig.mockRejectedValue({ kind: "unknown", message: "boom" })],
+      ["has no row", () => mockGetYellowCardConfig.mockResolvedValue(null)],
+    ])("when the config view %s, both captions drop the number and the rest of the page still renders", async (_case, arrange) => {
+      arrange();
+      mockListApplications.mockResolvedValue([
+        decidedRow({ id: "app-1", reference_number: "YC-2026-000001" }),
+        buildRow({ id: "app-2", reference_number: "YC-2026-000002", status: "pending", deadline_state: "overdue" }),
+      ]);
+
+      render(<YellowCardPage />);
+      await screen.findByText("YC-2026-000001");
+
+      expect(within(getKpiTile("Decided on time")).getByText(/^1 of 1 within the target · /)).toBeInTheDocument();
+      const pending = screen.getByText("Pending Review", { selector: "p" }).closest("div")!;
+      expect(within(pending).getByText("Past due = past target")).toBeInTheDocument();
+      expect(within(pending).getByText("1 past due · 0 at risk")).toBeInTheDocument();
+      expect(screen.queryByText(/working-day/)).not.toBeInTheDocument();
+      expect(within(getKpiTile("Applications")).getByText("2")).toBeInTheDocument();
+      expect(screen.getByText("YC-2026-000002")).toBeInTheDocument();
+      expect(screen.queryByText(/Unable to load applications/)).not.toBeInTheDocument();
+    });
+  });
+
+  // #146 (the #141 rule): the Applicants by barangay CSV is built from the
+  // loaded rows, which are empty before a load succeeds, so an export then
+  // would be a header-only file that looks like a real report. The button is
+  // off until the data is ready.
+  describe("Applicants by barangay Export is off until the applications have loaded", () => {
+    const coverageExportButton = () =>
+      within(screen.getByText("Applicants by barangay").closest("section")!).getByRole("button", {
+        name: "↓ Export",
+      });
+
+    it("is disabled while the applications are loading, and a click downloads nothing", async () => {
+      const user = userEvent.setup();
+      mockListApplications.mockReturnValue(new Promise<YellowCardRow[]>(() => {}));
+
+      render(<YellowCardPage />);
+
+      expect(coverageExportButton()).toBeDisabled();
+      await user.click(coverageExportButton());
+      expect(mockDownloadCsv).not.toHaveBeenCalled();
+      // Out of scope: Recent applications' Export reads through the audited
+      // export RPC, not the page's rows, so it works while the page loads.
+      expect(getApplicationsExportButton()).toBeEnabled();
+    });
+
+    it("is enabled once a load succeeds, even with no applications in range, and exports its own file", async () => {
+      const user = userEvent.setup();
+      mockListApplications.mockResolvedValue([]);
+
+      render(<YellowCardPage />);
+
+      await waitFor(() => expect(coverageExportButton()).toBeEnabled());
+      await user.click(coverageExportButton());
+      expect(mockDownloadCsv).toHaveBeenCalledTimes(1);
+      expect(mockDownloadCsv.mock.calls[0][0]).toBe("applicants-by-barangay.csv");
+    });
+
+    it("is disabled after a failed load, and stays disabled for the whole of a Retry until it succeeds", async () => {
+      // Retry only shows on the error state, so the page never reloads over
+      // good data; the case to pin is a Retry with its request held open.
+      const user = userEvent.setup();
+      mockListApplications.mockRejectedValueOnce({ kind: "unknown", message: "boom" });
+      let resolveRetry: (rows: YellowCardRow[]) => void = () => {};
+      mockListApplications.mockReturnValueOnce(
+        new Promise<YellowCardRow[]>((resolve) => {
+          resolveRetry = resolve;
+        })
+      );
+
+      render(<YellowCardPage />);
+      await screen.findByText("Unable to load applications: boom");
+
+      expect(coverageExportButton()).toBeDisabled();
+
+      await user.click(screen.getByRole("button", { name: "Retry" }));
+
+      expect(screen.getByRole("status")).toHaveTextContent("Loading applications…");
+      expect(coverageExportButton()).toBeDisabled();
+
+      resolveRetry([buildRow({ id: "app-1", reference_number: "YC-2026-000001" })]);
+      await screen.findByText("YC-2026-000001");
+
+      expect(coverageExportButton()).toBeEnabled();
     });
   });
 });

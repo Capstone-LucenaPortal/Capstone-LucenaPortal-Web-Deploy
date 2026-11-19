@@ -19,7 +19,8 @@ vi.mock("@/shared/supabase/client", () => ({
 vi.mock("@/portals/responder/features/incidents/lib/data", () => ({
   getPool: vi.fn(),
   getHeldTicket: vi.fn(),
-  getUnreadCount: vi.fn(),
+  getUnreadNotifications: vi.fn(),
+  getVisibleIncidentStatuses: vi.fn(),
 }));
 vi.mock("@/portals/responder/features/auth/lib/department-duty", () => ({
   getDepartmentDuty: vi.fn(),

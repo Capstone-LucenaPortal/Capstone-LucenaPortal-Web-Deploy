@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/shared/supabase/server";
 import { routeForOutcome } from "@/portals/responder/features/incidents/lib/claim-outcome";
 import { noticeFor } from "@/portals/responder/features/incidents/lib/notice";
+import { POOL_ARRIVAL } from "@/portals/responder/features/incidents/lib/stale-arrival";
 import type { ClaimResult, ProgressStage } from "@/portals/responder/features/incidents/types";
 
 /**
@@ -207,7 +208,7 @@ export async function markArrivalRead(incidentId: string): Promise<void> {
     .from("my_notifications")
     .select("id")
     .eq("record_id", incidentId)
-    .eq("event_code", "incident_pool_arrival")
+    .eq("event_code", POOL_ARRIVAL)
     .is("read_at", null);
   if (error) throw new Error(`markArrivalRead: ${error.message}`);
 

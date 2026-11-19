@@ -1,6 +1,6 @@
 import { createClient } from "@/shared/supabase/client";
 import { toPortalError } from "@/portals/admin/lib/supabase/errors";
-import { fetchAllRows } from "@/shared/supabase/pagination";
+import { listViewNewestFirst } from "@/portals/admin/lib/supabase/views";
 import type { Database } from "@/shared/supabase/types";
 
 export type BookingRow =
@@ -24,33 +24,15 @@ export type BookingPii =
  * masking branch here — every field on the PII row returns exactly as
  * stored, with no conditional nulling out of the contact fields.
  *
- * `signal`, when given, is attached to the query via `.abortSignal()` and
- * also threaded through to `fetchAllRows` so a cancelled fetch actually stops
- * issuing further pages instead of only cancelling whichever single page
- * happened to be in flight — see fetchAllRows' own doc comment. Callers
+ * The view is read whole, newest first, through listViewNewestFirst, which
+ * holds the pages still past 1,000 rows (an upper limit on submitted_at and an
+ * id tie-break) and threads `signal` through every request. Callers
  * (Dashboard, SLA Reports) create one `AbortController` per fetch and abort
  * the previous one on remount/re-fetch, so this view is never read in more
  * than one in-flight request at a time.
  */
 export async function listBookings(signal?: AbortSignal): Promise<BookingRow[]> {
-  const supabase = createClient();
-  let query = supabase
-    .from("admin_booking_analytics")
-    .select("*")
-    .order("submitted_at", { ascending: false });
-  if (signal) query = query.abortSignal(signal);
-
-  // Page through the view rather than trusting a single request — PostgREST
-  // silently caps an unpaginated `.select()` at 1000 rows (see
-  // src/shared/supabase/pagination.ts).
-  const { data, error } = await fetchAllRows(query, signal);
-
-  if (error) throw toPortalError(error);
-
-  // An empty array is a legitimate outcome, not a failure. It is also exactly
-  // what a non-admin caller sees, because the view's WHERE clause filters
-  // them out rather than raising.
-  return data ?? [];
+  return listViewNewestFirst("admin_booking_analytics", signal);
 }
 
 export async function readBookingPii(id: string): Promise<BookingPii> {

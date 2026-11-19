@@ -1,11 +1,9 @@
 // src/portals/admin/components/ui/date-filter-bar.tsx
 "use client";
 
-import { DateRangeKey } from "@/portals/admin/lib/dates";
+import { DATE_RANGE_KEYS, type DateRangeKey } from "@/portals/admin/lib/dates";
 
 export type DateFilterPreset = DateRangeKey | "Custom";
-
-const PRESETS: DateRangeKey[] = ["Today", "Week", "Month", "Quarter", "Annual"];
 
 interface BasisOption<B extends string> {
   value: B;
@@ -70,7 +68,7 @@ export function DateFilterBar<B extends string>({
         </select>
 
         <div className="flex" role="group" aria-label="Date range preset">
-          {PRESETS.map((key) => (
+          {DATE_RANGE_KEYS.map((key) => (
             <button
               key={key}
               type="button"

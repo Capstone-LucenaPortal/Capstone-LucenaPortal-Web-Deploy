@@ -62,7 +62,7 @@ describe("UnsavedChangesProvider", () => {
     expect(push).not.toHaveBeenCalled();
     expect(screen.getByRole("dialog")).toHaveTextContent("Discard unsaved changes?");
     expect(screen.getByRole("dialog")).toHaveTextContent(
-      "You have edits on this tab that haven’t been saved. Leaving will discard them.",
+      "You have edits on this page that haven’t been saved. Leaving will discard them.",
     );
   });
 

@@ -101,7 +101,7 @@ export default async function MyTicketPage({
     })),
   );
 
-  const entries = buildTimeline(events);
+  const entries = buildTimeline(events, now);
 
   return (
     <div className="flex h-full flex-col">

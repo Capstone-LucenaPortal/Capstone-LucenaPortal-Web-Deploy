@@ -5,6 +5,8 @@ import { buildTimeline } from "@/portals/responder/features/incidents/lib/work";
 import { anEvent } from "@/portals/responder/features/incidents/lib/fixtures";
 
 const at = (time: string) => `2026-07-28T${time}:00+08:00`;
+// Later the same Manila day, so every entry reads as today's.
+const NOW = new Date(at("18:00"));
 
 /** Rows as `responder_incident_events` returns them: ordered, already real. */
 const entries = () =>
@@ -30,7 +32,7 @@ const entries = () =>
       actor_name: "Juan",
       created_at: at("09:40"),
     }),
-  ]);
+  ], NOW);
 
 describe("TicketTimeline", () => {
   it("tells the responder that staff are watching", () => {
