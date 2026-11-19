@@ -113,7 +113,6 @@ describe('securityHeaderRoutes', () => {
       '/explore-lucena',
       '/incident',
       '/lcc',
-      '/news',
       '/privacy',
       '/profile',
       '/programs',

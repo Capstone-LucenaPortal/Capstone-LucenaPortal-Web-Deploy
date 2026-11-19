@@ -45,6 +45,14 @@ img, video, iframe { max-width: 100%; }
   .stack-mobile-sidebar { position: static !important; }
 }
 
+/* Rows of picture cards (Explore Lucena). The inline style picks a desktop
+   column count that leaves no card alone on a last row (`cardGridColumns`);
+   below that width the cards would get too narrow, so fit as many as the
+   screen takes. */
+@media (max-width: 1280px) {
+  .card-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)) !important; }
+}
+
 /* Media images inside stacked layouts shouldn't keep a huge fixed height */
 @media (max-width: 600px) {
   .fluid-media { height: auto !important; aspect-ratio: 16 / 9; }

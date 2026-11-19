@@ -97,8 +97,12 @@ export const CONTACT_EMAIL = 'info@lucena-city.gov.ph';
 /** Portal/e-services support. */
 export const HELPDESK_EMAIL = 'helpdesk@lucena-city.gov.ph';
 
-/** Official page. Used for the footer link and the homepage feed iframe. */
+/** Official page. Used for the footer link and the homepage feed. */
 export const FACEBOOK_PAGE_URL = 'https://www.facebook.com/lucenalguofficial';
+
+/** The City Public Information Office's page. Its timeline is the Announcements
+ * page's feed: the PIO posts the city's news and advisories there first. */
+export const PIO_FACEBOOK_PAGE_URL = 'https://www.facebook.com/LucenaPIO';
 
 /** Physical address of the City Government Complex, as three display lines. */
 export const OFFICE_ADDRESS_LINES = [

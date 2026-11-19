@@ -13,7 +13,7 @@ vi.mock('@/portals/citizen/lib/supabase/catalogs', () => ({
   },
 }));
 
-const TOP_SLIDES = 4;
+const TOP_SLIDES = 3;
 const LCC_SLIDES = 5;
 
 /** Settles the page's catalogs read, so no state update lands after the test. */
@@ -75,7 +75,7 @@ describe('Home page carousels', () => {
 
   it('marks only the first dot of each carousel as current to begin with', async () => {
     await renderHome();
-    expect(currentDots(TOP_SLIDES)).toEqual(['Go to slide 1 of 4']);
+    expect(currentDots(TOP_SLIDES)).toEqual(['Go to slide 1 of 3']);
     expect(currentDots(LCC_SLIDES)).toEqual(['Go to slide 1 of 5']);
     expect(buttonsWithAriaCurrent()).toHaveLength(2);
   });
@@ -84,26 +84,25 @@ describe('Home page carousels', () => {
     await renderHome();
 
     fireEvent.click(arrow('Next slide', 'top'));
-    expect(currentDots(TOP_SLIDES)).toEqual(['Go to slide 2 of 4']);
+    expect(currentDots(TOP_SLIDES)).toEqual(['Go to slide 2 of 3']);
     expect(currentDots(LCC_SLIDES)).toEqual(['Go to slide 1 of 5']);
 
     fireEvent.click(arrow('Previous slide', 'lcc'));
     expect(currentDots(LCC_SLIDES)).toEqual(['Go to slide 5 of 5']);
-    expect(currentDots(TOP_SLIDES)).toEqual(['Go to slide 2 of 4']);
+    expect(currentDots(TOP_SLIDES)).toEqual(['Go to slide 2 of 3']);
     expect(buttonsWithAriaCurrent()).toHaveLength(2);
   });
 
   it('moves the current dot when a dot is used', async () => {
     await renderHome();
-    fireEvent.click(screen.getByRole('button', { name: 'Go to slide 3 of 4' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Go to slide 3 of 3' }));
     fireEvent.click(screen.getByRole('button', { name: 'Go to slide 4 of 5' }));
-    expect(currentDots(TOP_SLIDES)).toEqual(['Go to slide 3 of 4']);
+    expect(currentDots(TOP_SLIDES)).toEqual(['Go to slide 3 of 3']);
     expect(currentDots(LCC_SLIDES)).toEqual(['Go to slide 4 of 5']);
   });
 
   it.each([
     [2, 'City Programs', '/hero-programs.jpg'],
-    [3, 'Lucena News', '/hero-news.jpg'],
   ])('shows slide %i, %s, over its own photo', async (n, title, image) => {
     await renderHome();
     fireEvent.click(screen.getByRole('button', { name: `Go to slide ${n} of ${TOP_SLIDES}` }));
@@ -128,12 +127,12 @@ describe('Home page carousels', () => {
       vi.advanceTimersByTime(4000);
     });
     expect(currentDots(LCC_SLIDES)).toEqual(['Go to slide 2 of 5']);
-    expect(currentDots(TOP_SLIDES)).toEqual(['Go to slide 1 of 4']);
+    expect(currentDots(TOP_SLIDES)).toEqual(['Go to slide 1 of 3']);
 
     act(() => {
       vi.advanceTimersByTime(1000);
     });
-    expect(currentDots(TOP_SLIDES)).toEqual(['Go to slide 2 of 4']);
+    expect(currentDots(TOP_SLIDES)).toEqual(['Go to slide 2 of 3']);
     expect(currentDots(LCC_SLIDES)).toEqual(['Go to slide 2 of 5']);
   });
 });

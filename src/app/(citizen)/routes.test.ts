@@ -37,7 +37,6 @@ describe('citizen routes', () => {
       'explore-lucena',
       'incident',
       'lcc',
-      'news',
       'privacy',
       'profile',
       'programs',

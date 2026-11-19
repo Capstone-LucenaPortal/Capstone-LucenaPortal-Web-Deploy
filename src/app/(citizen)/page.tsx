@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/portals/citizen/features/auth/hooks/use-auth';
 import { catalogService, type SiteInfo, type SiteInfoEntry } from '@/portals/citizen/lib/supabase/catalogs';
 import ProgramsSummary from '@/portals/citizen/features/content/components/programs-summary';
-
-const FACEBOOK_PAGE_URL = 'https://www.facebook.com/lucenalguofficial';
+import FacebookPageFeed from '@/portals/citizen/components/ui/facebook-page-feed';
+import { FACEBOOK_PAGE_URL } from '@/portals/citizen/lib/contact-info';
 
 /** `(0XX) YYY-ZZZZ` → `tel:+63XXYYYZZZZ`. Local numbers are stored with a
  * leading 0; short codes (911) are dialled as-is. */
@@ -31,10 +31,6 @@ export default function HomePage() {
     // The photo is square, so a wide screen shows only a band of it; 55% keeps
     // the "City of Lucena, Quezon" title and the people in that band.
     { title: 'City Programs', desc: 'Ongoing initiatives in health, livelihood, and infrastructure for Lucenahins', image: '/hero-programs.jpg', imagePosition: 'center 55%', buttonText: 'Learn More', link: '#city-programs', color: '#7C3F00' },
-    // A banner with its own big lettering: cropped to fill the screen, that
-    // lettering lands under the slide's title. Shown whole across the top
-    // instead, on its own edge blue, so the title sits below it.
-    { title: 'Lucena News', desc: 'Stay updated with the latest city news and developments', image: '/hero-news.jpg', imagePosition: 'center top', imageSize: 'contain', buttonText: 'Learn More', link: '/news', color: '#2E4CC2' },
     { title: 'Lucena Events', desc: 'Discover upcoming events and community activities', image: '/lcc-1.jpg', buttonText: 'Book Venue', link: '/lcc', color: '#166534' },
   ];
 
@@ -92,7 +88,7 @@ export default function HomePage() {
             position: 'absolute',
             inset: 0,
             background: heroSlides[heroSlide].image
-              ? `url('${heroSlides[heroSlide].image}') ${heroSlides[heroSlide].imagePosition ?? 'center'}/${heroSlides[heroSlide].imageSize ?? 'cover'} no-repeat ${heroSlides[heroSlide].color}`
+              ? `url('${heroSlides[heroSlide].image}') ${heroSlides[heroSlide].imagePosition ?? 'center'}/cover no-repeat ${heroSlides[heroSlide].color}`
               : `linear-gradient(135deg, ${heroSlides[heroSlide].color}E6, ${heroSlides[heroSlide].color}CC)`,
             transition: 'background 0.5s ease'
           }} />
@@ -180,29 +176,7 @@ export default function HomePage() {
           </div>
           <div style={{ gridColumn: '3' }}>
             <h3 style={{ fontSize: 24, fontWeight: 700, color: '#003DA5', marginBottom: 16 }}>Follow Us on Facebook</h3>
-            <div style={{ width: '100%' }}>
-              {/* Page-plugin iframe, not the JS SDK: the live timeline renders
-                  sandboxed on facebook.com's origin, so no third-party script
-                  runs on the portal and CSP only needs frame-src. */}
-              <iframe
-                src={`https://www.facebook.com/plugins/page.php?href=${encodeURIComponent(FACEBOOK_PAGE_URL)}&tabs=timeline&width=500&height=640&small_header=false&adapt_container_width=true&hide_cover=false&show_facepile=true`}
-                width={500}
-                height={640}
-                style={{ border: 'none', overflow: 'hidden', width: '100%', maxWidth: 500, display: 'block' }}
-                loading="lazy"
-                referrerPolicy="strict-origin-when-cross-origin"
-                allow="encrypted-media"
-                title="City of Lucena official Facebook feed"
-              />
-              <a
-                href={FACEBOOK_PAGE_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ display: 'inline-block', marginTop: 8, fontSize: 13, color: '#003DA5', textDecoration: 'none' }}
-              >
-                Open the page on facebook.com →
-              </a>
-            </div>
+            <FacebookPageFeed pageUrl={FACEBOOK_PAGE_URL} height={640} title="City of Lucena official Facebook feed" />
           </div>
         </div>
       </section>

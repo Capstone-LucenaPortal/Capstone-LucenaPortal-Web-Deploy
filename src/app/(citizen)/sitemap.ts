@@ -28,7 +28,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: '/announcements', priority: 0.9, changeFrequency: 'daily' },
     { path: '/events-calendar', priority: 0.8, changeFrequency: 'weekly' },
     { path: '/explore-lucena', priority: 0.6, changeFrequency: 'monthly' },
-    { path: '/news', priority: 0.8, changeFrequency: 'daily' },
     { path: '/programs', priority: 0.8, changeFrequency: 'monthly' },
     ...PROGRAM_CATEGORIES.map(({ slug }) => ({
       path: `/programs/${slug}`,

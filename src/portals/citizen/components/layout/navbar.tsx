@@ -116,7 +116,6 @@ export default function Nav() {
 
   const homeMenuItems = [
     { label: 'About', path: '/about' },
-    { label: 'News', path: '/news' },
     { label: 'Announcements', path: '/announcements' },
     { label: 'Programs', path: '/programs' },
     { label: 'Explore Lucena', path: '/explore-lucena' },
@@ -193,7 +192,7 @@ export default function Nav() {
         <div className="nav-desktop" style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }} suppressHydrationWarning>
           {/* Home + disclosure. Hover still opens it, but hover is now an
               enhancement rather than the only trigger — a keyboard user could
-              focus "Home" and never reach About/News/Announcements/Explore Lucena at all. */}
+              focus "Home" and never reach About/Announcements/Programs/Explore Lucena at all. */}
           <div
             ref={homeMenuRef}
             style={{ position: 'relative' }}

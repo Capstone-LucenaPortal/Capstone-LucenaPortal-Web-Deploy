@@ -235,7 +235,7 @@ matching spec first — it carries the verified RPC/view/column mapping.
 
 ## Status
 
-Capstone prototype mid-migration from localStorage mocks to the Supabase backend. News and
-Events Calendar are intentionally WIP (`components/ui/wip-page.tsx`). `TODO(backend)` comments mark
+Capstone prototype mid-migration from localStorage mocks to the Supabase backend. The
+Events Calendar is intentionally WIP (`components/ui/wip-page.tsx`). `TODO(backend)` comments mark
 places where a value is assumed rather than verified against the deployed schema — resolve one by
 querying the **sandbox** through the `supabase-lucena` MCP, not by guessing.
