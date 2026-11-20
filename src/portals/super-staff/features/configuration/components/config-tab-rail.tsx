@@ -13,6 +13,7 @@ const TABS = [
   { href: "/super-staff/configuration/booking", label: "Booking" },
   { href: "/super-staff/configuration/site-info", label: "Site Info" },
   { href: "/super-staff/configuration/calendar", label: "Holidays & Office Hours" },
+  { href: "/super-staff/configuration/receipts", label: "Receipts" },
 ];
 
 // The rail reports the tab's dirty flag to the shell's unsaved-changes guard,

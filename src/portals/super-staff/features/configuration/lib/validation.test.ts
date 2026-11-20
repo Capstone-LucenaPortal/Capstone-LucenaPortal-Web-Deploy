@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   isHexColor,
+  validateAgencyIdentity,
+  validateOfficer,
   validateBooking,
   validateCatalogOrder,
   validateCatalogRow,
@@ -310,5 +312,60 @@ describe("validateOfficeHours", () => {
 
   it("leaves a close before the open to the database, whose 22023 is shown", () => {
     expect(validateOfficeHours({ ...day, openTime: "17:00", closeTime: "08:00" })).toEqual({});
+  });
+});
+
+// update_officer_of_record raises 22023 for a blank field or one longer than
+// 120 (name), 200 (unit) or 120 (designation) characters after btrim.
+describe("validateOfficer", () => {
+  const officer = { fullName: "Maria Santos", unit: "City Health Office", designation: "OIC" };
+
+  it("passes a complete nomination", () => {
+    expect(validateOfficer(officer)).toEqual({});
+  });
+
+  it("requires every field, blank after trimming counting as empty", () => {
+    expect(validateOfficer({ fullName: "  ", unit: "", designation: "	" })).toEqual({
+      fullName: "Enter a name.",
+      unit: "Enter a unit.",
+      designation: "Enter a designation.",
+    });
+  });
+
+  it("holds each field to the RPC's limit, measured after trimming", () => {
+    expect(validateOfficer({ ...officer, fullName: "a".repeat(120) })).toEqual({});
+    expect(validateOfficer({ ...officer, fullName: ` ${"a".repeat(120)} ` })).toEqual({});
+    expect(validateOfficer({ ...officer, fullName: "a".repeat(121) }).fullName)
+      .toBe("At most 120 characters.");
+
+    expect(validateOfficer({ ...officer, unit: "a".repeat(200) })).toEqual({});
+    expect(validateOfficer({ ...officer, unit: "a".repeat(201) }).unit)
+      .toBe("At most 200 characters.");
+
+    expect(validateOfficer({ ...officer, designation: "a".repeat(120) })).toEqual({});
+    expect(validateOfficer({ ...officer, designation: "a".repeat(121) }).designation)
+      .toBe("At most 120 characters.");
+  });
+});
+
+// save_agency_identity raises 22023 for a blank agency name or one over 200.
+describe("validateAgencyIdentity", () => {
+  const identity = { agencyName: "City Government of Lucena", sealPath: "agency/seal.png" };
+
+  it("passes the seeded identity", () => {
+    expect(validateAgencyIdentity(identity)).toEqual({});
+  });
+
+  it("requires an agency name of at most 200 characters", () => {
+    expect(validateAgencyIdentity({ ...identity, agencyName: "  " }).agencyName)
+      .toBe("Enter the agency name.");
+    expect(validateAgencyIdentity({ ...identity, agencyName: "a".repeat(200) })).toEqual({});
+    expect(validateAgencyIdentity({ ...identity, agencyName: "a".repeat(201) }).agencyName)
+      .toBe("At most 200 characters.");
+  });
+
+  it("requires a seal", () => {
+    expect(validateAgencyIdentity({ ...identity, sealPath: "" }).sealPath)
+      .toBe("Upload a seal.");
   });
 });

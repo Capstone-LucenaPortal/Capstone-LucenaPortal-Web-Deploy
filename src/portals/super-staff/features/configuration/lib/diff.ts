@@ -5,6 +5,7 @@ import type {
   YellowCardConfig,
 } from "../types";
 import { INCIDENT_LEVELS } from "../types";
+import type { AgencyIdentity, Officer } from "./receipts-types";
 import type { SiteInfo } from "./site-info-types";
 
 /**
@@ -74,6 +75,9 @@ export function diffIncidents(before: IncidentsConfig, after: IncidentsConfig) {
   ]);
 }
 
+/** For the string fields whose RPC btrims before comparing. */
+const trimmed = (value: string) => value.trim();
+
 // ── Site info — mirrors save_site_info's v_labels ───────────────────────────
 // The RPC btrims both values before comparing, so trimming here too keeps the
 // modal from announcing a change the database will not record.
@@ -85,7 +89,7 @@ export function diffSiteInfo(before: SiteInfo, after: SiteInfo): ConfigChange[] 
       { get: (c) => c.trunkline, label: "Trunkline" },
       { get: (c) => c.officeHours, label: "Office hours" },
     ],
-    (value) => value.trim(),
+    trimmed,
   );
 }
 
@@ -98,4 +102,46 @@ export function diffYellowCard(before: YellowCardConfig, after: YellowCardConfig
     },
     { get: (c) => c.atRiskThresholdPct, label: "At-risk threshold (%)" },
   ]);
+}
+
+// ── Receipts — mirror update_officer_of_record's and save_agency_identity's
+// v_labels. Both RPCs btrim before comparing, so these trim too.
+
+/**
+ * The three fields, plus the placeholder flip. `update_officer_of_record`
+ * ALWAYS writes is_placeholder = false and audits it as
+ * "Placeholder true → false", so a placeholder's first save shows that line
+ * as well. It is never a change on its own: the draft cannot set the flag, so
+ * an untouched placeholder is not dirty.
+ */
+export function diffOfficer(before: Officer, after: Officer): ConfigChange[] {
+  const changes = diffFields(
+    before,
+    after,
+    [
+      { get: (o) => o.fullName, label: "Name" },
+      { get: (o) => o.unit, label: "Unit" },
+      { get: (o) => o.designation, label: "Designation" },
+    ],
+    trimmed,
+  );
+  if (changes.length > 0 && before.isPlaceholder) {
+    changes.push({ label: "Placeholder", before: "true", after: "false" });
+  }
+  return changes;
+}
+
+export function diffAgencyIdentity(
+  before: AgencyIdentity,
+  after: AgencyIdentity,
+): ConfigChange[] {
+  return diffFields(
+    before,
+    after,
+    [
+      { get: (a) => a.agencyName, label: "Agency name" },
+      { get: (a) => a.sealPath, label: "Seal" },
+    ],
+    trimmed,
+  );
 }

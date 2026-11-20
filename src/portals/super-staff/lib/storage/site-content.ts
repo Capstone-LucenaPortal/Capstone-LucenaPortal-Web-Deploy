@@ -19,12 +19,14 @@ import { toStorageRpcError } from "@/portals/super-staff/lib/supabase/errors";
  *   1. validate before you put;
  *   2. `version` is any string that changes when the bytes change.
  *
+ * The agency seal is the one exception, and has its own `putSeal`: see there.
+ *
  * Everything else — the `{kind}/{uuid}.{ext}` grammar, who mints the uuid, the
  * `?v=` convention, the absence of a delete — stays behind this seam. It used
  * to be half-leaked to ImageField, which is exactly how the path-stability and
  * cache-bust invariants both came to be violated at the call site.
  *
- * `slotPathFor` and `withVersion` are also exported, but only so this module's
+ * `slotPathFor`, `sealPathFor` and `withVersion` are also exported, but only so this module's
  * tests can reach them: `imageSrc` and `putImage` both need a Supabase client,
  * and the repo tests pure logic only. Nothing outside this file should call
  * them, and nothing does.
@@ -133,4 +135,42 @@ export async function putImage(
 
   if (error) throw toStorageRpcError(error);
   return { path, version: new Date().toISOString() };
+}
+
+/**
+ * @internal Where the next agency seal goes: ALWAYS a new path.
+ *
+ * The opposite of `slotPathFor`, on purpose. An Acknowledgement Receipt fixes
+ * the seal's PATH when it is issued (DB ADR 0001), so rewriting the bytes at an
+ * existing path would change the seal on every receipt already issued. l66
+ * therefore refuses any UPDATE of an `agency/` object; a seal is insert-only.
+ *
+ * The time stamp keeps the bucket listing readable; the random suffix keeps two
+ * uploads in the same millisecond apart.
+ */
+export function sealPathFor(mime: string, now: Date = new Date()): string {
+  const ext = EXTENSIONS[mime];
+  if (!ext) throw new Error("site-content accepts JPEG and PNG only");
+  return `agency/seal-${now.getTime()}-${crypto.randomUUID().slice(0, 8)}.${ext}`;
+}
+
+/**
+ * Uploads a new agency seal to a fresh `agency/` path, never upserting.
+ *
+ * ⚠️ Never route a seal through `putImage`: it reuses the current path and
+ * upserts, which l66's storage policy refuses for `agency/` — and which would
+ * rewrite issued receipts if it were ever allowed.
+ *
+ * Uploading does not change any receipt. The caller still has to point
+ * `save_agency_identity` at the returned path; until then the object is an
+ * unused file, and the bucket has no delete, so an abandoned upload stays.
+ */
+export async function putSeal(file: File): Promise<string> {
+  const path = sealPathFor(file.type);
+  const { error } = await createClient()
+    .storage.from(BUCKET)
+    .upload(path, file, { upsert: false, contentType: file.type });
+
+  if (error) throw toStorageRpcError(error);
+  return path;
 }

@@ -195,3 +195,47 @@ export function validateOfficeHours(d: {
   if (!CLOSE_TIME.test(d.closeTime)) errors.closeTime = "Enter a time as HH:MM (24:00 for end of day).";
   return errors;
 }
+
+/** Blank after trimming, or longer than `max` after trimming. */
+function requiredText(value: string, max: number, blank: string): string | null {
+  const v = value.trim();
+  if (!v) return blank;
+  if (v.length > max) return `At most ${max} characters.`;
+  return null;
+}
+
+/**
+ * Mirrors `update_officer_of_record`'s 22023 checks (and the table's CHECKs):
+ * all three fields required after btrim, at most 120 / 200 / 120 characters.
+ * The RPC's own message still gets through if one fires anyway.
+ */
+export function validateOfficer(o: {
+  fullName: string;
+  unit: string;
+  designation: string;
+}): ConfigErrors {
+  const errors: ConfigErrors = {};
+  const fullName = requiredText(o.fullName, 120, "Enter a name.");
+  const unit = requiredText(o.unit, 200, "Enter a unit.");
+  const designation = requiredText(o.designation, 120, "Enter a designation.");
+  if (fullName) errors.fullName = fullName;
+  if (unit) errors.unit = unit;
+  if (designation) errors.designation = designation;
+  return errors;
+}
+
+/**
+ * Mirrors `save_agency_identity`'s 22023 checks on the name. The seal path is
+ * never typed: it comes from the stored value or from `putSeal`, which only
+ * mints `agency/` paths, so only its presence is checked here.
+ */
+export function validateAgencyIdentity(a: {
+  agencyName: string;
+  sealPath: string;
+}): ConfigErrors {
+  const errors: ConfigErrors = {};
+  const agencyName = requiredText(a.agencyName, 200, "Enter the agency name.");
+  if (agencyName) errors.agencyName = agencyName;
+  if (!a.sealPath.trim()) errors.sealPath = "Upload a seal.";
+  return errors;
+}

@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Button } from "@/portals/super-staff/components/ui/button";
 import { Modal } from "@/portals/super-staff/components/ui/modal";
 import type { ConfigChange } from "../lib/diff";
@@ -9,6 +10,7 @@ export function DiffConfirmModal({
   moduleLabel,
   changes,
   snapshotNote,
+  children,
   saving,
   onConfirm,
   onCancel,
@@ -16,7 +18,11 @@ export function DiffConfirmModal({
   open: boolean;
   moduleLabel: string;
   changes: ConfigChange[];
-  snapshotNote: string;
+  /** One note, or several when a save has more than one consequence to state
+   *  (the Receipts tab's one-way and future-receipts-only wording). */
+  snapshotNote: string | string[];
+  /** Shown between the changes and the notes, e.g. a before/after preview. */
+  children?: ReactNode;
   saving: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -41,7 +47,12 @@ export function DiffConfirmModal({
           </li>
         ))}
       </ul>
-      <p className="mt-4 text-xs text-gray-500">{snapshotNote}</p>
+      {children}
+      {(Array.isArray(snapshotNote) ? snapshotNote : [snapshotNote]).map((note) => (
+        <p key={note} className="mt-4 text-xs text-gray-500">
+          {note}
+        </p>
+      ))}
       <div className="mt-6 flex justify-end gap-3">
         <Button variant="secondary" onClick={onCancel} disabled={saving}>
           Cancel

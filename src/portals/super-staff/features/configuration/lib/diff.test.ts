@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  diffAgencyIdentity,
   diffBooking,
   diffIncidents,
+  diffOfficer,
   diffSiteInfo,
   diffYellowCard,
   formatChange,
@@ -119,6 +121,77 @@ describe("no-op saves", () => {
   it("ignores whitespace-only edits to site info", () => {
     const before = { trunkline: "(042) 788-2298", officeHours: "8-5" };
     expect(diffSiteInfo(before, { trunkline: "  (042) 788-2298  ", officeHours: "8-5 " }))
+      .toEqual([]);
+  });
+});
+
+// ── Receipts (l66) ──────────────────────────────────────────────────────────
+// Labels read out of update_officer_of_record's and save_agency_identity's
+// v_labels maps. Both RPCs btrim before comparing.
+
+const nominated = {
+  service: "incidents" as const,
+  fullName: "Jose Rizal",
+  unit: "CDRRMO",
+  designation: "Department Head",
+  isPlaceholder: false,
+};
+
+const placeholder = {
+  service: "yellow_card" as const,
+  fullName: "To be nominated",
+  unit: "Pending nomination (SCRUM-105)",
+  designation: "Officer of Record",
+  isPlaceholder: true,
+};
+
+describe("diffOfficer", () => {
+  it("uses the RPC's labels verbatim", () => {
+    expect(diffOfficer(nominated, { ...nominated, fullName: "Andres Bonifacio" }))
+      .toEqual([{ label: "Name", before: "Jose Rizal", after: "Andres Bonifacio" }]);
+    expect(diffOfficer(nominated, { ...nominated, unit: "City Engineering" }))
+      .toEqual([{ label: "Unit", before: "CDRRMO", after: "City Engineering" }]);
+    expect(diffOfficer(nominated, { ...nominated, designation: "OIC" }))
+      .toEqual([{ label: "Designation", before: "Department Head", after: "OIC" }]);
+  });
+
+  // The RPC always writes is_placeholder = false and audits the flip as
+  // "Placeholder true → false", so the dialog shows it too.
+  it("shows the placeholder ending when a placeholder officer is edited", () => {
+    expect(diffOfficer(placeholder, { ...placeholder, fullName: "Maria Santos" }))
+      .toEqual([
+        { label: "Name", before: "To be nominated", after: "Maria Santos" },
+        { label: "Placeholder", before: "true", after: "false" },
+      ]);
+  });
+
+  it("returns nothing for an untouched officer, placeholder or not", () => {
+    expect(diffOfficer(placeholder, placeholder)).toEqual([]);
+    expect(diffOfficer(nominated, nominated)).toEqual([]);
+  });
+
+  it("ignores whitespace-only edits", () => {
+    expect(diffOfficer(nominated, { ...nominated, fullName: " Jose Rizal  " }))
+      .toEqual([]);
+  });
+});
+
+describe("diffAgencyIdentity", () => {
+  const before = { agencyName: "City Government of Lucena", sealPath: "agency/seal.png" };
+
+  it("uses the RPC's labels verbatim", () => {
+    expect(diffAgencyIdentity(before, { ...before, agencyName: "Lucena City" }))
+      .toEqual([
+        { label: "Agency name", before: "City Government of Lucena", after: "Lucena City" },
+      ]);
+    expect(diffAgencyIdentity(before, { ...before, sealPath: "agency/seal-1-abcdef01.png" }))
+      .toEqual([
+        { label: "Seal", before: "agency/seal.png", after: "agency/seal-1-abcdef01.png" },
+      ]);
+  });
+
+  it("ignores whitespace-only edits to the agency name", () => {
+    expect(diffAgencyIdentity(before, { ...before, agencyName: " City Government of Lucena " }))
       .toEqual([]);
   });
 });

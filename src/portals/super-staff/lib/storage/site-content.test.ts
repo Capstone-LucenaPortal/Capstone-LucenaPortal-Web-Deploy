@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { slotPathFor, validateImageFile, withVersion } from "./site-content";
+import {
+  sealPathFor,
+  slotPathFor,
+  validateImageFile,
+  withVersion,
+} from "./site-content";
 
 describe("validateImageFile", () => {
   const file = (type: string, size: number) => ({ type, size }) as File;
@@ -80,6 +85,38 @@ describe("withVersion", () => {
   it("leaves the URL alone when there is no stamp yet", () => {
     expect(withVersion("https://x.co/o/site-content/post/a.jpg", undefined)).toBe(
       "https://x.co/o/site-content/post/a.jpg",
+    );
+  });
+});
+
+describe("sealPathFor", () => {
+  const at = new Date("2026-11-20T08:00:00.000Z");
+
+  it("mints a path under agency/, stamped with the upload time", () => {
+    expect(sealPathFor("image/png", at)).toMatch(
+      /^agency\/seal-1795161600000-[0-9a-f]{8}\.png$/,
+    );
+    expect(sealPathFor("image/jpeg", at)).toMatch(
+      /^agency\/seal-1795161600000-[0-9a-f]{8}\.jpg$/,
+    );
+  });
+
+  /**
+   * The seal is insert-only: l66 refuses any UPDATE of an `agency/` object, and
+   * every issued receipt points at the path it was issued with. A replacement
+   * that reused a path would either be refused or rewrite past receipts.
+   */
+  it("never reuses a path, even within the same millisecond", () => {
+    expect(sealPathFor("image/png", at)).not.toBe(sealPathFor("image/png", at));
+  });
+
+  it("never mints the seeded agency/seal.png", () => {
+    expect(sealPathFor("image/png", at)).not.toBe("agency/seal.png");
+  });
+
+  it("refuses a mime the bucket does not accept", () => {
+    expect(() => sealPathFor("image/webp", at)).toThrow(
+      "site-content accepts JPEG and PNG only",
     );
   });
 });
