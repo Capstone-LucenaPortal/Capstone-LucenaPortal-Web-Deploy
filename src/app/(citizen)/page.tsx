@@ -258,11 +258,14 @@ export default function HomePage() {
       {emergencyHotlines.length > 0 && (
         <section style={{ padding: '40px clamp(16px, 5vw, 48px)', maxWidth: 1800, margin: '0 auto', marginBottom: 40 }}>
           <h2 style={{ fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 700, color: '#003DA5', marginBottom: 32, textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Emergency Hotlines</h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 20 }}>
+          {/* Equal-size cards in balanced rows: the row is capped at half the
+              list (rounded up), so 9 cards sit 5 + 4 rather than 7 + 2, and the
+              short row is centred. Numbers never break mid-number. */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 20, margin: '0 auto', maxWidth: Math.ceil(emergencyHotlines.length / 2) * 260 - 20 }}>
             {emergencyHotlines.map((hotline) => (
-              <div key={`${hotline.kind}-${hotline.sort_order}`} style={{ background: '#E8E8E8', padding: 32, borderRadius: 4, textAlign: 'center' }}>
-                <p style={{ fontSize: 12, fontWeight: 600, color: '#003DA5', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.03em' }}>{hotline.label}</p>
-                <p style={{ fontSize: 24, fontWeight: 700, color: '#333333' }}>{hotline.value}</p>
+              <div key={`${hotline.kind}-${hotline.sort_order}`} style={{ flex: '0 1 240px', minHeight: 150, background: '#E8E8E8', padding: '24px 16px', borderRadius: 4, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                <p style={{ fontSize: 12, fontWeight: 600, color: '#003DA5', textTransform: 'uppercase', letterSpacing: '0.03em', lineHeight: 1.4 }}>{hotline.label}</p>
+                <p style={{ fontSize: 22, fontWeight: 700, color: '#333333', whiteSpace: 'nowrap' }}>{hotline.value}</p>
               </div>
             ))}
           </div>
