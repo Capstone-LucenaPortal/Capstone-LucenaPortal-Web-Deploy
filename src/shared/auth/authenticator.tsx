@@ -10,22 +10,19 @@
 // factor per account; no SMS.
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { Fragment, useCallback, useEffect, useId, useRef, useState, type FormEvent, type Ref } from "react";
 import { EMPLOYEE_SIGN_IN_PATH } from "@/shared/guard/portals";
 import { createClient } from "@/shared/supabase/client";
 import { authenticatorCodeErrorMessage } from "@/shared/supabase/sign-in-error";
-
-const FIELD =
-  "h-11 rounded-md border border-gray-300 px-3 text-sm text-gray-900 focus-visible:border-lucena-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lucena-blue";
 
 const PRIMARY_BUTTON =
   "h-12 rounded-md bg-lucena-blue text-[15px] font-semibold text-white hover:bg-lucena-blue-dark disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400";
 
 /**
- * Checks a code against an authenticator, as typed (the space some apps show
- * in the middle is taken out). A right code raises the session to aal2, and
- * a first right code makes an enrolled factor count. Returns the message to
- * show on failure, or null.
+ * Checks a code against an authenticator. Any space is taken out (some apps
+ * show one in the middle), though AuthenticatorCodeField keeps digits only.
+ * A right code raises the session to aal2, and a first right code makes an
+ * enrolled factor count. Returns the message to show on failure, or null.
  */
 export async function verifyAuthenticatorCode(
   supabase: ReturnType<typeof createClient>,
@@ -100,25 +97,97 @@ export async function stepAfterInvitePassword(
   }
 }
 
-export function AuthenticatorCodeField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+/** An authenticator code is six digits. */
+const AUTHENTICATOR_CODE_LENGTH = 6;
+
+/**
+ * The code a step is asking for, held for its AuthenticatorCodeField: spread
+ * `field` onto the field. The step's button waits for `complete`; nothing is
+ * sent on the sixth digit by itself. A refused code is cleared, not kept for
+ * fixing: codes roll every 30 seconds, so people retype.
+ */
+export function useAuthenticatorCode() {
+  const [code, setCode] = useState("");
+  const ref = useRef<HTMLInputElement>(null);
+  return {
+    value: code,
+    complete: code.length === AUTHENTICATOR_CODE_LENGTH,
+    /** After a refused code: empty boxes, the cursor back in the first one. */
+    retry: () => {
+      setCode("");
+      ref.current?.focus();
+    },
+    /** Empties the boxes, for leaving the step. */
+    reset: () => setCode(""),
+    field: { value: code, onChange: setCode, ref },
+  };
+}
+
+/**
+ * The code field: six boxes with a dash between each, so the length shows at
+ * a glance (#157). One real input lies transparent over the drawn boxes, so
+ * the label, phone code suggestions, password managers, paste and screen
+ * readers all work on it as on any field; the boxes are aria-hidden. Only
+ * digits are kept, at most six, so a pasted "123 456" or "123-456" is 123456.
+ */
+export function AuthenticatorCodeField({
+  value,
+  onChange,
+  ref,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  ref?: Ref<HTMLInputElement>;
+}) {
   const id = useId();
+  // The box the next digit goes in; the last one once all six are in.
+  const next = Math.min(value.length, AUTHENTICATOR_CODE_LENGTH - 1);
+
   return (
     <div className="flex flex-col gap-1.5">
       <label htmlFor={id} className="text-[13px] font-medium text-gray-900">
         Authenticator code
       </label>
-      <input
-        id={id}
-        type="text"
-        inputMode="numeric"
-        autoComplete="one-time-code"
-        // Room for "123 456".
-        maxLength={7}
-        required
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`${FIELD} tracking-[0.2em]`}
-      />
+      <div className="group relative">
+        <div aria-hidden className="flex items-center gap-1">
+          {Array.from({ length: AUTHENTICATOR_CODE_LENGTH }, (_, i) => (
+            <Fragment key={i}>
+              {i > 0 && <span className="shrink-0 text-gray-400">–</span>}
+              <span
+                className={`flex h-12 min-w-0 flex-1 items-center justify-center rounded-md border border-gray-300 bg-white text-[20px] font-semibold text-gray-900 ${
+                  i === next ? "group-focus-within:border-lucena-blue group-focus-within:ring-2 group-focus-within:ring-lucena-blue" : ""
+                }`}
+              >
+                {value[i] ?? ""}
+              </span>
+            </Fragment>
+          ))}
+        </div>
+        <input
+          id={id}
+          ref={ref}
+          type="text"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          // No maxLength: the browser would cut a pasted "123 456" to
+          // "123 45" before onChange could take the space out.
+          required
+          value={value}
+          onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, AUTHENTICATOR_CODE_LENGTH))}
+          // The cursor stays at the end, so a digit always goes in the next
+          // empty box and Backspace empties the last filled one. Only a
+          // selection of the whole code stands, for pasting over it.
+          onSelect={(e) => {
+            const input = e.currentTarget;
+            const end = input.value.length;
+            const atEnd = input.selectionStart === end && input.selectionEnd === end;
+            const all = input.selectionStart === 0 && input.selectionEnd === end;
+            if (!atEnd && !all) input.setSelectionRange(end, end);
+          }}
+          // text-base: a smaller font makes iOS zoom in on focus.
+          className="absolute inset-0 h-full w-full cursor-text bg-transparent text-base text-transparent caret-transparent outline-none selection:bg-transparent"
+        />
+      </div>
     </div>
   );
 }
@@ -137,7 +206,7 @@ type Enrolment =
  */
 export function AuthenticatorEnrolment({ onEnrolled }: { onEnrolled: () => void }) {
   const [enrolment, setEnrolment] = useState<Enrolment>({ kind: "starting" });
-  const [code, setCode] = useState("");
+  const code = useAuthenticatorCode();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -174,10 +243,11 @@ export function AuthenticatorEnrolment({ onEnrolled }: { onEnrolled: () => void 
     setError(null);
     setBusy(true);
 
-    const failure = await verifyAuthenticatorCode(createClient(), enrolment.factorId, code);
+    const failure = await verifyAuthenticatorCode(createClient(), enrolment.factorId, code.value);
     if (failure) {
       setError(failure);
       setBusy(false);
+      code.retry();
       return;
     }
     onEnrolled();
@@ -227,13 +297,13 @@ export function AuthenticatorEnrolment({ onEnrolled }: { onEnrolled: () => void 
             </code>
           </div>
           <p className="text-[12.5px] text-gray-600">Then enter the 6-digit code the app shows.</p>
-          <AuthenticatorCodeField value={code} onChange={setCode} />
+          <AuthenticatorCodeField {...code.field} />
           {error && (
             <p role="alert" className="text-[12.5px] text-pretty text-red-600">
               {error}
             </p>
           )}
-          <button type="submit" disabled={busy} className={PRIMARY_BUTTON}>
+          <button type="submit" disabled={busy || !code.complete} className={PRIMARY_BUTTON}>
             {busy ? "Checking…" : "Confirm"}
           </button>
         </form>
@@ -293,7 +363,7 @@ export function InviteAuthenticatorCode({
   notice?: string | null;
   onVerified: () => void;
 }) {
-  const [code, setCode] = useState("");
+  const code = useAuthenticatorCode();
   const [error, setError] = useState<string | null>(notice);
   const [busy, setBusy] = useState(false);
 
@@ -303,10 +373,11 @@ export function InviteAuthenticatorCode({
     setError(null);
     setBusy(true);
 
-    const failure = await verifyAccountAuthenticator(createClient(), code);
+    const failure = await verifyAccountAuthenticator(createClient(), code.value);
     if (failure) {
       setError(failure);
       setBusy(false);
+      code.retry();
       return;
     }
     onVerified();
@@ -321,13 +392,13 @@ export function InviteAuthenticatorCode({
           set your new password.
         </p>
         <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
-          <AuthenticatorCodeField value={code} onChange={setCode} />
+          <AuthenticatorCodeField {...code.field} />
           {error && (
             <p role="alert" className="text-[12.5px] text-pretty text-red-600">
               {error}
             </p>
           )}
-          <button type="submit" disabled={busy} className={PRIMARY_BUTTON}>
+          <button type="submit" disabled={busy || !code.complete} className={PRIMARY_BUTTON}>
             {busy ? "Checking…" : "Verify"}
           </button>
         </form>

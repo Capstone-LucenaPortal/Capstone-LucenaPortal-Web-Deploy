@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AuthApiError, AuthRetryableFetchError, type AuthError } from "@supabase/supabase-js";
 import EmployeeSignInPage from "./page";
@@ -244,6 +244,92 @@ describe("/employee — signing in with password and code", () => {
     expect(screen.queryByLabelText("Authenticator code")).toBeNull();
     expect(session).toBeNull();
     expect(replace).not.toHaveBeenCalled();
+  });
+});
+
+// Six boxes say the code is six digits (#157). One real input sits under
+// them, so it is found by its label and takes paste and phone suggestions.
+describe("/employee — the six-digit code field", () => {
+  async function codeField() {
+    render(<EmployeeSignInPage />);
+    await signInAs("staff@lucena.gov");
+    return screen.findByLabelText<HTMLInputElement>("Authenticator code");
+  }
+
+  it("takes digits only, at most six", async () => {
+    const field = await codeField();
+    await userEvent.setup().type(field, "1a2b3-c45 6789");
+
+    expect(field).toHaveValue("123456");
+  });
+
+  // Not cut to "123 45" first, as a maxLength of 6 would.
+  it.each(["123 456", "123-456"])("takes a pasted %s as all six digits", async (pasted) => {
+    const field = await codeField();
+    const user = userEvent.setup();
+    await user.click(field);
+    await user.paste(pasted);
+
+    expect(field).toHaveValue("123456");
+  });
+
+  it("empties the last filled box on Backspace", async () => {
+    const field = await codeField();
+    await userEvent.setup().type(field, "1234{Backspace}");
+
+    expect(field).toHaveValue("123");
+  });
+
+  // The input is invisible, so a cursor moved into its middle would put the
+  // next digit, or take a Backspace, somewhere the boxes do not show.
+  it("keeps filling from the end after the cursor is moved back", async () => {
+    const field = await codeField();
+    const user = userEvent.setup();
+    await user.type(field, "123{ArrowLeft}{ArrowLeft}4");
+    expect(field).toHaveValue("1234");
+
+    await user.type(field, "{Home}{Backspace}", { skipClick: true });
+    expect(field).toHaveValue("123");
+  });
+
+  it("replaces the whole code by a paste over it, all of it selected", async () => {
+    const field = await codeField();
+    const user = userEvent.setup();
+    await user.type(field, "999999");
+    field.setSelectionRange(0, 6);
+    // What a select-all leaves React to see: the selection, on keyup.
+    fireEvent.keyUp(field);
+    await user.paste("123 456");
+
+    expect(field).toHaveValue("123456");
+  });
+
+  it("keeps Verify off until all six digits are in, and does not send the code by itself", async () => {
+    const field = await codeField();
+    const user = userEvent.setup();
+    const verify = screen.getByRole("button", { name: "Verify" });
+    expect(verify).toBeDisabled();
+
+    await user.type(field, "12345");
+    expect(verify).toBeDisabled();
+
+    await user.type(field, "6");
+    expect(verify).toBeEnabled();
+    expect(session?.aal).toBe("aal1");
+  });
+
+  // Codes roll every 30 seconds, so a person retypes rather than fixes one digit.
+  it("empties the boxes after a wrong code, the cursor back in the field", async () => {
+    await codeField();
+    await enterCode("000000");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "That code didn't match. Check your authenticator app and try again.",
+    );
+    const field = screen.getByLabelText("Authenticator code");
+    expect(field).toHaveValue("");
+    expect(field).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Verify" })).toBeDisabled();
   });
 });
 

@@ -16,6 +16,7 @@ import {
   ACCOUNT_UNCHECKED,
   AuthenticatorCodeField,
   AuthenticatorEnrolment,
+  useAuthenticatorCode,
   verifyAccountAuthenticator,
 } from "@/shared/auth/authenticator";
 import { IDLE_SIGNOUT_REASON, judgeEmployee, type EmployeeVerdict } from "@/shared/guard/decide";
@@ -83,7 +84,7 @@ function EmployeeSignIn() {
   const passwordId = useId();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [code, setCode] = useState("");
+  const code = useAuthenticatorCode();
   const [step, setStep] = useState<Step>({ kind: "password" });
   const [error, setError] = useState<Refusal | null>(null);
   const [busy, setBusy] = useState(false);
@@ -197,11 +198,12 @@ function EmployeeSignIn() {
     setError(null);
     setBusy(true);
 
-    const failure = await verifyAccountAuthenticator(createClient(), code);
+    const failure = await verifyAccountAuthenticator(createClient(), code.value);
     if (failure) {
       // A wrong code stays on this step: the password was right.
       setError({ kind: "message", text: failure });
       setBusy(false);
+      code.retry();
       return;
     }
     goHome(step.role);
@@ -214,7 +216,7 @@ function EmployeeSignIn() {
     await createClient().auth.signOut({ scope: "local" });
     setEmail("");
     setPassword("");
-    setCode("");
+    code.reset();
     setError(null);
     setStep({ kind: "password" });
     setBusy(false);
@@ -301,9 +303,9 @@ function EmployeeSignIn() {
             <p className="text-[12.5px] text-pretty text-gray-600">
               Enter the 6-digit code from your authenticator app.
             </p>
-            <AuthenticatorCodeField value={code} onChange={setCode} />
+            <AuthenticatorCodeField {...code.field} />
             {errorAlert}
-            <button type="submit" disabled={busy} className={`mt-1 ${PRIMARY_BUTTON}`}>
+            <button type="submit" disabled={busy || !code.complete} className={`mt-1 ${PRIMARY_BUTTON}`}>
               {busy ? "Checking…" : "Verify"}
             </button>
           </form>

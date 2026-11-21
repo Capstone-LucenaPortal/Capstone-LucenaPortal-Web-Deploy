@@ -154,13 +154,28 @@ describe.each(PAGES)("$portal accept-invite: enrolling an authenticator", ({ pat
     expect(aal).toBe("aal2");
   });
 
-  it("keeps a wrong confirming code on the enrolment step, nowhere to go yet", async () => {
+  // Six boxes say the code is six digits (#157).
+  it("keeps Confirm off until all six digits of the confirming code are in", async () => {
+    render(<Page />);
+    await setPassword();
+    const field = await screen.findByLabelText("Authenticator code");
+    const user = userEvent.setup({ delay: null });
+
+    await user.type(field, "12345");
+    expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
+    await user.type(field, "6");
+    expect(screen.getByRole("button", { name: "Confirm" })).toBeEnabled();
+  });
+
+  it("keeps a wrong confirming code on the enrolment step, nowhere to go yet, the boxes emptied", async () => {
     render(<Page />);
     await setPassword();
     await enterCode("000000");
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(screen.getByText("Set up your authenticator")).toBeInTheDocument();
+    expect(screen.getByLabelText("Authenticator code")).toHaveValue("");
+    expect(screen.getByLabelText("Authenticator code")).toHaveFocus();
     expect(replace).not.toHaveBeenCalled();
     expect(factors).toEqual([{ id: "factor-1", status: "unverified" }]);
   });
@@ -204,14 +219,26 @@ describe.each(PAGES)("$portal accept-invite: enrolling an authenticator", ({ pat
       expect(factors).toEqual([{ id: "existing", status: "verified" }]);
     });
 
-    it("keeps a wrong code on the code step with its own message, the password step not shown", async () => {
+    it("keeps Verify off until all six digits are in", async () => {
+      render(<Page />);
+      const field = await screen.findByLabelText("Authenticator code");
+      const user = userEvent.setup({ delay: null });
+
+      await user.type(field, "12345");
+      expect(screen.getByRole("button", { name: "Verify" })).toBeDisabled();
+      await user.type(field, "6");
+      expect(screen.getByRole("button", { name: "Verify" })).toBeEnabled();
+    });
+
+    it("keeps a wrong code on the code step with its own message, the boxes emptied, the password step not shown", async () => {
       render(<Page />);
       await enterCode("000000", "Verify");
 
       expect(await screen.findByRole("alert")).toHaveTextContent(
         "That code didn't match. Check your authenticator app and try again.",
       );
-      expect(screen.getByLabelText("Authenticator code")).toBeInTheDocument();
+      expect(screen.getByLabelText("Authenticator code")).toHaveValue("");
+      expect(screen.getByLabelText("Authenticator code")).toHaveFocus();
       expect(screen.queryByText("Set your password")).not.toBeInTheDocument();
       expect(aal).toBe("aal1");
       expect(replace).not.toHaveBeenCalled();
