@@ -13,6 +13,7 @@ import AdminAcceptInvitePage from "@/app/(admin)/admin/accept-invite/page";
 import StaffAcceptInvitePage from "@/app/(staff)/staff/(auth)/accept-invite/page";
 import SuperStaffAcceptInvitePage from "@/app/(super-staff)/super-staff/(auth)/accept-invite/page";
 import ResponderAcceptInvitePage from "@/app/(responder)/responder/(auth)/accept-invite/page";
+import { expectButtonWaitsForSixDigits } from "@/shared/auth/authenticator-testing";
 import { LAST_ACTIVITY_COOKIE } from "@/shared/guard/idle-clock";
 
 type Factor = { id: string; status: "verified" | "unverified" };
@@ -158,13 +159,7 @@ describe.each(PAGES)("$portal accept-invite: enrolling an authenticator", ({ pat
   it("keeps Confirm off until all six digits of the confirming code are in", async () => {
     render(<Page />);
     await setPassword();
-    const field = await screen.findByLabelText("Authenticator code");
-    const user = userEvent.setup({ delay: null });
-
-    await user.type(field, "12345");
-    expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
-    await user.type(field, "6");
-    expect(screen.getByRole("button", { name: "Confirm" })).toBeEnabled();
+    await expectButtonWaitsForSixDigits("Confirm");
   });
 
   it("keeps a wrong confirming code on the enrolment step, nowhere to go yet, the boxes emptied", async () => {
@@ -221,13 +216,7 @@ describe.each(PAGES)("$portal accept-invite: enrolling an authenticator", ({ pat
 
     it("keeps Verify off until all six digits are in", async () => {
       render(<Page />);
-      const field = await screen.findByLabelText("Authenticator code");
-      const user = userEvent.setup({ delay: null });
-
-      await user.type(field, "12345");
-      expect(screen.getByRole("button", { name: "Verify" })).toBeDisabled();
-      await user.type(field, "6");
-      expect(screen.getByRole("button", { name: "Verify" })).toBeEnabled();
+      await expectButtonWaitsForSixDigits("Verify");
     });
 
     it("keeps a wrong code on the code step with its own message, the boxes emptied, the password step not shown", async () => {

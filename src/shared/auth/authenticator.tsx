@@ -101,25 +101,57 @@ export async function stepAfterInvitePassword(
 const AUTHENTICATOR_CODE_LENGTH = 6;
 
 /**
- * The code a step is asking for, held for its AuthenticatorCodeField: spread
- * `field` onto the field. The step's button waits for `complete`; nothing is
- * sent on the sixth digit by itself. A refused code is cleared, not kept for
- * fixing: codes roll every 30 seconds, so people retype.
+ * A code step: the code it asks for, its check and the check's refusal, the
+ * same on every step that asks for one (#159). Spread `field` onto the
+ * AuthenticatorCodeField and `button(label)` onto the step's submit button,
+ * which stays off until all six digits are in and reads "Checking…" while
+ * busy; nothing is sent on the sixth digit by itself. A refused code is
+ * cleared, not kept for fixing: codes roll every 30 seconds, so people
+ * retype. `notice`, if any, is the error shown on arrival. `held` is the
+ * page busy with something else, such as signing out on Cancel: no code is
+ * sent then, and the button reads as busy.
  */
-export function useAuthenticatorCode() {
+export function useAuthenticatorCode({ notice = null, held = false }: { notice?: string | null; held?: boolean } = {}) {
   const [code, setCode] = useState("");
+  const [error, setError] = useState<string | null>(notice);
+  const [busy, setBusy] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
-  return {
-    value: code,
-    complete: code.length === AUTHENTICATOR_CODE_LENGTH,
-    /** After a refused code: empty boxes, the cursor back in the first one. */
-    retry: () => {
+  const complete = code.length === AUTHENTICATOR_CODE_LENGTH;
+  const off = busy || held;
+
+  /**
+   * Checks the code with `verify`, which returns the message to show on
+   * failure, or null. A refused code shows its message and empties the boxes,
+   * the cursor back in the first one; a right one runs onVerified, the step
+   * left busy as it goes on.
+   */
+  async function submit(verify: (code: string) => Promise<string | null>, onVerified: () => void) {
+    if (off) return;
+    setError(null);
+    setBusy(true);
+
+    const failure = await verify(code);
+    if (failure) {
+      setError(failure);
+      setBusy(false);
       setCode("");
       ref.current?.focus();
+      return;
+    }
+    onVerified();
+  }
+
+  return {
+    error,
+    busy,
+    submit,
+    /** Empties the boxes and drops the refusal, for leaving the step. */
+    reset: () => {
+      setCode("");
+      setError(null);
     },
-    /** Empties the boxes, for leaving the step. */
-    reset: () => setCode(""),
     field: { value: code, onChange: setCode, ref },
+    button: (label: string) => ({ disabled: off || !complete, children: off ? "Checking…" : label }),
   };
 }
 
@@ -207,8 +239,6 @@ type Enrolment =
 export function AuthenticatorEnrolment({ onEnrolled }: { onEnrolled: () => void }) {
   const [enrolment, setEnrolment] = useState<Enrolment>({ kind: "starting" });
   const code = useAuthenticatorCode();
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
 
   const start = useCallback(async () => {
     setEnrolment({ kind: "starting" });
@@ -237,20 +267,11 @@ export function AuthenticatorEnrolment({ onEnrolled }: { onEnrolled: () => void 
     void start();
   }, [start]);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || enrolment.kind !== "ready") return;
-    setError(null);
-    setBusy(true);
-
-    const failure = await verifyAuthenticatorCode(createClient(), enrolment.factorId, code.value);
-    if (failure) {
-      setError(failure);
-      setBusy(false);
-      code.retry();
-      return;
-    }
-    onEnrolled();
+    if (enrolment.kind !== "ready") return;
+    const { factorId } = enrolment;
+    void code.submit((value) => verifyAuthenticatorCode(createClient(), factorId, value), onEnrolled);
   }
 
   return (
@@ -298,14 +319,12 @@ export function AuthenticatorEnrolment({ onEnrolled }: { onEnrolled: () => void 
           </div>
           <p className="text-[12.5px] text-gray-600">Then enter the 6-digit code the app shows.</p>
           <AuthenticatorCodeField {...code.field} />
-          {error && (
+          {code.error && (
             <p role="alert" className="text-[12.5px] text-pretty text-red-600">
-              {error}
+              {code.error}
             </p>
           )}
-          <button type="submit" disabled={busy || !code.complete} className={PRIMARY_BUTTON}>
-            {busy ? "Checking…" : "Confirm"}
-          </button>
+          <button type="submit" className={PRIMARY_BUTTON} {...code.button("Confirm")} />
         </form>
       )}
     </section>
@@ -363,24 +382,11 @@ export function InviteAuthenticatorCode({
   notice?: string | null;
   onVerified: () => void;
 }) {
-  const code = useAuthenticatorCode();
-  const [error, setError] = useState<string | null>(notice);
-  const [busy, setBusy] = useState(false);
+  const code = useAuthenticatorCode({ notice });
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy) return;
-    setError(null);
-    setBusy(true);
-
-    const failure = await verifyAccountAuthenticator(createClient(), code.value);
-    if (failure) {
-      setError(failure);
-      setBusy(false);
-      code.retry();
-      return;
-    }
-    onVerified();
+    void code.submit((value) => verifyAccountAuthenticator(createClient(), value), onVerified);
   }
 
   return (
@@ -393,14 +399,12 @@ export function InviteAuthenticatorCode({
         </p>
         <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
           <AuthenticatorCodeField {...code.field} />
-          {error && (
+          {code.error && (
             <p role="alert" className="text-[12.5px] text-pretty text-red-600">
-              {error}
+              {code.error}
             </p>
           )}
-          <button type="submit" disabled={busy || !code.complete} className={PRIMARY_BUTTON}>
-            {busy ? "Checking…" : "Verify"}
-          </button>
+          <button type="submit" className={PRIMARY_BUTTON} {...code.button("Verify")} />
         </form>
       </section>
       <InviteCancel />

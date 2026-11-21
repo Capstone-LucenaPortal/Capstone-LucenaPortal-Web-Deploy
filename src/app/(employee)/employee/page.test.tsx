@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AuthApiError, AuthRetryableFetchError, type AuthError } from "@supabase/supabase-js";
 import EmployeeSignInPage from "./page";
+import { expectButtonWaitsForSixDigits } from "@/shared/auth/authenticator-testing";
 import { LAST_ACTIVITY_COOKIE } from "@/shared/guard/idle-clock";
 
 // The one City employee sign-in (ADR 0009, #80, #81), rendered with the
@@ -25,6 +26,8 @@ let verifyError: AuthError | null = null;
 let profileReadFails = false;
 let enrolFails = false;
 let enrolments = 0;
+// A sign-out waits on this, so a test can look at the page mid-Cancel.
+let signOutGate: Promise<void> = Promise.resolve();
 
 const replace = vi.fn();
 const refresh = vi.fn();
@@ -44,6 +47,7 @@ vi.mock("@/shared/supabase/client", () => ({
         return { data: { session }, error: null };
       },
       signOut: async () => {
+        await signOutGate;
         session = null;
         return { error: null };
       },
@@ -132,6 +136,7 @@ beforeEach(() => {
   profileReadFails = false;
   enrolFails = false;
   enrolments = 0;
+  signOutGate = Promise.resolve();
   reason = null;
   document.cookie = `${LAST_ACTIVITY_COOKIE}=1; Path=/`;
 });
@@ -245,6 +250,22 @@ describe("/employee — signing in with password and code", () => {
     expect(session).toBeNull();
     expect(replace).not.toHaveBeenCalled();
   });
+
+  // The session is on its way out, so no code may be checked against it.
+  it("keeps Verify off while Cancel signs out", async () => {
+    let release!: () => void;
+    signOutGate = new Promise((resolve) => (release = resolve));
+    render(<EmployeeSignInPage />);
+    await signInAs("staff@lucena.gov");
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Authenticator code"), CODE);
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("button", { name: "Checking…" })).toBeDisabled();
+
+    release();
+    expect(await screen.findByLabelText("Email")).toBeInTheDocument();
+  });
 });
 
 // Six boxes say the code is six digits (#157). One real input sits under
@@ -305,16 +326,10 @@ describe("/employee — the six-digit code field", () => {
   });
 
   it("keeps Verify off until all six digits are in, and does not send the code by itself", async () => {
-    const field = await codeField();
-    const user = userEvent.setup();
-    const verify = screen.getByRole("button", { name: "Verify" });
-    expect(verify).toBeDisabled();
+    await codeField();
+    expect(screen.getByRole("button", { name: "Verify" })).toBeDisabled();
 
-    await user.type(field, "12345");
-    expect(verify).toBeDisabled();
-
-    await user.type(field, "6");
-    expect(verify).toBeEnabled();
+    await expectButtonWaitsForSixDigits("Verify");
     expect(session?.aal).toBe("aal1");
   });
 

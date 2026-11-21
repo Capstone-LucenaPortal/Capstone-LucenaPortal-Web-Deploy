@@ -84,10 +84,11 @@ function EmployeeSignIn() {
   const passwordId = useId();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const code = useAuthenticatorCode();
   const [step, setStep] = useState<Step>({ kind: "password" });
   const [error, setError] = useState<Refusal | null>(null);
+  // The password step's and Cancel's; the code's own is the code's.
   const [busy, setBusy] = useState(false);
+  const code = useAuthenticatorCode({ held: busy });
   // Held until the session already in this browser, if any, has been looked
   // at, so a signed-in employee is not shown the form on their way home.
   const [checked, setChecked] = useState(false);
@@ -192,21 +193,12 @@ function EmployeeSignIn() {
     router.refresh();
   }
 
-  async function handleCode(event: FormEvent<HTMLFormElement>) {
+  // A refused code leaves `step` as it is: the password was right.
+  function handleCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || step.kind !== "code") return;
-    setError(null);
-    setBusy(true);
-
-    const failure = await verifyAccountAuthenticator(createClient(), code.value);
-    if (failure) {
-      // A wrong code stays on this step: the password was right.
-      setError({ kind: "message", text: failure });
-      setBusy(false);
-      code.retry();
-      return;
-    }
-    goHome(step.role);
+    if (step.kind !== "code") return;
+    const { role } = step;
+    void code.submit((value) => verifyAccountAuthenticator(createClient(), value), () => goHome(role));
   }
 
   // Cancel at the code or enrolment step: the password-only session is
@@ -224,10 +216,14 @@ function EmployeeSignIn() {
 
   if (!checked) return null;
 
-  const errorAlert = error && (
+  // The code step's refusal is the code's own (useAuthenticatorCode); the
+  // page's is the password step's.
+  const refusal: Refusal | null =
+    step.kind !== "code" ? error : code.error ? { kind: "message", text: code.error } : null;
+  const errorAlert = refusal && (
     <p role="alert" className="text-[12.5px] text-pretty text-red-600">
-      {error.kind === "message" ? (
-        error.text
+      {refusal.kind === "message" ? (
+        refusal.text
       ) : (
         <>
           This sign-in is for City employees. If you are a resident, use the citizen portal instead.{" "}
@@ -305,9 +301,7 @@ function EmployeeSignIn() {
             </p>
             <AuthenticatorCodeField {...code.field} />
             {errorAlert}
-            <button type="submit" disabled={busy || !code.complete} className={`mt-1 ${PRIMARY_BUTTON}`}>
-              {busy ? "Checking…" : "Verify"}
-            </button>
+            <button type="submit" className={`mt-1 ${PRIMARY_BUTTON}`} {...code.button("Verify")} />
           </form>
         )}
 
@@ -321,7 +315,7 @@ function EmployeeSignIn() {
           <button
             type="button"
             onClick={() => void handleCancel()}
-            disabled={busy}
+            disabled={busy || code.busy}
             className="mt-2 h-10 w-full rounded-md text-[14px] font-medium text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed"
           >
             Cancel
