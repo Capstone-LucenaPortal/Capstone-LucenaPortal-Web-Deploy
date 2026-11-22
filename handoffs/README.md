@@ -6,10 +6,11 @@ Each file is a prompt to paste into a new session. `todo/` holds the ones not ru
 
 | Hand-off | What it is | Note |
 |---|---|---|
-| [`todo/admin-metrics-tickets.md`](todo/admin-metrics-tickets.md) | For Arjel: work SCRUM-260's children (Web #115–#127, DB#62), one ticket per fresh session, onto `admin-metrics-batch` | Written 2026-11-13. Freeze about 2026-11-17. Move it to `done/` when the last ticket lands |
+| [`todo/email-revamp.md`](todo/email-revamp.md) | For the codev: brand every email (Auth templates and notification emails), add the Acknowledgement Receipt email and the Payment Confirmation emails with PDFs | Written 2026-11-22, from the adviser's feedback. Tier 1 before the defense; mostly DB repo work on the Sandbox |
 
 ## Done
 
 | Hand-off | What it was | Result |
 |---|---|---|
 | [`done/admin-metrics-re-evaluation.md`](done/admin-metrics-re-evaluation.md) | For Arjel: judge every metric on the five Admin pages, then write the metric sheet, the spec and the tickets | Done 2026-11-13. 36 figures judged and 5 added; the sheet is `src/portals/admin/docs/metrics.md` and the glossary `src/portals/admin/CONTEXT.md`. Joaquin approved the verdicts; the spec is SCRUM-260 [S8-08]. Its children are Web #115–#127 and DB#62, landing on `admin-metrics-batch`. The Sandbox seed rows stay open in DB#61 |
+| [`done/admin-metrics-tickets.md`](done/admin-metrics-tickets.md) | For Arjel: work SCRUM-260's children (Web #115–#127, DB#62), one ticket per fresh session, onto `admin-metrics-batch` | Done 2026-11-18. All 14 tickets closed, and DB#61 (the Sandbox seed rows) too. The batch reached main with its follow-ups (#128, #129, the batch-review fixes, `d39b9abb` cleanups), and the branch was deleted. The Status lines are in `src/portals/admin/docs/metrics.md` |

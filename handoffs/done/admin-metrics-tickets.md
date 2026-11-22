@@ -1,5 +1,16 @@
 # Admin metrics: work the SCRUM-260 tickets, one per session
 
+> **Status: done (2026-11-18).** All 14 tickets are closed: Web #115–#127 and DB#62. DB#61, the
+> Sandbox seed rows, is closed too. `admin-metrics-batch` reached main on 2026-11-18 together with
+> its follow-ups:
+> - #128: Yellow Card Export is off while an SLA filter is on
+> - #129: a rejected report can be past due while awaiting triage
+> - fixes from the batch review: lists past 1,000 rows, Export buttons wait for data, SLA row filter
+> - `d39b9abb`: metrics cleanups
+>
+> The branch has since been deleted. The figures and their Status lines are in
+> `src/portals/admin/docs/metrics.md`. Don't paste the prompt below again; it is kept as a record.
+
 Paste this into a fresh session. Each session does **one** ticket, then stops. Clear and paste it
 again for the next one.
 
