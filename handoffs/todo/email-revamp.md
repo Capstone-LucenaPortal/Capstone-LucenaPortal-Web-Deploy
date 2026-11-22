@@ -325,7 +325,7 @@ tag, the details box, "What happens next" and the button. URLs are relative to `
 | event_code | What happens next | Button → URL | Tier |
 |---|---|---|---|
 | `receipt_issued` | see §7.1 | View Acknowledgement Receipt → `/receipt/<ref>` | 1 |
-| `approved` | Your Yellow Card is ready. Bring a valid ID when you claim it. *(Confirm the claiming step with Joaquin; if unsure, drop this sentence.)* | View my application → `/yellow-card/<record_id>` | 2 |
+| `approved` | Your Yellow Card is ready. You can view it from the portal. | View my application → `/yellow-card/<record_id>` | 2 |
 | `revision_requested` | Update your application and resubmit it from the portal. | Update my application → `/yellow-card/<record_id>` | 2 |
 | `rejected` | You may submit a new application. | View my application → `/yellow-card/<record_id>` | 2 |
 
