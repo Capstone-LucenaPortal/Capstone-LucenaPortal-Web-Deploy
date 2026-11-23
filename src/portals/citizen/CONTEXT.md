@@ -167,7 +167,8 @@ _Avoid_: Category, Customer type, Segment
 
 **Rate Tier**:
 Whether a Booking is charged commercial or discounted rates. Decided by the city from the
-Classification, never chosen by the Citizen.
+Classification, never chosen by the Citizen. Each Venue has its own peso rates at each tier, as
+the city's rate sheet sets them; the discounted rate is never a percentage off the commercial one.
 _Avoid_: Discount, Pricing tier, Rate type, Price band
 
 **Tier Claim**:
