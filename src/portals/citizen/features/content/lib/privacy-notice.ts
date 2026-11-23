@@ -43,8 +43,12 @@ import {
  *   shows.
  * - It says "third-party email service provider" as a class rather than naming
  *   Brevo, so changing provider is not an edit to legal copy. §5 lists only what
- *   that provider actually receives: `claim_email_batch` hands it the address,
- *   the subject and the body, and no separate name field.
+ *   that provider actually receives. Since DB layer `l116` (the email revamp,
+ *   2026-11) that is the address, the subject and the body, the recipient's
+ *   first name (the greeting), the record details the email shows (from
+ *   `notifications.details`: reference, and for a booking the event, venue,
+ *   date and amounts), and a PDF copy of the Acknowledgement Receipt or Payment
+ *   Confirmation where one is attached. Never the full name.
  *
  * When `l64` reaches production, nothing here needs to change — that is the
  * point of writing it this way round.
@@ -80,7 +84,7 @@ export const PRIVACY_SECTIONS: PrivacySection[] = [
   {
     title: '2. How We Use Your Information',
     elements: [2],
-    body: 'Your information is used to process your applications and requests, verify your identity and eligibility, and let you track the status of your submissions within the Portal (via your dashboard). When a decision is issued on a Yellow Card application, when a booking of yours changes status, and when we follow up on an incident report you filed, a notice is also sent by email to the address you sign in with, delivered on our behalf by a third-party email service provider. Not every step of processing produces a notice. We do not send SMS notifications about the status of your requests.',
+    body: 'Your information is used to process your applications and requests, verify your identity and eligibility, and let you track the status of your submissions within the Portal (via your dashboard). When we receive a Yellow Card application, booking request or incident report from you, when a decision is issued on a Yellow Card application, when a booking of yours changes status, and when we follow up on an incident report you filed, a notice is also sent by email to the address you sign in with, delivered on our behalf by a third-party email service provider. Some of these emails carry a PDF copy of your Acknowledgement Receipt or of a Payment Confirmation. Not every step of processing produces a notice. We do not send SMS notifications about the status of your requests.',
   },
   {
     title: '3. Why We Are Allowed to Process Your Information',
@@ -95,7 +99,7 @@ export const PRIVACY_SECTIONS: PrivacySection[] = [
   {
     title: '5. Where Your Data Is Stored',
     elements: [4, 5],
-    body: 'The Portal is hosted on Supabase infrastructure located in the ap-southeast-1 region (Singapore). This means your personal data is transferred to, and stored on, servers located outside the Philippines for processing. The email service provider that delivers status notices handles the address you sign in with and the text of the notice on its own servers, also outside the Philippines. Both cross-border transfers are disclosed here in accordance with the Data Privacy Act of 2012 (RA 10173).',
+    body: 'The Portal is hosted on Supabase infrastructure located in the ap-southeast-1 region (Singapore). This means your personal data is transferred to, and stored on, servers located outside the Philippines for processing. The email service provider that delivers status notices handles, on its own servers, also outside the Philippines: the address you sign in with; your first name, used to greet you; the text of the notice; the details of the record it concerns as shown in the email, such as its reference number and, for a booking, the event, venue, date and amounts paid; and, where one is attached, a PDF copy of your Acknowledgement Receipt or Payment Confirmation. Both cross-border transfers are disclosed here in accordance with the Data Privacy Act of 2012 (RA 10173).',
   },
   {
     title: '6. Data Storage and Security',

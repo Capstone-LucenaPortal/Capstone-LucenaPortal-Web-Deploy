@@ -1,5 +1,17 @@
 # Email revamp: make every email look like it came from the City Government of Lucena
 
+> **Status: Tier 1 done (2026-11-23).** All eight parts are on the `email-revamp` branches (DB and
+> Web) and live on the Sandbox:
+> - l116 applied
+> - `send-email-queue` v24 deployed
+> - `PORTAL_URL` and `EMAIL_FROM_NAME` set
+> - the SMTP sender name and the three Auth templates pasted in the Dashboard
+>
+> Not done, by choice: the real-inbox check (Gmail, phone light and dark, Outlook, images blocked)
+> and the six defense screenshots. Only the 53 deno tests and the SQL asserts have checked the
+> output. That check and Tier 2 (the Yellow Card, staff and incident details boxes; the security
+> notices) are follow-ups. Don't paste the prompt below again; it is kept as a record.
+
 For the codev. Written 2026-11-22 from a grilling session with Joaquin. The adviser flagged at
 the last consultation that our emails look bare, like a scam from an unready website, and asked
 for it fixed before the defense (about 2026-11-22 to 27). Paste the prompt below into a fresh
@@ -8,7 +20,7 @@ session started in `Capstone-LucenaPortal-Web`. The spec it points at is the res
 ```text
 We're revamping every email the Lucena City Portal sends so it looks like an official City
 Government of Lucena message, not a bare system email. The full spec, every decision already
-made, and the copy for each email are in handoffs/todo/email-revamp.md. Read all of it first.
+made, and the copy for each email are in handoffs/done/email-revamp.md. Read all of it first.
 The decisions in it are settled; don't reopen them. Ask me only what it and the code leave open.
 
 Where things are

@@ -1987,6 +1987,7 @@ export type Database = {
           body: string
           channel: Database["public"]["Enums"]["notify_channel"]
           created_at: string
+          details: Json | null
           error: string | null
           event_code: string
           id: string
@@ -2006,6 +2007,7 @@ export type Database = {
           body: string
           channel: Database["public"]["Enums"]["notify_channel"]
           created_at?: string
+          details?: Json | null
           error?: string | null
           event_code: string
           id?: string
@@ -2025,6 +2027,7 @@ export type Database = {
           body?: string
           channel?: Database["public"]["Enums"]["notify_channel"]
           created_at?: string
+          details?: Json | null
           error?: string | null
           event_code?: string
           id?: string
@@ -7590,6 +7593,10 @@ export type Database = {
         Returns: {
           attempt: number
           message: string
+          notice_details: Json
+          notice_event: string
+          notice_module: string
+          notice_record_id: string
           notification_id: string
           recipient_email: string
           subject: string
@@ -7897,6 +7904,15 @@ export type Database = {
         Returns: boolean
       }
       email_delivery_enabled: { Args: never; Returns: boolean }
+      email_site_info: {
+        Args: never
+        Returns: {
+          agency_name: string
+          office_hours: string
+          seal_path: string
+          trunkline: string
+        }[]
+      }
       email_worker_authorised: { Args: { p_secret: string }; Returns: boolean }
       export_yellow_card_applications: {
         Args: {
@@ -8033,9 +8049,15 @@ export type Database = {
         }
         Returns: string
       }
+      notice_booking_details: {
+        Args: { p_booking_id: string; p_event_code: string }
+        Returns: Json
+      }
+      notice_payment_details: { Args: { p_payment_id: string }; Returns: Json }
       notify_citizen: {
         Args: {
           p_body: string
+          p_details?: Json
           p_event_code: string
           p_module: Database["public"]["Enums"]["module_code"]
           p_recipient: string
@@ -8047,6 +8069,7 @@ export type Database = {
       notify_staff: {
         Args: {
           p_body: string
+          p_details?: Json
           p_event_code: string
           p_module: Database["public"]["Enums"]["module_code"]
           p_recipient: string

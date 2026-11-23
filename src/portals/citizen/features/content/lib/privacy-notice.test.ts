@@ -178,11 +178,24 @@ describe('email notification channel (DB layer l64)', () => {
     expect(stored).toMatch(/outside the Philippines/i);
   });
 
-  // `claim_email_batch` returns (notification_id, recipient_email, subject,
-  // message, attempt) — there is no name column, so claiming the provider
-  // receives the citizen's name would overstate what crosses the border.
-  it('claims no more than the provider actually receives', () => {
-    expect(findSection('Where Your Data Is Stored').body).not.toMatch(/your name/i);
+  // Since DB layer `l116` (the email revamp) `claim_email_batch` also hands
+  // the worker `notifications.details`: the first name (the greeting) and the
+  // record details the email shows, and the worker attaches a PDF of the
+  // Acknowledgement Receipt or Payment Confirmation. Never the full name, so the
+  // notice must not claim more than that either.
+  it('says exactly what the provider receives: first name, record details, the PDF', () => {
+    const stored = findSection('Where Your Data Is Stored').body;
+    expect(stored).toMatch(/first name/i);
+    expect(stored).toMatch(/details of the record/i);
+    expect(stored).toMatch(/PDF copy of your Acknowledgement Receipt or Payment Confirmation/);
+    expect(stored).not.toMatch(/your (full )?name/i);
+  });
+
+  // `receipt_issued` (l116) emails every citizen when a submission is
+  // received, so §2's list of notifying events has to start there.
+  it('discloses the email sent when a submission is received', () => {
+    expect(purpose()).toMatch(/When we receive a Yellow Card application, booking request or incident report/);
+    expect(purpose()).toMatch(/Acknowledgement Receipt/);
   });
 
   // SMS really is still unimplemented, so this denial must survive the edit that
