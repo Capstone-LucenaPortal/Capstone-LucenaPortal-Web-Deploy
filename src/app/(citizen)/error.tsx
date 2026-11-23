@@ -27,7 +27,7 @@ export default function Error({
   }, [error]);
 
   return (
-    <section style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 640, margin: '0 auto', textAlign: 'center' }}>
+    <section className="page-section" style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 640, margin: '0 auto', textAlign: 'center' }}>
       <h1 style={{ fontSize: 'clamp(22px, 4vw, 30px)', fontWeight: 700, color: '#003DA5', marginBottom: 12 }}>
         Something went wrong on our side
       </h1>

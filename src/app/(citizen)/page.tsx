@@ -23,6 +23,8 @@ export default function HomePage() {
   const { user, openAuthModal } = useAuth();
 
   const [lccHovered, setLccHovered] = useState<number | null>(null);
+  // Phone-only "Read more" for Vision and History; has no effect on a wider screen.
+  const [aboutOpen, setAboutOpen] = useState(false);
   const [emergencyHotlines, setEmergencyHotlines] = useState<SiteInfoEntry[]>([]);
   const [siteInfo, setSiteInfo] = useState<SiteInfo | null>(null);
 
@@ -70,7 +72,7 @@ export default function HomePage() {
   return (
     <>
       {/* Hero Carousel */}
-      <section style={{ position: 'relative', height: 'calc(100vh - 88px)', overflow: 'hidden', marginBottom: 40 }}>
+      <section className="home-hero" style={{ position: 'relative', height: 'calc(100vh - 88px)', overflow: 'hidden', marginBottom: 40 }}>
         {/* The carousel itself: hovering or focusing anything in here holds it
             still. The Live ticker sits outside it, in the same spot. */}
         <div {...hero.regionProps} style={{ position: 'relative', height: '100%' }}>
@@ -93,9 +95,9 @@ export default function HomePage() {
           }} />
 
           {/* Slide Content — bottom left like Valenzuela */}
-          <div style={{ position: 'absolute', bottom: 80, left: 'clamp(16px, 4vw, 48px)', zIndex: 2, color: 'white', maxWidth: 680 }}>
+          <div className="hero-content" style={{ position: 'absolute', bottom: 80, left: 'clamp(16px, 4vw, 48px)', zIndex: 2, color: 'white', maxWidth: 680 }}>
             <h1 style={{ fontSize: 'clamp(28px, 6vw, 44px)', fontWeight: 700, marginBottom: 14, lineHeight: 1.15, textShadow: '0 2px 8px rgba(0,0,0,0.4)' }}>{heroSlides[hero.slide].title}</h1>
-            <p style={{ fontSize: 17, marginBottom: 28, color: 'rgba(255,255,255,0.9)', lineHeight: 1.6 }}>{heroSlides[hero.slide].desc}</p>
+            <p className="hero-desc" style={{ fontSize: 17, marginBottom: 28, color: 'rgba(255,255,255,0.9)', lineHeight: 1.6 }}>{heroSlides[hero.slide].desc}</p>
             <button
               onClick={() => {
                 if (heroSlides[hero.slide].link !== '#') {
@@ -109,11 +111,11 @@ export default function HomePage() {
           </div>
 
           {/* Navigation Arrows */}
-          <button aria-label="Previous slide" onClick={() => hero.prev()}
+          <button aria-label="Previous slide" className="hero-arrow hero-arrow-prev" onClick={() => hero.prev()}
             style={{ position: 'absolute', left: 24, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.25)', border: 'none', color: 'white', width: 48, height: 48, borderRadius: 4, cursor: 'pointer', fontSize: 20, zIndex: 3 }}>
             ←
           </button>
-          <button aria-label="Next slide" onClick={() => hero.next()}
+          <button aria-label="Next slide" className="hero-arrow hero-arrow-next" onClick={() => hero.next()}
             style={{ position: 'absolute', right: 24, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.25)', border: 'none', color: 'white', width: 48, height: 48, borderRadius: 4, cursor: 'pointer', fontSize: 20, zIndex: 3 }}>
             →
           </button>
@@ -145,29 +147,48 @@ export default function HomePage() {
       </section>
 
       {/* Mission & Vision */}
-      <section style={{ padding: '40px clamp(16px, 5vw, 48px)', maxWidth: 1800, margin: '0 auto', marginBottom: 40, borderTop: '1px solid #DDDDDD', borderBottom: '1px solid #DDDDDD' }}>
-        <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 48 }}>
-          <div className="stack-mobile" style={{ gridColumn: '1 / span 2', display: 'flex', flexDirection: 'column', gap: 32, background: '#003DA5', borderRadius: 12, padding: 32 }}>
-            <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48 }}>
+      <section className="home-section" style={{ padding: '40px clamp(16px, 5vw, 48px)', maxWidth: 1800, margin: '0 auto', marginBottom: 40, borderTop: '1px solid #DDDDDD', borderBottom: '1px solid #DDDDDD' }}>
+        <div className="stack-mobile home-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 48 }}>
+          <div className="stack-mobile about-city" style={{ gridColumn: '1 / span 2', display: 'flex', flexDirection: 'column', gap: 32, background: '#003DA5', borderRadius: 12, padding: 32 }}>
+            <div className="stack-mobile home-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48 }}>
               <div>
                 <h3 style={{ fontSize: 'clamp(20px, 3.5vw, 28px)', fontWeight: 700, color: '#FFFFFF', marginBottom: 20 }}>Our Mission</h3>
                 <p style={{ fontSize: 18, color: '#E6EDF9', lineHeight: 1.9 }}>
                   The City Government of Lucena shall uphold honest and transparent governance, boost investment opportunities, improve the quality of health and education, create employment through establishment of technological and agro-industries, ensure protection and sustainability of the environment, and promote peace and order that will uplift the Lucenahins&apos; quality of life.
                 </p>
               </div>
-              <div>
+              {/* Vision and History fold away behind "Read more" on a phone
+                  only (`.m-collapse-*` in globals.css); elsewhere they show. */}
+              <div id="about-city-vision" className="m-collapse-body" data-open={aboutOpen ? 'true' : 'false'}>
                 <h3 style={{ fontSize: 'clamp(20px, 3.5vw, 28px)', fontWeight: 700, color: '#FFFFFF', marginBottom: 20 }}>Our Vision</h3>
                 <p style={{ fontSize: 18, color: '#E6EDF9', lineHeight: 1.9 }}>
                   The City of Lucena, imbued with strong and moral leadership, God-loving and empowered citizenry envisions to be the premier city in Southern Tagalog providing sustainable development, creating opportunities for socio-economic, agro-industrial and technological growth, ensuring a peaceful and safe environment and improving the quality of life of its people.
                 </p>
               </div>
             </div>
-            <div style={{ paddingTop: 28, borderTop: '1px solid rgba(255,255,255,0.2)' }}>
+            <div id="about-city-history" className="about-city-history m-collapse-body" data-open={aboutOpen ? 'true' : 'false'} style={{ paddingTop: 28, borderTop: '1px solid rgba(255,255,255,0.2)' }}>
               <h3 style={{ fontSize: 'clamp(20px, 3.5vw, 28px)', fontWeight: 700, color: '#FFFFFF', marginBottom: 20 }}>Our History</h3>
               <p style={{ fontSize: 18, color: '#E6EDF9', lineHeight: 1.9 }}>
                 Franciscan missionaries Juan de Plasencia and Diego de Oropesa organized the settlement between 1580 and 1583, first named Buenavista and later renamed Cotta after a fortress was built to defend against pirate raids. It was renamed Lucena by royal decree in November 1879, became an independent municipality on June 1, 1882, was chartered as a city on June 17, 1961, and attained Highly Urbanized City status on July 1, 1991 &mdash; cementing its role as the leading economic center of the CALABARZON region.
               </p>
             </div>
+            <button
+              type="button"
+              className="m-collapse-toggle"
+              aria-expanded={aboutOpen}
+              aria-controls="about-city-vision about-city-history"
+              onClick={() => setAboutOpen((open) => !open)}
+              style={{ alignSelf: 'flex-start', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit', fontSize: 14, fontWeight: 700, color: '#FFFFFF' }}
+            >
+              {aboutOpen ? 'Show less' : 'Read our vision and history'}
+              <svg
+                width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                aria-hidden="true"
+                style={{ transform: aboutOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }}
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
           </div>
           <div style={{ gridColumn: '3' }}>
             <h3 style={{ fontSize: 24, fontWeight: 700, color: '#003DA5', marginBottom: 16 }}>Follow Us on Facebook</h3>
@@ -178,10 +199,10 @@ export default function HomePage() {
 
       <ProgramsSummary />
       {/* Lucena Convention Center Carousel */}
-      <section style={{ padding: '40px 0', maxWidth: '100%', overflow: 'hidden', margin: '0 auto', marginBottom: 40, background: '#FAFAFA' }}>
-        <h2 style={{ fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 700, color: '#003DA5', marginBottom: 32, textAlign: 'center' }}>Lucena Convention Center</h2>
+      <section className="home-section lcc-section" style={{ padding: '40px 0', maxWidth: '100%', overflow: 'hidden', margin: '0 auto', marginBottom: 40, background: '#FAFAFA' }}>
+        <h2 className="home-h2" style={{ fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 700, color: '#003DA5', marginBottom: 32, textAlign: 'center' }}>Lucena Convention Center</h2>
 
-        <div {...lcc.regionProps} style={{ position: 'relative', width: '100%', height: 'clamp(280px, 60vw, 500px)' }}>
+        <div {...lcc.regionProps} className="lcc-carousel" style={{ position: 'relative', width: '100%', height: 'clamp(280px, 60vw, 500px)' }}>
           <div style={{
             display: 'flex',
             height: '100%',
@@ -230,11 +251,11 @@ export default function HomePage() {
             })}
           </div>
 
-          <button aria-label="Previous slide" onClick={() => lcc.prev()}
+          <button aria-label="Previous slide" className="lcc-arrow" onClick={() => lcc.prev()}
             style={{ position: 'absolute', left: '12%', top: '50%', transform: 'translateY(-50%)', background: 'white', border: 'none', color: '#333333', width: 48, height: 48, borderRadius: '50%', cursor: 'pointer', fontSize: 20, zIndex: 3, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>
             ←
           </button>
-          <button aria-label="Next slide" onClick={() => lcc.next()}
+          <button aria-label="Next slide" className="lcc-arrow" onClick={() => lcc.next()}
             style={{ position: 'absolute', right: '12%', top: '50%', transform: 'translateY(-50%)', background: 'white', border: 'none', color: '#333333', width: 48, height: 48, borderRadius: '50%', cursor: 'pointer', fontSize: 20, zIndex: 3, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>
             →
           </button>
@@ -256,14 +277,14 @@ export default function HomePage() {
           Emergency" and both must render. The whole section is hidden when the
           list is empty rather than showing an empty grid under a heading. */}
       {emergencyHotlines.length > 0 && (
-        <section style={{ padding: '40px clamp(16px, 5vw, 48px)', maxWidth: 1800, margin: '0 auto', marginBottom: 40 }}>
-          <h2 style={{ fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 700, color: '#003DA5', marginBottom: 32, textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Emergency Hotlines</h2>
+        <section className="home-section" style={{ padding: '40px clamp(16px, 5vw, 48px)', maxWidth: 1800, margin: '0 auto', marginBottom: 40 }}>
+          <h2 className="home-h2" style={{ fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 700, color: '#003DA5', marginBottom: 32, textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Emergency Hotlines</h2>
           {/* Equal-size cards in balanced rows: the row is capped at half the
               list (rounded up), so 9 cards sit 5 + 4 rather than 7 + 2, and the
               short row is centred. Numbers never break mid-number. */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 20, margin: '0 auto', maxWidth: Math.ceil(emergencyHotlines.length / 2) * 260 - 20 }}>
+          <div className="hotline-grid" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 20, margin: '0 auto', maxWidth: Math.ceil(emergencyHotlines.length / 2) * 260 - 20 }}>
             {emergencyHotlines.map((hotline) => (
-              <div key={`${hotline.kind}-${hotline.sort_order}`} style={{ flex: '0 1 240px', minHeight: 150, background: '#E8E8E8', padding: '24px 16px', borderRadius: 4, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+              <div key={`${hotline.kind}-${hotline.sort_order}`} className="hotline-card" style={{ flex: '0 1 240px', minHeight: 150, background: '#E8E8E8', padding: '24px 16px', borderRadius: 4, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
                 <p style={{ fontSize: 12, fontWeight: 600, color: '#003DA5', textTransform: 'uppercase', letterSpacing: '0.03em', lineHeight: 1.4 }}>{hotline.label}</p>
                 <p style={{ fontSize: 22, fontWeight: 700, color: '#333333', whiteSpace: 'nowrap' }}>{hotline.value}</p>
               </div>
@@ -273,11 +294,11 @@ export default function HomePage() {
       )}
 
       {/* Contact Us & Office Address Section */}
-      <section style={{ padding: '40px clamp(16px, 5vw, 48px)', maxWidth: 1800, margin: '0 auto', marginBottom: 60 }}>
-        <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 60 }}>
+      <section className="home-section" style={{ padding: '40px clamp(16px, 5vw, 48px)', maxWidth: 1800, margin: '0 auto', marginBottom: 60 }}>
+        <div className="stack-mobile home-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 60 }}>
           <div>
-            <h2 style={{ fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 700, color: '#003DA5', marginBottom: 32, textAlign: 'center' }}>Contact Us</h2>
-            <div className="bg-white border border-[#DDDDDD] rounded shadow-[0_1px_3px_rgba(0,0,0,0.08)]" style={{ padding: '24px 32px' }}>
+            <h2 className="home-h2" style={{ fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 700, color: '#003DA5', marginBottom: 32, textAlign: 'center' }}>Contact Us</h2>
+            <div className="bg-white border border-[#DDDDDD] rounded shadow-[0_1px_3px_rgba(0,0,0,0.08)] card-pad" style={{ padding: '24px 32px' }}>
               <p style={{ fontSize: 12, color: '#666666', marginBottom: 24, lineHeight: 1.8, textAlign: 'center' }}>
                 For information, complaints, or suggestions:
               </p>
@@ -312,11 +333,12 @@ export default function HomePage() {
           </div>
 
           <div>
-            <h2 style={{ fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 700, color: '#003DA5', marginBottom: 32, textAlign: 'center' }}>Our Office</h2>
-            <div className="bg-white border border-[#DDDDDD] rounded shadow-[0_1px_3px_rgba(0,0,0,0.08)]" style={{ marginBottom: 32, padding: '24px 32px' }}>
+            <h2 className="home-h2" style={{ fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 700, color: '#003DA5', marginBottom: 32, textAlign: 'center' }}>Our Office</h2>
+            <div className="bg-white border border-[#DDDDDD] rounded shadow-[0_1px_3px_rgba(0,0,0,0.08)] card-pad" style={{ marginBottom: 32, padding: '24px 32px' }}>
               <div style={{ marginBottom: 24, borderRadius: 8, overflow: 'hidden', border: '1px solid #DDDDDD' }}>
                 <iframe
                   title="Lucena City Government Complex Map"
+                  className="home-map"
                   src="https://www.google.com/maps?q=Lucena%20City%20Government%20Complex%2C%20Diversion%20Road%2C%20Brgy.%20Kanlurang%20Mayao%2C%20Lucena%20City%2C%20Quezon&output=embed"
                   width="100%"
                   height="220"
@@ -346,7 +368,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            <div className="bg-white border border-[#DDDDDD] rounded shadow-[0_1px_3px_rgba(0,0,0,0.08)]" style={{ padding: '24px 32px' }}>
+            <div className="bg-white border border-[#DDDDDD] rounded shadow-[0_1px_3px_rgba(0,0,0,0.08)] card-pad" style={{ padding: '24px 32px' }}>
               <h3 style={{ fontSize: 16, fontWeight: 700, color: '#003DA5', marginBottom: 16 }}>Services Available</h3>
               <ul style={{ fontSize: 13, color: '#333333', lineHeight: 2, listStyle: 'none', paddingLeft: 0 }}>
                 <li>✓ Yellow Card Registration</li>

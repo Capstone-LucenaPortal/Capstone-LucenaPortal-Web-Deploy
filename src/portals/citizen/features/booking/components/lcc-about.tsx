@@ -99,7 +99,7 @@ export default function LCCAbout({ onBook }: LCCAboutProps) {
   };
 
   return (
-    <section style={{ padding: '48px clamp(16px, 5vw, 48px) 100px', maxWidth: 1400, margin: '0 auto' }}>
+    <section className="page-section" style={{ padding: '48px clamp(16px, 5vw, 48px) 100px', maxWidth: 1400, margin: '0 auto' }}>
       <div style={{ marginBottom: 48 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
           <img src="/seal-128.png" alt="Lucena City Seal" style={{ width: 36, height: 36, objectFit: 'contain' }} />
@@ -110,7 +110,7 @@ export default function LCCAbout({ onBook }: LCCAboutProps) {
       </div>
 
       {/* About Section */}
-      <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ background: '#003DA5', color: 'white', marginBottom: 48, padding: '24px 32px' }}>
+      <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ background: '#003DA5', color: 'white', marginBottom: 48, padding: '24px 32px' }}>
         <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 40 }}>
           <div>
             <h2 style={{ fontSize: 24, fontWeight: 700, marginBottom: 16 }}>About the Venue</h2>
@@ -124,7 +124,7 @@ export default function LCCAbout({ onBook }: LCCAboutProps) {
               Book a Venue Now
             </button>
           </div>
-          <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+          <div className="stack-mobile venue-stats" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
             <div style={{ background: 'rgba(255,255,255,0.1)', padding: 20, borderRadius: 8, textAlign: 'center' }}>
               <div style={{ fontSize: 'clamp(20px, 3.5vw, 28px)', fontWeight: 700, marginBottom: 4 }}>500+</div>
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)' }}>persons</div>
@@ -146,8 +146,8 @@ export default function LCCAbout({ onBook }: LCCAboutProps) {
       </div>
 
       {/* Court Area */}
-      <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ marginBottom: 32, borderLeft: '4px solid #003DA5', padding: '24px 32px' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24 }}>
+      <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ marginBottom: 32, borderLeft: '4px solid #003DA5', padding: '24px 32px' }}>
+        <div className="venue-detail" style={{ display: 'flex', alignItems: 'flex-start', gap: 24 }}>
           <div style={{ flex: 1 }}>
             <h2 style={{ fontSize: 22, fontWeight: 700, color: '#003DA5', marginBottom: 6 }}>Court Area</h2>
             <p style={{ fontSize: 13, color: '#666666', marginBottom: 12 }}>Lucena City Convention Center</p>
@@ -173,9 +173,9 @@ export default function LCCAbout({ onBook }: LCCAboutProps) {
 
       {/* Services & Events */}
       <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 48 }}>
-        <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ padding: '24px 32px' }}>
+        <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ padding: '24px 32px' }}>
           <h2 style={{ fontSize: 20, fontWeight: 700, color: '#003DA5', marginBottom: 24 }}>Services Offered</h2>
-          <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="stack-mobile service-list" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             {['Event Planning Assistance', 'Catering Services Coordination', 'Audio-Visual Equipment', 'Stage & Lighting Setup', 'Tables & Chairs Rental', 'Parking Facilities', 'Security Services', 'WiFi Connectivity'].map((svc, i) => (
               <div key={i} style={{ background: '#F5F5F5', padding: 16, borderRadius: 8, fontSize: 13, fontWeight: 500, color: '#333333', display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span>✓</span> {svc}
@@ -191,7 +191,7 @@ export default function LCCAbout({ onBook }: LCCAboutProps) {
             Empty means hidden, which is the rule the rest of the portal follows
             for LGU-authored content. */}
         {upcomingEvents.length > 0 && (
-          <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ padding: '24px 32px' }}>
+          <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ padding: '24px 32px' }}>
             <h2 style={{ fontSize: 20, fontWeight: 700, color: '#003DA5', marginBottom: 24 }}>Upcoming Events</h2>
             <div style={{ display: 'grid', gap: 12 }}>
               {upcomingEvents.map((evt) => (
@@ -208,7 +208,7 @@ export default function LCCAbout({ onBook }: LCCAboutProps) {
 
       {/* Contact & CTA */}
       <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-        <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ padding: '24px 32px' }}>
+        <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ padding: '24px 32px' }}>
           <h2 style={{ fontSize: 20, fontWeight: 700, color: '#003DA5', marginBottom: 20 }}>Contact Information</h2>
           <div style={{ display: 'grid', gap: 20, fontSize: 14 }}>
             <div>
@@ -245,7 +245,7 @@ export default function LCCAbout({ onBook }: LCCAboutProps) {
           </div>
         </div>
 
-        <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ background: '#003DA5', color: 'white', padding: '24px 32px' }}>
+        <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ background: '#003DA5', color: 'white', padding: '24px 32px' }}>
           <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>Ready to Book?</h2>
           {/* CONTEXT.md glossary: the citizen "books" the LCC; they do not
               "reserve" it. */}

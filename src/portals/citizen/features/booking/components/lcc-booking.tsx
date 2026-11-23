@@ -91,7 +91,7 @@ export default function LCCBooking() {
   const numericStage = typeof stage === 'number' ? stage : null;
 
   return (
-    <section style={{ maxWidth: 1400, margin: '0 auto', paddingLeft: 'clamp(16px, 5vw, 48px)', paddingRight: 'clamp(16px, 5vw, 48px)', paddingTop: 48, paddingBottom: 120 }}>
+    <section className="page-section" style={{ maxWidth: 1400, margin: '0 auto', paddingLeft: 'clamp(16px, 5vw, 48px)', paddingRight: 'clamp(16px, 5vw, 48px)', paddingTop: 48, paddingBottom: 120 }}>
       <div
         className="transition-all duration-300"
         style={{ maxWidth: numericStage && [2, 4].includes(numericStage) ? 1000 : 760, margin: '0 auto' }}

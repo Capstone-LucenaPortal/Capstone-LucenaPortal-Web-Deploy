@@ -36,7 +36,7 @@ export default function LCCFlow() {
         )
       )}
 
-      <div className="fixed flex justify-center z-10" style={{ bottom: 24, left: 24, right: 24, gap: 12 }}>
+      <div className="fixed flex justify-center z-10 lcc-tabbar" style={{ bottom: 24, left: 24, right: 24, gap: 12 }}>
         <button className={tabBtnStyle(activeTab === 'about')} style={{ paddingLeft: 20, paddingRight: 20, paddingTop: 10, paddingBottom: 10 }} onClick={() => setActiveTab('about')}>
           About Venue
         </button>

@@ -30,7 +30,7 @@ export default function LCCStep1Classification({ bookingData, onUpdate, onNext }
   }, []);
 
   return (
-    <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ padding: '24px 32px' }}>
+    <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ padding: '24px 32px' }}>
       <div className="text-center" style={{ marginBottom: 32 }}>
         <h2 className="text-2xl font-bold text-[#003DA5]" style={{ marginBottom: 12 }}>Step 1: Classification</h2>
         <p className="text-[#666666] text-[15px]">To help us provide the correct rates and eligibility, please select your organization type.</p>

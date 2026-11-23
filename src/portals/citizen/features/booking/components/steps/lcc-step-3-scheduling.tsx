@@ -147,7 +147,7 @@ export default function LCCStep3Scheduling({ bookingData, onUpdate, onNext, onBa
   }
 
   return (
-    <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ padding: '24px 32px' }}>
+    <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ padding: '24px 32px' }}>
       <h2 style={{ fontSize: 20, fontWeight: 700, color: '#003DA5', marginBottom: 8 }}>Step 3: Scheduling</h2>
       <p style={{ color: '#666666', marginBottom: 24, fontSize: 14 }}>Select your preferred date and time block.</p>
 

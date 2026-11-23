@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useState, type FormEvent } from "react";
+import { PasswordVisibilityToggle } from "@/shared/auth/password-visibility-toggle";
 import {
   InviteAuthenticatorCode,
   InviteEnrolment,
@@ -38,6 +39,8 @@ export default function AcceptInvitePage() {
   const [phase, setPhase] = useState<Phase>("verifying");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -268,16 +271,22 @@ export default function AcceptInvitePage() {
           >
             New password
           </label>
-          <input
-            id={passwordId}
-            type="password"
-            autoComplete="new-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            aria-describedby={rulesId}
-            className={FIELD}
-          />
+          <div className="relative">
+            <input
+              id={passwordId}
+              type={showPassword ? "text" : "password"}
+              autoComplete="new-password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              aria-describedby={rulesId}
+              className={`w-full pr-10 ${FIELD}`}
+            />
+            <PasswordVisibilityToggle
+              visible={showPassword}
+              onToggle={() => setShowPassword((v) => !v)}
+            />
+          </div>
           <span id={rulesId} className="text-[11.5px] text-gray-500">
             {PASSWORD_RULES_TEXT}
           </span>
@@ -290,15 +299,21 @@ export default function AcceptInvitePage() {
           >
             Confirm password
           </label>
-          <input
-            id={confirmId}
-            type="password"
-            autoComplete="new-password"
-            required
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            className={FIELD}
-          />
+          <div className="relative">
+            <input
+              id={confirmId}
+              type={showConfirm ? "text" : "password"}
+              autoComplete="new-password"
+              required
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              className={`w-full pr-10 ${FIELD}`}
+            />
+            <PasswordVisibilityToggle
+              visible={showConfirm}
+              onToggle={() => setShowConfirm((v) => !v)}
+            />
+          </div>
         </div>
 
         {error && (

@@ -132,7 +132,8 @@ describe('AuthModal — sign up', () => {
 
   it('does not submit the form when the password-visibility toggle is pressed', async () => {
     render(<AuthModal />);
-    await userEvent.click(screen.getByRole('button', { name: /show password/i }));
+    // Password and Confirm Password each have their own toggle; press the first.
+    await userEvent.click(screen.getAllByRole('button', { name: /show password/i })[0]);
     expect(signup).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: /hide password/i })).toBeInTheDocument();
   });

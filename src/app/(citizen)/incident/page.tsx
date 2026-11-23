@@ -302,7 +302,7 @@ function IncidentContent() {
 
   if (submitted) {
     return (
-      <section style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 1000, margin: '0 auto' }}>
+      <section className="page-section" style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 1000, margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: 48 }}>
           <div style={{ fontSize: 80, marginBottom: 24 }}>✓</div>
           <h1 style={{ fontSize: 'clamp(28px, 6vw, 40px)', fontWeight: 700, color: '#003DA5', marginBottom: 12 }}>Report Submitted Successfully!</h1>
@@ -422,7 +422,7 @@ function IncidentContent() {
   }
 
   return (
-    <section style={{ padding: '48px clamp(16px, 5vw, 48px) 80px', maxWidth: 1400, margin: '0 auto' }}>
+    <section className="page-section" style={{ padding: '48px clamp(16px, 5vw, 48px) 80px', maxWidth: 1400, margin: '0 auto' }}>
       <div style={{ background: '#DC2626', color: 'white', padding: 16, borderRadius: 4, marginBottom: 40, display: 'flex', gap: 16, alignItems: 'flex-start' }}>
         <div style={{ fontSize: 24, flexShrink: 0 }}>🚨</div>
         <div>
@@ -440,7 +440,7 @@ function IncidentContent() {
       </div>
       <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 40 }}>
         <div>
-          <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ padding: '24px 32px' }}>
+          <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ padding: '24px 32px' }}>
             <h2 style={{ fontSize: 18, fontWeight: 700, color: '#003DA5', marginBottom: 28, paddingBottom: 16, borderBottom: '1px solid #DDDDDD' }}>Submit Incident Report</h2>
             <div style={{ marginBottom: 20 }}>
               <label htmlFor="incident-type" style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#333333', marginBottom: 8 }}><span style={{ color: '#C62828' }}>*</span> Type of Incident</label>
@@ -530,7 +530,7 @@ function IncidentContent() {
           </div>
         </div>
         <div style={{ display: 'grid', gap: 32 }}>
-          <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ padding: '24px 32px' }}>
+          <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ padding: '24px 32px' }}>
             <h3 style={{ fontSize: 16, fontWeight: 700, color: '#003DA5', marginBottom: 20 }}>Expected Response Time</h3>
             {config ? (
               <div style={{ display: 'grid', gap: 12 }}>
@@ -550,7 +550,7 @@ function IncidentContent() {
               <p style={{ fontSize: 13, color: '#666666' }}>Response targets unavailable right now.</p>
             )}
           </div>
-          <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ padding: '24px 32px' }}>
+          <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ padding: '24px 32px' }}>
             {/* Not an automatic route: the mapping is the suggestion staff
                 confirm or override when they route the report (SCRUM-192). */}
             <h3 style={{ fontSize: 16, fontWeight: 700, color: '#003DA5', marginBottom: 16 }}>Which Department Handles It</h3>
@@ -561,7 +561,7 @@ function IncidentContent() {
               ))}
             </ul>
           </div>
-          <div className="rounded shadow-sm" style={{ padding: '24px 32px', background: '#DC2626', color: 'white', border: '1px solid #DC2626' }}>
+          <div className="rounded shadow-sm card-pad" style={{ padding: '24px 32px', background: '#DC2626', color: 'white', border: '1px solid #DC2626' }}>
             <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>🚨 Emergency?</h3>
             <p style={{ fontSize: 12, lineHeight: 1.6, marginBottom: 12, color: 'rgba(255,255,255,0.9)' }}>For life-threatening emergencies, call emergency services immediately.</p>
             {hotlines.length > 0 && (

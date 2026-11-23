@@ -80,7 +80,7 @@ function DonutChart({ segments, total, centerLabel, centerColor }: {
   });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+    <div className="donut" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <div style={{ position: 'relative', width: SIZE, height: SIZE }}>
         <svg width={SIZE} height={SIZE}>
           <circle r={r} cx={cx} cy={cx} fill="none" stroke="#F0F0F0" strokeWidth={STROKE} />
@@ -193,14 +193,14 @@ function DashboardContent() {
 
   if (loading) {
     return (
-      <section style={{ padding: '48px clamp(20px, 5vw, 48px) 80px', maxWidth: 1400, margin: '0 auto' }}>
+      <section className="page-section" style={{ padding: '48px clamp(20px, 5vw, 48px) 80px', maxWidth: 1400, margin: '0 auto' }}>
         <p style={{ fontSize: 15, color: '#666666' }}>Loading your dashboard…</p>
       </section>
     );
   }
 
   return (
-    <section style={{ padding: '48px clamp(20px, 5vw, 48px) 80px', maxWidth: 1400, margin: '0 auto' }}>
+    <section className="page-section" style={{ padding: '48px clamp(20px, 5vw, 48px) 80px', maxWidth: 1400, margin: '0 auto' }}>
       <h1 style={{ fontSize: 'clamp(28px, 6vw, 40px)', fontWeight: 700, color: '#003DA5', marginBottom: 8 }}>My Dashboard</h1>
       <p style={{ fontSize: 15, color: '#666666', marginBottom: 40 }}>Welcome, {user?.name}. Track your applications and requests.</p>
 
@@ -211,10 +211,10 @@ function DashboardContent() {
       }} />
 
       {/* Stat Cards with Donut Charts */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 24, marginBottom: 40 }}>
+      <div className="stat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 24, marginBottom: 40 }}>
         {/* Total Requests */}
         <div style={statCardStyle}>
-          <div style={{ fontSize: 12, color: '#666666', marginBottom: 16, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Total Requests</div>
+          <div className="stat-title" style={{ fontSize: 12, color: '#666666', marginBottom: 16, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Total Requests</div>
           {!totalRequestsLoaded ? <TileLoadFailure /> : <DonutChart
             total={totalRequests}
             centerLabel="Total"
@@ -229,8 +229,8 @@ function DashboardContent() {
 
         {/* Yellow Card Status */}
         <div style={statCardStyle}>
-          <div style={{ fontSize: 12, color: '#666666', marginBottom: 16, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Yellow Card Status</div>
-          {!ycStatus ? <TileLoadFailure /> : <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 190 }}>
+          <div className="stat-title" style={{ fontSize: 12, color: '#666666', marginBottom: 16, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Yellow Card Status</div>
+          {!ycStatus ? <TileLoadFailure /> : <div className="stat-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 190 }}>
             <div style={{ fontSize: 40, marginBottom: 8 }}>{ycStatus.icon}</div>
             <div style={{ fontSize: 18, fontWeight: 800, color: ycStatus.color, marginBottom: 6 }}>{ycStatus.label}</div>
             {ycStatus.ref && (
@@ -254,7 +254,7 @@ function DashboardContent() {
 
         {/* Incident Reports */}
         <div style={statCardStyle}>
-          <div style={{ fontSize: 12, color: '#666666', marginBottom: 16, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Incident Reports</div>
+          <div className="stat-title" style={{ fontSize: 12, color: '#666666', marginBottom: 16, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Incident Reports</div>
           {!incidentsRead.ok ? <TileLoadFailure /> : <DonutChart
             total={incidents.length}
             centerLabel="Reports"
@@ -265,7 +265,7 @@ function DashboardContent() {
 
         {/* Venue Bookings */}
         <div style={statCardStyle}>
-          <div style={{ fontSize: 12, color: '#666666', marginBottom: 16, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Venue Bookings</div>
+          <div className="stat-title" style={{ fontSize: 12, color: '#666666', marginBottom: 16, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Venue Bookings</div>
           {!bookingsRead.ok ? <TileLoadFailure /> : <DonutChart
             total={bookings.length}
             centerLabel="Bookings"
@@ -276,7 +276,7 @@ function DashboardContent() {
       </div>
 
       {/* Tab Navigation */}
-      <div style={{ display: 'flex', gap: 8, borderBottom: '2px solid #DDDDDD', marginBottom: 32 }}>
+      <div className="tab-scroll tab-scroll-tight" style={{ display: 'flex', gap: 8, borderBottom: '2px solid #DDDDDD', marginBottom: 32 }}>
         <button style={tabBtnStyle(dashboardTab === 'yellowcard')} onClick={() => setDashboardTab('yellowcard')}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 6, marginBottom: 2 }}>
             <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 3H8a2 2 0 0 0-2 2v2h12V5a2 2 0 0 0-2-2z"/>

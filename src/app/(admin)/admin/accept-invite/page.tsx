@@ -10,6 +10,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
+import { PasswordVisibilityToggle } from "@/shared/auth/password-visibility-toggle";
 import { Button } from "@/portals/admin/components/ui/button";
 import {
   InviteAuthenticatorCode,
@@ -36,6 +37,8 @@ export default function AcceptInvitePage() {
   const [phase, setPhase] = useState<Phase>("verifying");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -236,17 +239,23 @@ export default function AcceptInvitePage() {
             <label htmlFor="password" className="mb-1 block text-sm font-medium text-gray-700">
               New password
             </label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="New password"
-              required
-              autoComplete="new-password"
-              aria-describedby="password-rules"
-              className="w-full rounded-none border border-gray-300 px-3 py-2 text-sm focus:border-blue-900 focus:outline-none"
-            />
+            <div className="relative">
+              <input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="New password"
+                required
+                autoComplete="new-password"
+                aria-describedby="password-rules"
+                className="w-full rounded-none border border-gray-300 py-2 pl-3 pr-10 text-sm focus:border-blue-900 focus:outline-none"
+              />
+              <PasswordVisibilityToggle
+                visible={showPassword}
+                onToggle={() => setShowPassword((v) => !v)}
+              />
+            </div>
             <p id="password-rules" className="mt-1 text-xs text-gray-500">
               {PASSWORD_RULES_TEXT}
             </p>
@@ -255,16 +264,22 @@ export default function AcceptInvitePage() {
             <label htmlFor="confirm" className="mb-1 block text-sm font-medium text-gray-700">
               Confirm password
             </label>
-            <input
-              id="confirm"
-              type="password"
-              value={confirm}
-              onChange={(event) => setConfirm(event.target.value)}
-              placeholder="Confirm password"
-              required
-              autoComplete="new-password"
-              className="w-full rounded-none border border-gray-300 px-3 py-2 text-sm focus:border-blue-900 focus:outline-none"
-            />
+            <div className="relative">
+              <input
+                id="confirm"
+                type={showConfirm ? "text" : "password"}
+                value={confirm}
+                onChange={(event) => setConfirm(event.target.value)}
+                placeholder="Confirm password"
+                required
+                autoComplete="new-password"
+                className="w-full rounded-none border border-gray-300 py-2 pl-3 pr-10 text-sm focus:border-blue-900 focus:outline-none"
+              />
+              <PasswordVisibilityToggle
+                visible={showConfirm}
+                onToggle={() => setShowConfirm((v) => !v)}
+              />
+            </div>
           </div>
 
           {error && (

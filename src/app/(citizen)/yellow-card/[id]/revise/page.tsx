@@ -120,7 +120,7 @@ function ReviseContent() {
 
   if (pageState === 'loading') {
     return (
-      <section style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 1000, margin: '0 auto', textAlign: 'center' }}>
+      <section className="page-section" style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 1000, margin: '0 auto', textAlign: 'center' }}>
         <p style={{ fontSize: 15, color: '#666666' }}>Loading your application…</p>
       </section>
     );
@@ -128,7 +128,7 @@ function ReviseContent() {
 
   if (pageState === 'ineligible') {
     return (
-      <section style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 1000, margin: '0 auto', textAlign: 'center' }}>
+      <section className="page-section" style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 1000, margin: '0 auto', textAlign: 'center' }}>
         <div style={{ fontSize: 48, marginBottom: 16 }}>ℹ️</div>
         <h1 style={{ fontSize: 'clamp(24px, 5vw, 32px)', fontWeight: 700, color: '#003DA5', marginBottom: 12 }}>
           We couldn&#39;t find that application
@@ -144,7 +144,7 @@ function ReviseContent() {
   if (pageState === 'success') {
     const reference = application?.reference_number ?? '';
     return (
-      <section style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 1000, margin: '0 auto' }}>
+      <section className="page-section" style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 1000, margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: 48 }}>
           <div style={{ fontSize: 80, marginBottom: 24 }}>✓</div>
           <h1 style={{ fontSize: 'clamp(28px, 6vw, 40px)', fontWeight: 700, color: '#003DA5', marginBottom: 12 }}>
@@ -198,7 +198,7 @@ function ReviseContent() {
   const formValues = values!;
 
   return (
-    <section style={{ padding: '48px clamp(16px, 5vw, 48px) 80px', maxWidth: 900, margin: '0 auto' }}>
+    <section className="page-section" style={{ padding: '48px clamp(16px, 5vw, 48px) 80px', maxWidth: 900, margin: '0 auto' }}>
       <div style={{ marginBottom: 32 }}>
         <h1 style={{ fontSize: 'clamp(28px, 6vw, 40px)', fontWeight: 700, color: '#003DA5', marginBottom: 12 }}>
           Revise Your Yellow Card Application

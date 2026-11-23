@@ -147,7 +147,7 @@ export default function LCCStepOrgDocument({
   const busy = phase === 'uploading' || phase === 'skipping';
 
   return (
-    <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ padding: '24px 32px' }}>
+    <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ padding: '24px 32px' }}>
       <h2 style={{ fontSize: 20, fontWeight: 700, color: '#003DA5', marginBottom: 8 }}>
         {mode === 'resubmission' ? 'Upload a Corrected Document' : 'Proof of Organisation'}
       </h2>

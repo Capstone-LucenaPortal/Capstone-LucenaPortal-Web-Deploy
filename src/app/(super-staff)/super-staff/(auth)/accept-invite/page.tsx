@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
+import { PasswordVisibilityToggle } from "@/shared/auth/password-visibility-toggle";
 import { Button } from "@/portals/super-staff/components/ui/button";
 import { Card } from "@/portals/super-staff/components/ui/card";
 import { Input } from "@/portals/super-staff/components/ui/input";
@@ -32,6 +33,8 @@ export default function AcceptInvitePage() {
   const [phase, setPhase] = useState<Phase>("verifying");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -256,29 +259,43 @@ export default function AcceptInvitePage() {
       </p>
       <form className="mt-4 flex flex-col gap-3" onSubmit={handleSubmit}>
         <div className="flex flex-col gap-1">
-          <Input
-            type="password"
-            aria-label="New password"
-            aria-describedby="password-rules"
-            placeholder="New password"
-            autoComplete="new-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
+          <div className="relative">
+            <Input
+              type={showPassword ? "text" : "password"}
+              aria-label="New password"
+              aria-describedby="password-rules"
+              placeholder="New password"
+              autoComplete="new-password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="pr-10"
+            />
+            <PasswordVisibilityToggle
+              visible={showPassword}
+              onToggle={() => setShowPassword((v) => !v)}
+            />
+          </div>
           <p id="password-rules" className="text-xs text-gray-500">
             {PASSWORD_RULES_TEXT}
           </p>
         </div>
-        <Input
-          type="password"
-          aria-label="Confirm password"
-          placeholder="Confirm password"
-          autoComplete="new-password"
-          required
-          value={confirm}
-          onChange={(e) => setConfirm(e.target.value)}
-        />
+        <div className="relative">
+          <Input
+            type={showConfirm ? "text" : "password"}
+            aria-label="Confirm password"
+            placeholder="Confirm password"
+            autoComplete="new-password"
+            required
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            className="pr-10"
+          />
+          <PasswordVisibilityToggle
+            visible={showConfirm}
+            onToggle={() => setShowConfirm((v) => !v)}
+          />
+        </div>
         {error && (
           <p role="alert" className="text-sm text-red-600">
             {error}

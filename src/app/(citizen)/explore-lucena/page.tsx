@@ -67,7 +67,7 @@ export default function ExploreLucenaPage() {
   return (
     <>
       {/* Hero */}
-      <section className="stack-mobile" style={{ padding: '64px clamp(16px, 5vw, 48px)', maxWidth: 1800, margin: '0 auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48, alignItems: 'center' }}>
+      <section className="stack-mobile section-tight" style={{ padding: '64px clamp(16px, 5vw, 48px)', maxWidth: 1800, margin: '0 auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48, alignItems: 'center' }}>
         <div>
           <h1 style={{ fontSize: 'clamp(28px, 6vw, 48px)', fontWeight: 800, color: '#003DA5', lineHeight: 1.1, marginBottom: 20 }}>
             EXPERIENCE<br />LUCENA
@@ -105,10 +105,10 @@ export default function ExploreLucenaPage() {
       </section>
 
       {/* Where to Go */}
-      <section id="where-to-go" style={{ padding: '64px clamp(16px, 5vw, 48px)', maxWidth: 1800, margin: '0 auto' }}>
+      <section id="where-to-go" className="section-tight" style={{ padding: '64px clamp(16px, 5vw, 48px)', maxWidth: 1800, margin: '0 auto' }}>
         <p style={{ fontSize: 12, fontWeight: 700, color: '#C0272D', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>Where to Go</p>
         <h2 style={{ fontSize: 'clamp(24px, 5vw, 36px)', fontWeight: 800, color: '#003DA5', marginBottom: 16, lineHeight: 1.15 }}>Eight Places That Are Lucena</h2>
-        <p style={{ fontSize: 15, color: '#666666', maxWidth: 640, marginBottom: 40, lineHeight: 1.7 }}>
+        <p className="section-intro" style={{ fontSize: 15, color: '#666666', maxWidth: 640, marginBottom: 40, lineHeight: 1.7 }}>
           Parks, landmarks, waterfront, and the market. Ratings shown are current Google ratings, so visitors know what they&apos;re walking into.
         </p>
         <div className="card-grid" style={{ display: 'grid', gridTemplateColumns: cardGridColumns(PLACES.length), gap: 24 }}>
@@ -134,10 +134,10 @@ export default function ExploreLucenaPage() {
       </section>
 
       {/* Where to Eat */}
-      <section id="where-to-eat" style={{ padding: '64px clamp(16px, 5vw, 48px)', maxWidth: 1800, margin: '0 auto', background: '#F5F9FC' }}>
+      <section id="where-to-eat" className="section-tight" style={{ padding: '64px clamp(16px, 5vw, 48px)', maxWidth: 1800, margin: '0 auto', background: '#F5F9FC' }}>
         <p style={{ fontSize: 12, fontWeight: 700, color: '#C0272D', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>Where to Eat</p>
         <h2 style={{ fontSize: 'clamp(24px, 5vw, 36px)', fontWeight: 800, color: '#003DA5', marginBottom: 16, lineHeight: 1.15 }}>Cafes, Bistros &amp; Local Favourites</h2>
-        <p style={{ fontSize: 15, color: '#666666', maxWidth: 640, marginBottom: 40, lineHeight: 1.7 }}>
+        <p className="section-intro" style={{ fontSize: 15, color: '#666666', maxWidth: 640, marginBottom: 40, lineHeight: 1.7 }}>
           From all-day cafes to family-style Filipino spots, here&apos;s where Lucena actually eats. And don&apos;t skip the chami — the city&apos;s own noodle dish, celebrated every May at the Chami Festival.
         </p>
         <div className="card-grid" style={{ display: 'grid', gridTemplateColumns: cardGridColumns(RESTAURANTS.length), gap: 24 }}>
@@ -162,10 +162,10 @@ export default function ExploreLucenaPage() {
       </section>
 
       {/* Where Lucena Studies */}
-      <section id="where-to-study" style={{ padding: '64px clamp(16px, 5vw, 48px)', maxWidth: 1800, margin: '0 auto' }}>
+      <section id="where-to-study" className="section-tight" style={{ padding: '64px clamp(16px, 5vw, 48px)', maxWidth: 1800, margin: '0 auto' }}>
         <p style={{ fontSize: 12, fontWeight: 700, color: '#C0272D', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>Education</p>
         <h2 style={{ fontSize: 'clamp(24px, 5vw, 36px)', fontWeight: 800, color: '#003DA5', marginBottom: 16, lineHeight: 1.15 }}>Where Lucena Studies</h2>
-        <p style={{ fontSize: 15, color: '#666666', maxWidth: 640, marginBottom: 40, lineHeight: 1.7 }}>
+        <p className="section-intro" style={{ fontSize: 15, color: '#666666', maxWidth: 640, marginBottom: 40, lineHeight: 1.7 }}>
           Ten higher-education institutions in the city, from the free city college to the province&apos;s largest university.
         </p>
         <div className="card-grid" style={{ display: 'grid', gridTemplateColumns: cardGridColumns(SCHOOLS.length), gap: 24 }}>
@@ -195,10 +195,10 @@ export default function ExploreLucenaPage() {
       </section>
 
       {/* What Keeps the City Running */}
-      <section id="city-infrastructure" style={{ padding: '64px clamp(16px, 5vw, 48px)', maxWidth: 1800, margin: '0 auto', background: '#F5F9FC' }}>
+      <section id="city-infrastructure" className="section-tight" style={{ padding: '64px clamp(16px, 5vw, 48px)', maxWidth: 1800, margin: '0 auto', background: '#F5F9FC' }}>
         <p style={{ fontSize: 12, fontWeight: 700, color: '#C0272D', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>Infrastructure</p>
         <h2 style={{ fontSize: 'clamp(24px, 5vw, 36px)', fontWeight: 800, color: '#003DA5', marginBottom: 16, lineHeight: 1.15 }}>What Keeps the City Running</h2>
-        <p style={{ fontSize: 15, color: '#666666', maxWidth: 640, marginBottom: 40, lineHeight: 1.7 }}>
+        <p className="section-intro" style={{ fontSize: 15, color: '#666666', maxWidth: 640, marginBottom: 40, lineHeight: 1.7 }}>
           Hospitals, ports, terminals, and the industries behind them. Lucena is the transport gateway of Quezon and a coconut-oil manufacturing hub — most of the province moves through, or is processed in, this city.
         </p>
 

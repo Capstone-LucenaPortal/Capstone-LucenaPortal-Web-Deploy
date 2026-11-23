@@ -76,7 +76,7 @@ function ReceiptContent() {
 
   if (state === 'loading') {
     return (
-      <section style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 900, margin: '0 auto', textAlign: 'center' }}>
+      <section className="page-section" style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 900, margin: '0 auto', textAlign: 'center' }}>
         <p style={{ fontSize: 15, color: '#666666' }}>Loading your receipt…</p>
       </section>
     );
@@ -84,7 +84,7 @@ function ReceiptContent() {
 
   if (state === 'error') {
     return (
-      <section style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 900, margin: '0 auto' }}>
+      <section className="page-section" style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 900, margin: '0 auto' }}>
         <div style={{ padding: 16, borderRadius: 4, background: '#FDECEA', color: '#8A1C1C', fontSize: 14, marginBottom: 24 }}>
           {errorMessage}
         </div>
@@ -98,7 +98,7 @@ function ReceiptContent() {
   // someone else returns nothing too. Say so rather than render a stand-in.
   if (state === 'missing' || !receipt) {
     return (
-      <section style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 900, margin: '0 auto' }}>
+      <section className="page-section" style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 900, margin: '0 auto' }}>
         <h1 style={{ fontSize: 24, fontWeight: 700, color: '#003DA5', marginBottom: 16 }}>
           No Acknowledgement Receipt
         </h1>
@@ -119,7 +119,7 @@ function ReceiptContent() {
   const sealUrl = receiptSealUrl(receipt.seal_path);
 
   return (
-    <section style={{ padding: '48px clamp(16px, 5vw, 48px)', maxWidth: 900, margin: '0 auto' }}>
+    <section className="page-section" style={{ padding: '48px clamp(16px, 5vw, 48px)', maxWidth: 900, margin: '0 auto' }}>
       <div
         className="receipt-noprint"
         style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 24 }}

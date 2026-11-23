@@ -8,7 +8,7 @@
  */
 export default function Loading() {
   return (
-    <section style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 1400, margin: '0 auto' }}>
+    <section className="page-section" style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 1400, margin: '0 auto' }}>
       <p role="status" style={{ fontSize: 15, color: '#666666' }}>
         Loading…
       </p>

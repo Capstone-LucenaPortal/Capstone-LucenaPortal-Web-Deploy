@@ -146,7 +146,7 @@ export default function LCCStep2Details({ bookingData, onUpdate, onNext, onBack 
   return (
     <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 32, alignItems: 'start' }}>
       {/* Left Column */}
-      <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ padding: '24px 32px' }}>
+      <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ padding: '24px 32px' }}>
         <h2 style={{ fontSize: 20, fontWeight: 700, color: '#003DA5', marginBottom: 24 }}>Step 2: Event Details &amp; Venue</h2>
 
         <div style={{ marginBottom: 24, paddingBottom: 24, borderBottom: '1px solid #f1f5f9' }}>

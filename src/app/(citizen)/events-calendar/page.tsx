@@ -35,7 +35,7 @@ export default function EventsCalendarPage() {
   const months = groupEventsByMonth(events);
 
   return (
-    <section style={{ padding: '48px clamp(16px, 5vw, 48px) 80px', maxWidth: 1600, margin: '0 auto' }}>
+    <section className="page-section" style={{ padding: '48px clamp(16px, 5vw, 48px) 80px', maxWidth: 1600, margin: '0 auto' }}>
       <div style={{ marginBottom: 40 }}>
         <button
           onClick={() => router.push('/')}

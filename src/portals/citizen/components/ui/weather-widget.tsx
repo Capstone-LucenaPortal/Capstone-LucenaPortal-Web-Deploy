@@ -110,6 +110,7 @@ export default function WeatherWidget() {
 
   return (
     <div
+      className="weather-card"
       style={{
         background: 'linear-gradient(160deg, #0047C4 0%, #003DA5 55%, #002E7E 100%)',
         borderRadius: 16,
@@ -128,7 +129,7 @@ export default function WeatherWidget() {
         </p>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+      <div className="weather-now" style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
         <span role="img" aria-label={current.label} style={{ fontSize: 52, lineHeight: 1 }}>{current.icon}</span>
         <div>
           <p style={{ fontSize: 40, fontWeight: 700, lineHeight: 1, letterSpacing: '-0.02em' }}>{weather.currentTemp}°</p>
@@ -136,7 +137,7 @@ export default function WeatherWidget() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 20, fontSize: 12, opacity: 0.85, marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid rgba(255,255,255,0.18)' }}>
+      <div className="weather-stats" style={{ display: 'flex', gap: 20, fontSize: 12, opacity: 0.85, marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid rgba(255,255,255,0.18)' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span role="img" aria-label="Humidity">💧</span> {weather.humidity}%</span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span role="img" aria-label="Wind">💨</span> {weather.windSpeed} km/h</span>
       </div>
@@ -144,7 +145,7 @@ export default function WeatherWidget() {
       <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', opacity: 0.55, marginBottom: 10 }}>
         4-Day Forecast
       </p>
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <div className="weather-forecast" style={{ display: 'flex', flexDirection: 'column' }}>
         {weather.daily.slice(1).map((day, i, arr) => {
           const info = describe(day.code);
           // `day.date` is a bare Manila calendar day, which parses as UTC
@@ -153,6 +154,7 @@ export default function WeatherWidget() {
           return (
             <div
               key={day.date}
+              className="weather-day"
               style={{
                 display: 'flex',
                 alignItems: 'center',

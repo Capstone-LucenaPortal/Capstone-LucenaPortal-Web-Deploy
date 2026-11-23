@@ -73,6 +73,167 @@ img, video, iframe { max-width: 100%; }
   .hide-xs { display: none !important; }
 }
 
+/* ===== Phone layout (≤640px) =====
+   Everything below applies only at phone width. Each class is inert above
+   640px, so the desktop layout carried by the inline styles stays as it is;
+   at phone width these override it via !important, like the helpers above. */
+
+/* A mobile collapsible: the toggle exists only on phones, and the body is
+   only ever hidden on phones (desktop always shows it). The component flips
+   `data-open`; CSS decides whether that matters at this width. */
+.m-collapse-toggle { display: none; }
+
+@media screen and (max-width: 640px) {
+  /* ---- Collapsible ---- */
+  .m-collapse-toggle { display: flex !important; }
+  .m-collapse-body[data-open="false"] { display: none !important; }
+
+  /* ---- Page chrome ---- */
+  /* The 88px under the fixed nav already clears it; the page's own 48px top
+     padding on top of that leaves a blank band on a phone. */
+  .page-section { padding-top: 20px !important; padding-bottom: 56px !important; }
+  .card-pad { padding: 20px 16px !important; }
+
+  /* A stacked column is 1fr, which can't shrink below its widest child's
+     min-content; a sideways-scrolling row inside one would otherwise push
+     the whole page wider than the screen. */
+  .stack-mobile > * { min-width: 0; }
+
+  .footer-inner { padding: 24px 16px !important; gap: 20px !important; }
+  .footer-links { display: grid !important; grid-template-columns: 1fr 1fr; gap: 14px 16px !important; width: 100%; }
+  .footer-sep { display: none !important; }
+  .footer-social { margin-left: 0 !important; }
+  .footer-legal { padding: 12px 16px !important; }
+
+  /* A row of tabs or chips that scrolls sideways instead of wrapping each
+     label onto three lines (or pushing the page wider than the screen). */
+  .tab-scroll {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tab-scroll::-webkit-scrollbar { display: none; }
+  .tab-scroll > * { flex: 0 0 auto !important; white-space: nowrap; }
+  /* A fade at the right edge says there is more to swipe to. */
+  .tab-scroll, .chip-row {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+  }
+  .tab-scroll-tight > * { padding-left: 12px !important; padding-right: 12px !important; }
+
+  /* The About page's section menu: a sideways row of chips, not four rows. */
+  .chip-row { display: flex !important; gap: 8px !important; overflow-x: auto; scrollbar-width: none; }
+  .chip-row::-webkit-scrollbar { display: none; }
+  .chip-row > * { flex: 0 0 auto; white-space: nowrap; border: 1px solid #DDDDDD !important; border-radius: 999px !important; padding: 8px 14px !important; }
+
+  /* Picture-card rows (Explore Lucena): one swipeable row per section rather
+     than every card stacked. 82% wide so the next card peeks in. The negative
+     margin lets the row run to the screen edge past the section's padding. */
+  .card-grid {
+    grid-template-columns: none !important;
+    grid-auto-flow: column;
+    grid-auto-columns: 82%;
+    gap: 12px !important;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    margin-inline: calc(-1 * clamp(16px, 5vw, 48px));
+    padding: 0 clamp(16px, 5vw, 48px) 8px;
+    scroll-padding-inline: clamp(16px, 5vw, 48px);
+    scrollbar-width: none;
+  }
+  .card-grid::-webkit-scrollbar { display: none; }
+  .card-grid > * { scroll-snap-align: start; }
+
+  .section-tight { padding-top: 32px !important; padding-bottom: 32px !important; }
+  .section-intro { margin-bottom: 20px !important; }
+
+  /* ---- Home ---- */
+  .home-hero { height: 62vh !important; min-height: 420px; margin-bottom: 24px !important; }
+  /* High enough that the button clears the slide dots. */
+  .hero-content { bottom: 100px !important; }
+  .hero-desc { font-size: 15px !important; margin-bottom: 18px !important; }
+  .hero-arrow { width: 36px !important; height: 36px !important; font-size: 16px !important; }
+  .hero-arrow-prev { left: 8px !important; }
+  .hero-arrow-next { right: 8px !important; }
+
+  .home-section { padding-top: 24px !important; padding-bottom: 24px !important; margin-bottom: 16px !important; }
+  .home-h2 { margin-bottom: 16px !important; }
+  .home-grid { gap: 24px !important; }
+
+  .about-city { padding: 20px !important; gap: 20px !important; }
+  .about-city h3 { margin-bottom: 10px !important; }
+  .about-city p { font-size: 15px !important; line-height: 1.7 !important; }
+  .about-city-history { padding-top: 20px !important; }
+
+  .hotline-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px !important;
+    max-width: none !important;
+  }
+  .hotline-card { min-height: 0 !important; padding: 14px 8px !important; gap: 6px !important; }
+  .hotline-card p:last-child { font-size: 17px !important; }
+  /* An odd one out takes the whole last row rather than half of it. */
+  .hotline-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+
+  .program-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
+  .program-grid a { padding: 12px !important; }
+  .program-grid a > span:first-child { font-size: 14px !important; }
+  .program-grid a > span:last-child { font-size: 12px !important; }
+
+  .lcc-carousel { height: 220px !important; }
+  /* Room for the dots, which hang 30px below the carousel. */
+  .home-section.lcc-section { padding-bottom: 48px !important; }
+  .lcc-arrow { width: 36px !important; height: 36px !important; font-size: 16px !important; }
+
+  .home-map { height: 180px !important; }
+
+  /* ---- Announcements ---- */
+  /* The sidebar (City Hall posts, weather) comes before the Facebook feed. */
+  .announcements-sidebar { order: -1; gap: 20px !important; }
+
+  .weather-card { padding: 18px !important; }
+  .weather-now { margin-bottom: 14px !important; }
+  .weather-now [role="img"] { font-size: 40px !important; }
+  .weather-now p:first-child { font-size: 32px !important; }
+  .weather-stats { margin-bottom: 14px !important; padding-bottom: 14px !important; }
+  .weather-forecast { display: grid !important; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+  .weather-day {
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 0 !important;
+    border-bottom: none !important;
+    text-align: center;
+  }
+  .weather-day > span { width: auto !important; min-width: 0 !important; text-align: center !important; }
+
+  /* ---- LCC ---- */
+  .venue-stats { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
+  .venue-stats > * { padding: 14px 8px !important; }
+  .venue-detail { flex-direction: column; gap: 16px !important; }
+  .venue-detail > * { min-width: 0 !important; }
+  .service-list > * { padding: 12px !important; }
+  /* The fixed About / Book Now bar floats over the bottom of the screen; leave
+     room under the footer so it never sits on top of the last lines. */
+  body:has(.lcc-tabbar) { padding-bottom: 88px; }
+  .lcc-tabbar { left: 16px !important; right: 16px !important; bottom: 16px !important; }
+  .lcc-tabbar > * { flex: 1 1 0; }
+
+  /* ---- Dashboard ---- */
+  .stat-grid { grid-template-columns: 1fr 1fr !important; gap: 12px !important; margin-bottom: 28px !important; }
+  .stat-grid > * { padding: 16px 8px !important; }
+  .stat-grid .stat-title { font-size: 11px !important; margin-bottom: 10px !important; letter-spacing: 0.04em !important; }
+  .stat-grid .donut { zoom: 0.72; }
+  .stat-grid .stat-body { min-height: 0 !important; }
+
+  /* ---- Yellow Card ---- */
+  .step-row { grid-template-columns: repeat(4, 1fr) !important; gap: 8px !important; margin-bottom: 32px !important; }
+  .step-row > * { gap: 6px !important; }
+  .step-row > * > div { width: 36px !important; height: 36px !important; font-size: 15px !important; }
+  .step-row p { font-size: 11px !important; }
+}
+
 /* ===== Reduced motion (accessibility) ===== */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

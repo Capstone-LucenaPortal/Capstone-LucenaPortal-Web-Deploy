@@ -9,7 +9,7 @@ export const metadata = { title: 'Page not found' };
  */
 export default function NotFound() {
   return (
-    <section style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 640, margin: '0 auto', textAlign: 'center' }}>
+    <section className="page-section" style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 640, margin: '0 auto', textAlign: 'center' }}>
       <p style={{ fontSize: 64, fontWeight: 800, color: '#003DA5', lineHeight: 1, marginBottom: 16 }}>404</p>
       <h1 style={{ fontSize: 'clamp(22px, 4vw, 30px)', fontWeight: 700, color: '#003DA5', marginBottom: 12 }}>
         We couldn&apos;t find that page

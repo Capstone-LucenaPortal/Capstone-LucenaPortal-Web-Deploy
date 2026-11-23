@@ -14,6 +14,9 @@ const TEXT_TRUNCATE_LENGTH = 220;
 /** Tall enough to show several posts before the feed scrolls inside itself. */
 const FEED_HEIGHT = 1400;
 
+/** On a phone the feed opens from a toggle; a screenful, not a page of posts. */
+const PHONE_FEED_HEIGHT = 560;
+
 /** At most 900px wide on screen; any bigger and a post's text reads as zoomed in. */
 const FEED_MAX_SCALE = 1.8;
 
@@ -50,7 +53,7 @@ export default function AnnouncementsPage() {
   };
 
   return (
-    <section style={{ padding: '48px clamp(16px, 5vw, 48px) 80px', maxWidth: 1400, margin: '0 auto' }}>
+    <section className="page-section" style={{ padding: '48px clamp(16px, 5vw, 48px) 80px', maxWidth: 1400, margin: '0 auto' }}>
       {/* Header */}
       <div style={{ marginBottom: 40 }}>
         <Link
@@ -74,12 +77,13 @@ export default function AnnouncementsPage() {
         <FacebookPageFeed
           pageUrl={PIO_FACEBOOK_PAGE_URL}
           height={FEED_HEIGHT}
+          phoneHeight={PHONE_FEED_HEIGHT}
           maxScale={FEED_MAX_SCALE}
           title="Lucena City Public Information Office Facebook feed"
         />
 
         {/* Sidebar */}
-        <div style={{ display: 'grid', gap: 32 }}>
+        <div className="announcements-sidebar" style={{ display: 'grid', gap: 32 }}>
           <WeatherWidget />
 
           {loadError && (

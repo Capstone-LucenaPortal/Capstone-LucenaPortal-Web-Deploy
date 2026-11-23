@@ -5,8 +5,8 @@ import { PROGRAM_CATEGORIES, PROGRAMS_OVERVIEW } from '@/portals/citizen/feature
 /** The home page's City Programs section. */
 export default function ProgramsSummary() {
   return (
-    <section id="city-programs" style={{ padding: '40px clamp(16px, 5vw, 48px)', maxWidth: 1800, margin: '0 auto', marginBottom: 40, background: '#F5F9FC' }}>
-      <h2 style={{ fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 700, color: '#003DA5', marginBottom: 32, textAlign: 'center' }}>City Programs</h2>
+    <section id="city-programs" className="home-section" style={{ padding: '40px clamp(16px, 5vw, 48px)', maxWidth: 1800, margin: '0 auto', marginBottom: 40, background: '#F5F9FC' }}>
+      <h2 className="home-h2" style={{ fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 700, color: '#003DA5', marginBottom: 32, textAlign: 'center' }}>City Programs</h2>
       <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 32 }}>
         <div>
           <ProgramImage image={PROGRAMS_OVERVIEW.homeImage} height={200} />
@@ -14,7 +14,7 @@ export default function ProgramsSummary() {
         </div>
         <ul
           aria-label="Program categories"
-          className="stack-mobile"
+          className="stack-mobile program-grid"
           style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 16, listStyle: 'none', alignContent: 'start' }}
         >
           {PROGRAM_CATEGORIES.map((category) => (

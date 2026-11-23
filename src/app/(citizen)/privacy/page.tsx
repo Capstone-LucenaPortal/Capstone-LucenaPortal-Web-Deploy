@@ -7,7 +7,7 @@ export default function PrivacyPage() {
   const router = useRouter();
 
   return (
-    <section style={{ padding: '48px clamp(20px, 5vw, 48px) 80px', maxWidth: 900, margin: '0 auto' }}>
+    <section className="page-section" style={{ padding: '48px clamp(20px, 5vw, 48px) 80px', maxWidth: 900, margin: '0 auto' }}>
       <button
         onClick={() => router.back()}
         style={{ background: 'none', border: 'none', color: '#003DA5', cursor: 'pointer', fontSize: 14, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 6, padding: 0 }}

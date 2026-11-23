@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useState, useEffect } from 'react';
+import { PasswordVisibilityToggle } from '@/shared/auth/password-visibility-toggle';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/portals/citizen/features/auth/hooks/use-auth';
 import ProtectedRoute from '@/portals/citizen/features/auth/components/protected-route';
@@ -208,12 +209,12 @@ function ProfileContent() {
   };
 
   return (
-    <section style={{ padding: '48px clamp(20px, 5vw, 48px) 80px', maxWidth: 1000, margin: '0 auto' }}>
+    <section className="page-section" style={{ padding: '48px clamp(20px, 5vw, 48px) 80px', maxWidth: 1000, margin: '0 auto' }}>
       <button className="bg-transparent border-none text-text-dark cursor-pointer text-[15px] font-medium rounded transition-all hover:bg-medium-gray hover:text-lucena-blue" onClick={() => router.push('/')} style={{ marginBottom: 32, padding: '8px 0', fontWeight: 600 }}>← Back to Home</button>
       <h1 style={{ fontSize: 'clamp(28px, 6vw, 40px)', fontWeight: 700, color: '#003DA5', marginBottom: 32 }}>Account Management</h1>
 
       {/* Tab Navigation */}
-      <div style={{ display: 'flex', gap: 8, borderBottom: '2px solid #DDDDDD', marginBottom: 32 }}>
+      <div className="tab-scroll tab-scroll-tight" style={{ display: 'flex', gap: 8, borderBottom: '2px solid #DDDDDD', marginBottom: 32 }}>
         <button onClick={() => selectTab('account')} style={{ padding: '12px 16px', borderTop: 'none', borderLeft: 'none', borderRight: 'none', borderBottom: activeTab === 'account' ? '3px solid #003DA5' : '3px solid transparent', color: activeTab === 'account' ? '#003DA5' : '#666666', fontWeight: activeTab === 'account' ? 600 : 500, cursor: 'pointer', background: 'none', fontSize: 14 }}>
           Account Details
         </button>
@@ -240,15 +241,15 @@ function ProfileContent() {
       {activeTab === 'account' && !profile?.anonymised_at && (
         <div>
           {profileLoading ? (
-            <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ padding: '24px 32px' }}>
+            <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ padding: '24px 32px' }}>
               <p style={{ fontSize: 14, color: '#666666' }}>Loading your profile…</p>
             </div>
           ) : profileError ? (
-            <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ padding: '24px 32px' }}>
+            <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ padding: '24px 32px' }}>
               <p style={{ fontSize: 14, color: '#C62828' }}>{profileError}</p>
             </div>
           ) : !editMode ? (
-            <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ padding: '24px 32px' }}>
+            <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ padding: '24px 32px' }}>
               <div style={{ marginBottom: 32 }}>
                 <h2 style={{ fontSize: 18, fontWeight: 700, color: '#003DA5', marginBottom: 24 }}>Personal Information</h2>
                 <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
@@ -285,7 +286,7 @@ function ProfileContent() {
               <button onClick={() => setEditMode(true)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#003DA5', color: 'white', border: 'none', borderRadius: 6, padding: '12px 28px', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>Edit Profile</button>
             </div>
           ) : (
-            <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ padding: '24px 32px' }}>
+            <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ padding: '24px 32px' }}>
               <h2 style={{ fontSize: 18, fontWeight: 700, color: '#003DA5', marginBottom: 24 }}>Edit Personal Information</h2>
               {saveError && <p style={{ fontSize: 13, color: '#C62828', marginBottom: 16 }}>{saveError}</p>}
               <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
@@ -355,21 +356,22 @@ function ProfileContent() {
               ✓ Password changed successfully! Your new password is now active.
             </div>
           )}
-          <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ padding: '24px 32px' }}>
+          <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ padding: '24px 32px' }}>
             <h2 style={{ fontSize: 18, fontWeight: 700, color: '#003DA5', marginBottom: 24 }}>Change Password</h2>
 
             <div style={{ marginBottom: 20 }}>
               <label htmlFor="currentPassword" style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#666666', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 8 }}>Current Password</label>
-              <input id="currentPassword" className="w-full bg-white border border-[#CCCCCC] rounded text-[15px] text-text-dark font-sans transition-all focus:outline-none focus:border-lucena-blue focus:shadow-[0_0_0_3px_rgba(0,61,165,0.1)]" style={{ padding: '12px 16px' }} type="password" placeholder="Enter your current password" value={passwordData.currentPassword} onChange={(e) => handlePasswordChange('currentPassword', e.target.value)} />
+              <div style={{ position: 'relative' }}>
+                <input id="currentPassword" className="w-full bg-white border border-[#CCCCCC] rounded text-[15px] text-text-dark font-sans transition-all focus:outline-none focus:border-lucena-blue focus:shadow-[0_0_0_3px_rgba(0,61,165,0.1)]" style={{ padding: '12px 44px 12px 16px' }} type={showPasswords.current ? 'text' : 'password'} placeholder="Enter your current password" value={passwordData.currentPassword} onChange={(e) => handlePasswordChange('currentPassword', e.target.value)} />
+                <PasswordVisibilityToggle visible={showPasswords.current} onToggle={() => setShowPasswords(prev => ({ ...prev, current: !prev.current }))} />
+              </div>
             </div>
 
             <div style={{ marginBottom: 8 }}>
               <label htmlFor="newPassword" style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#666666', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 8 }}>New Password</label>
               <div style={{ position: 'relative' }}>
-                <input id="newPassword" className="w-full bg-white border border-[#CCCCCC] rounded text-[15px] text-text-dark font-sans transition-all focus:outline-none focus:border-lucena-blue focus:shadow-[0_0_0_3px_rgba(0,61,165,0.1)]" style={{ padding: '12px 16px' }} type={showPasswords.new ? 'text' : 'password'} placeholder="Enter your new password" value={passwordData.newPassword} onChange={(e) => handlePasswordChange('newPassword', e.target.value)} />
-                <button aria-label={showPasswords.new ? 'Hide password' : 'Show password'} onClick={() => setShowPasswords(prev => ({ ...prev, new: !prev.new }))} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 18 }}>
-                  {showPasswords.new ? '👁️' : '👁️‍🗨️'}
-                </button>
+                <input id="newPassword" className="w-full bg-white border border-[#CCCCCC] rounded text-[15px] text-text-dark font-sans transition-all focus:outline-none focus:border-lucena-blue focus:shadow-[0_0_0_3px_rgba(0,61,165,0.1)]" style={{ padding: '12px 44px 12px 16px' }} type={showPasswords.new ? 'text' : 'password'} placeholder="Enter your new password" value={passwordData.newPassword} onChange={(e) => handlePasswordChange('newPassword', e.target.value)} />
+                <PasswordVisibilityToggle visible={showPasswords.new} onToggle={() => setShowPasswords(prev => ({ ...prev, new: !prev.new }))} />
               </div>
             </div>
             <p style={{ fontSize: 12, color: '#666666', marginBottom: 20 }}>{PASSWORD_RULES_TEXT}</p>
@@ -377,10 +379,8 @@ function ProfileContent() {
             <div style={{ marginBottom: 20 }}>
               <label htmlFor="confirmPassword" style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#666666', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 8 }}>Confirm New Password</label>
               <div style={{ position: 'relative' }}>
-                <input id="confirmPassword" className="w-full bg-white border border-[#CCCCCC] rounded text-[15px] text-text-dark font-sans transition-all focus:outline-none focus:border-lucena-blue focus:shadow-[0_0_0_3px_rgba(0,61,165,0.1)]" style={{ padding: '12px 16px' }} type={showPasswords.confirm ? 'text' : 'password'} placeholder="Re-enter your new password" value={passwordData.confirmPassword} onChange={(e) => handlePasswordChange('confirmPassword', e.target.value)} />
-                <button aria-label={showPasswords.confirm ? 'Hide password' : 'Show password'} onClick={() => setShowPasswords(prev => ({ ...prev, confirm: !prev.confirm }))} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 18 }}>
-                  {showPasswords.confirm ? '👁️' : '👁️‍🗨️'}
-                </button>
+                <input id="confirmPassword" className="w-full bg-white border border-[#CCCCCC] rounded text-[15px] text-text-dark font-sans transition-all focus:outline-none focus:border-lucena-blue focus:shadow-[0_0_0_3px_rgba(0,61,165,0.1)]" style={{ padding: '12px 44px 12px 16px' }} type={showPasswords.confirm ? 'text' : 'password'} placeholder="Re-enter your new password" value={passwordData.confirmPassword} onChange={(e) => handlePasswordChange('confirmPassword', e.target.value)} />
+                <PasswordVisibilityToggle visible={showPasswords.confirm} onToggle={() => setShowPasswords(prev => ({ ...prev, confirm: !prev.confirm }))} />
               </div>
             </div>
 
@@ -395,7 +395,7 @@ function ProfileContent() {
       {activeTab === 'yellowcard' && (
         <div>
           {yellowCardLoading ? (
-            <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ padding: '24px 32px' }}>
+            <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ padding: '24px 32px' }}>
               <p style={{ fontSize: 14, color: '#666666' }}>Loading your Yellow Card details…</p>
             </div>
           ) : yellowCardError ? (
@@ -413,7 +413,7 @@ function ProfileContent() {
             </div>
           ) : (
             <>
-              <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ padding: '24px 32px', marginBottom: 24 }}>
+              <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ padding: '24px 32px', marginBottom: 24 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
                   <h2 style={{ fontSize: 18, fontWeight: 700, color: '#003DA5', margin: 0 }}>Yellow Card Application Status</h2>
                   <span style={{ background: `${ycStatus.color}22`, color: ycStatus.color, padding: '6px 12px', borderRadius: 4, fontSize: 12, fontWeight: 600 }}>{ycStatus.icon} {ycStatus.label}</span>
@@ -459,7 +459,7 @@ function ProfileContent() {
                 </div>
               </div>
 
-              <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ padding: '24px 32px' }}>
+              <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ padding: '24px 32px' }}>
                 <h3 style={{ fontSize: 16, fontWeight: 700, color: '#003DA5', marginBottom: 16 }}>Digital Yellow Card</h3>
 
                 <DigitalCard

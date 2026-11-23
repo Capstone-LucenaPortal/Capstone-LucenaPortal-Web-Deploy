@@ -77,7 +77,7 @@ function VerifyContent() {
   };
 
   return (
-    <section style={{ padding: '32px clamp(16px, 5vw, 48px) 80px', maxWidth: 640, margin: '0 auto' }}>
+    <section className="page-section" style={{ padding: '32px clamp(16px, 5vw, 48px) 80px', maxWidth: 640, margin: '0 auto' }}>
       <h1 style={{ fontSize: 'clamp(20px, 4vw, 26px)', fontWeight: 700, color: '#003DA5', marginBottom: 20 }}>
         Yellow Card Verification
       </h1>

@@ -12,6 +12,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useId, useState, type FormEvent } from "react";
+import { PasswordVisibilityToggle } from "@/shared/auth/password-visibility-toggle";
 import {
   ACCOUNT_UNCHECKED,
   AuthenticatorCodeField,
@@ -84,6 +85,7 @@ function EmployeeSignIn() {
   const passwordId = useId();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [step, setStep] = useState<Step>({ kind: "password" });
   const [error, setError] = useState<Refusal | null>(null);
   // The password step's and Cancel's; the code's own is the code's.
@@ -275,15 +277,21 @@ function EmployeeSignIn() {
               <label htmlFor={passwordId} className="text-[13px] font-medium text-gray-900">
                 Password
               </label>
-              <input
-                id={passwordId}
-                type="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className={FIELD}
-              />
+              <div className="relative">
+                <input
+                  id={passwordId}
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className={`w-full pr-10 ${FIELD}`}
+                />
+                <PasswordVisibilityToggle
+                  visible={showPassword}
+                  onToggle={() => setShowPassword((v) => !v)}
+                />
+              </div>
             </div>
 
             {errorAlert}

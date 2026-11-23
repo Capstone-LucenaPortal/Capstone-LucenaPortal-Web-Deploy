@@ -98,7 +98,7 @@ export default function LCCStep4Review({ bookingData, onUpdate, onSubmit, onBack
   const endH = startH + Number(durationHours);
 
   return (
-    <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ padding: '24px 32px' }}>
+    <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ padding: '24px 32px' }}>
       <h2 style={{ fontSize: 20, fontWeight: 700, color: '#003DA5', marginBottom: 8 }}>Step 4: Review &amp; Submit</h2>
       <p style={{ color: '#666666', marginBottom: 32, fontSize: 14 }}>
         Please review your booking summary below. The exact fee is confirmed once your request is submitted.

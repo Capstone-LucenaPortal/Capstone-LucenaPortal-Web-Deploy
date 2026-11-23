@@ -152,7 +152,7 @@ export default function CitizensCharter() {
   const { office } = charter;
 
   return (
-    <section style={{ padding: '48px clamp(20px, 5vw, 48px) 80px', maxWidth: 900, margin: '0 auto' }}>
+    <section className="page-section" style={{ padding: '48px clamp(20px, 5vw, 48px) 80px', maxWidth: 900, margin: '0 auto' }}>
       <h1 style={{ fontSize: 'clamp(24px, 5vw, 36px)', fontWeight: 700, color: '#003DA5', marginBottom: 8 }}>
         Citizen&apos;s Charter
       </h1>

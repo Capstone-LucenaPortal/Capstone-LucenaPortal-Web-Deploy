@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import { PasswordVisibilityToggle } from "@/shared/auth/password-visibility-toggle";
 import { BottomSheet } from "@/portals/responder/components/ui/bottom-sheet";
 import { cn } from "@/portals/responder/lib/utils";
 import { PASSWORD_RULES_TEXT, validatePassword } from "@/shared/auth/password-policy";
@@ -157,6 +158,7 @@ function Field({
 }) {
   const inputId = useId();
   const hintId = useId();
+  const [visible, setVisible] = useState(false);
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -166,20 +168,26 @@ function Field({
       >
         {label}
       </label>
-      <input
-        id={inputId}
-        type="password"
-        value={value}
-        placeholder={placeholder}
-        aria-invalid={invalid || undefined}
-        // The hint describes the field; it must not become part of its name.
-        aria-describedby={hint ? hintId : undefined}
-        onChange={(e) => onChange(e.target.value)}
-        className={cn(
-          "h-11 rounded-md border px-3 text-sm text-gray-900",
-          invalid ? "border-red-500" : "border-gray-300",
-        )}
-      />
+      <div className="relative">
+        <input
+          id={inputId}
+          type={visible ? "text" : "password"}
+          value={value}
+          placeholder={placeholder}
+          aria-invalid={invalid || undefined}
+          // The hint describes the field; it must not become part of its name.
+          aria-describedby={hint ? hintId : undefined}
+          onChange={(e) => onChange(e.target.value)}
+          className={cn(
+            "h-11 w-full rounded-md border pl-3 pr-10 text-sm text-gray-900",
+            invalid ? "border-red-500" : "border-gray-300",
+          )}
+        />
+        <PasswordVisibilityToggle
+          visible={visible}
+          onToggle={() => setVisible((v) => !v)}
+        />
+      </div>
       {hint && (
         <span
           id={hintId}

@@ -220,7 +220,7 @@ function YellowCardContent() {
 
   if (checkingExisting) {
     return (
-      <section style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 1000, margin: '0 auto', textAlign: 'center' }}>
+      <section className="page-section" style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 1000, margin: '0 auto', textAlign: 'center' }}>
         <p style={{ fontSize: 15, color: '#666666' }}>Checking your application status…</p>
       </section>
     );
@@ -228,7 +228,7 @@ function YellowCardContent() {
 
   if (checkError) {
     return (
-      <section style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 1000, margin: '0 auto', textAlign: 'center' }}>
+      <section className="page-section" style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 1000, margin: '0 auto', textAlign: 'center' }}>
         <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
         <h1 style={{ fontSize: 'clamp(24px, 5vw, 32px)', fontWeight: 700, color: '#003DA5', marginBottom: 12 }}>
           We couldn&#39;t check your application
@@ -248,7 +248,7 @@ function YellowCardContent() {
   if (liveNotice) {
     const { icon, heading, detail } = liveNoticeCopy(liveNotice);
     return (
-      <section style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 1000, margin: '0 auto', textAlign: 'center' }}>
+      <section className="page-section" style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 1000, margin: '0 auto', textAlign: 'center' }}>
         <div style={{ fontSize: 48, marginBottom: 16 }}>{icon}</div>
         <h1 style={{ fontSize: 'clamp(24px, 5vw, 32px)', fontWeight: 700, color: '#003DA5', marginBottom: 12 }}>
           {heading}
@@ -274,7 +274,7 @@ function YellowCardContent() {
   if (phase === 'success' || phase === 'upload-failed') {
     const reference = submittedApplication?.reference_number ?? '';
     return (
-      <section style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 1000, margin: '0 auto' }}>
+      <section className="page-section" style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 1000, margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: 48 }}>
           <div style={{ fontSize: 80, marginBottom: 24 }}>{phase === 'success' ? '✓' : '⚠️'}</div>
           <h1 style={{ fontSize: 'clamp(28px, 6vw, 40px)', fontWeight: 700, color: '#003DA5', marginBottom: 12 }}>
@@ -373,13 +373,13 @@ function YellowCardContent() {
   }
 
   return (
-    <section style={{ padding: '48px clamp(16px, 5vw, 48px) 80px', maxWidth: 1400, margin: '0 auto' }}>
+    <section className="page-section" style={{ padding: '48px clamp(16px, 5vw, 48px) 80px', maxWidth: 1400, margin: '0 auto' }}>
       <div style={{ marginBottom: 48 }}>
         <h1 style={{ fontSize: 'clamp(28px, 6vw, 40px)', fontWeight: 700, color: '#003DA5', marginBottom: 12 }}>Get Your Yellow Card</h1>
         <p style={{ fontSize: 16, color: '#666666' }}>Apply for Lucena City&#39;s Yellow Card and unlock exclusive benefits and priority services.</p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 24, marginBottom: 60 }}>
+      <div className="step-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 24, marginBottom: 60 }}>
         {[
           { num: 1, title: 'Submit Documents' },
           { num: 2, title: 'Personal Info' },
@@ -496,7 +496,7 @@ function YellowCardContent() {
         </div>
 
         <div>
-          <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ marginBottom: 32, padding: '24px 32px' }}>
+          <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ marginBottom: 32, padding: '24px 32px' }}>
             <h3 style={{ fontSize: 16, fontWeight: 700, color: '#003DA5', marginBottom: 20 }}>Yellow Card Benefits</h3>
             <ul style={{ fontSize: 13, color: '#333333', lineHeight: 1.8, listStyle: 'none', paddingLeft: 0 }}>
               <li style={{ marginBottom: 12 }}>✓ Financial assistance for medical, educational, and livelihood needs</li>
@@ -507,7 +507,7 @@ function YellowCardContent() {
             </ul>
           </div>
 
-          <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ marginBottom: 32, padding: '24px 32px' }}>
+          <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ marginBottom: 32, padding: '24px 32px' }}>
             <h3 style={{ fontSize: 16, fontWeight: 700, color: '#003DA5', marginBottom: 20 }}>Requirements</h3>
             <ul style={{ fontSize: 12, color: '#333333', lineHeight: 1.8, listStyle: 'none', paddingLeft: 0 }}>
               <li>✓ Must be 18 years or older</li>
@@ -515,7 +515,7 @@ function YellowCardContent() {
             </ul>
           </div>
 
-          <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ padding: '24px 32px' }}>
+          <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ padding: '24px 32px' }}>
             <h3 style={{ fontSize: 16, fontWeight: 700, color: '#003DA5', marginBottom: 16 }}>Need Assistance?</h3>
             <p style={{ fontSize: 13, color: '#333333', marginBottom: 12 }}>Contact our Yellow Card helpdesk for application support.</p>
             <p style={{ fontSize: 13, color: '#333333' }}>

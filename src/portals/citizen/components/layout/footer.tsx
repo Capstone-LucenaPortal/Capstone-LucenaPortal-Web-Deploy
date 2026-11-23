@@ -56,7 +56,7 @@ export default function SiteFooter() {
       data-on-dark
       style={{ background: '#0A3D5C', color: 'white', borderTop: '4px solid #C0272D' }}
     >
-      <div style={{ maxWidth: 1800, margin: '0 auto', padding: '32px 48px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 24 }}>
+      <div className="footer-inner" style={{ maxWidth: 1800, margin: '0 auto', padding: '32px 48px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 24 }}>
         <div>
           <p style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>Lucena City E-Services</p>
           <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.85)', lineHeight: 1.7 }}>
@@ -70,15 +70,15 @@ export default function SiteFooter() {
             </a>
           </p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
+        <div className="footer-links" style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
           <Link href="/citizens-charter" style={linkStyle}>Citizen&apos;s Charter</Link>
-          <span aria-hidden="true" style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>|</span>
+          <span aria-hidden="true" className="footer-sep" style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>|</span>
           <Link href="/terms" style={linkStyle}>Terms of Service</Link>
-          <span aria-hidden="true" style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>|</span>
+          <span aria-hidden="true" className="footer-sep" style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>|</span>
           <Link href="/privacy" style={linkStyle}>Privacy Policy</Link>
-          <span aria-hidden="true" style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>|</span>
+          <span aria-hidden="true" className="footer-sep" style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>|</span>
           <Link href="/verify" style={linkStyle}>Verify a Yellow Card</Link>
-          <div style={{ display: 'flex', gap: 10, marginLeft: 8 }}>
+          <div className="footer-social" style={{ display: 'flex', gap: 10, marginLeft: 8 }}>
             <a
               href={FACEBOOK_PAGE_URL}
               target="_blank"
@@ -91,7 +91,7 @@ export default function SiteFooter() {
           </div>
         </div>
       </div>
-      <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', padding: '12px 48px', fontSize: 11, color: 'rgba(255,255,255,0.65)', textAlign: 'center' }}>
+      <div className="footer-legal" style={{ borderTop: '1px solid rgba(255,255,255,0.1)', padding: '12px 48px', fontSize: 11, color: 'rgba(255,255,255,0.65)', textAlign: 'center' }}>
         © 2026 Lucena City Portal. All rights reserved.
         {/* The way in for City employees (ADR 0009): small, and only here. */}
         <span aria-hidden="true" style={{ margin: '0 8px', color: 'rgba(255,255,255,0.4)' }}>·</span>

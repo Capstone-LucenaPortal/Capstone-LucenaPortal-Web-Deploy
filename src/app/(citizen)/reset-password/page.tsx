@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { PasswordVisibilityToggle } from '@/shared/auth/password-visibility-toggle';
 import { useRouter } from 'next/navigation';
 import { authService, RESET_LINK_UNUSABLE_MESSAGE } from '@/portals/citizen/features/auth/lib/auth';
 import { validatePassword, PASSWORD_RULES_TEXT } from '@/shared/auth/password-policy';
@@ -12,8 +13,6 @@ import { PROFILE_TAB_SECURITY, profileTabHref } from '@/portals/citizen/features
 
 const inputClass = 'w-full bg-white border border-[#CCCCCC] rounded text-[15px] text-text-dark font-sans transition-all focus:outline-none focus:border-lucena-blue focus:shadow-[0_0_0_3px_rgba(0,61,165,0.1)]';
 const labelClass = 'block text-xs font-semibold text-[#666666] uppercase tracking-[0.03em]';
-const toggleBtnStyle = { position: 'absolute' as const, right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 18 };
-
 export default function ResetPasswordPage() {
   const router = useRouter();
   const { logout, openAuthModal } = useAuth();
@@ -62,7 +61,7 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <section style={{ padding: '64px clamp(20px, 5vw, 48px) 100px', maxWidth: 460, margin: '0 auto' }}>
+    <section className="page-section" style={{ padding: '64px clamp(20px, 5vw, 48px) 100px', maxWidth: 460, margin: '0 auto' }}>
       <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ padding: 32 }}>
         {state === 'done' ? (
           <>
@@ -144,20 +143,16 @@ export default function ResetPasswordPage() {
                   id="newPassword"
                   autoFocus
                   className={inputClass}
-                  style={{ padding: '12px 16px' }}
+                  style={{ padding: '12px 44px 12px 16px' }}
                   type={showPasswords.new ? 'text' : 'password'}
                   placeholder="Enter your new password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
-                <button
-                  type="button"
-                  aria-label={showPasswords.new ? 'Hide password' : 'Show password'}
-                  onClick={() => setShowPasswords((prev) => ({ ...prev, new: !prev.new }))}
-                  style={toggleBtnStyle}
-                >
-                  {showPasswords.new ? '👁️' : '👁️‍🗨️'}
-                </button>
+                <PasswordVisibilityToggle
+                  visible={showPasswords.new}
+                  onToggle={() => setShowPasswords((prev) => ({ ...prev, new: !prev.new }))}
+                />
               </div>
             </div>
             <p style={{ fontSize: 12, color: '#666666', marginBottom: 20 }}>{PASSWORD_RULES_TEXT}</p>
@@ -168,20 +163,16 @@ export default function ResetPasswordPage() {
                 <input
                   id="confirmPassword"
                   className={inputClass}
-                  style={{ padding: '12px 16px' }}
+                  style={{ padding: '12px 44px 12px 16px' }}
                   type={showPasswords.confirm ? 'text' : 'password'}
                   placeholder="Re-enter your new password"
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
                 />
-                <button
-                  type="button"
-                  aria-label={showPasswords.confirm ? 'Hide password' : 'Show password'}
-                  onClick={() => setShowPasswords((prev) => ({ ...prev, confirm: !prev.confirm }))}
-                  style={toggleBtnStyle}
-                >
-                  {showPasswords.confirm ? '👁️' : '👁️‍🗨️'}
-                </button>
+                <PasswordVisibilityToggle
+                  visible={showPasswords.confirm}
+                  onToggle={() => setShowPasswords((prev) => ({ ...prev, confirm: !prev.confirm }))}
+                />
               </div>
             </div>
 

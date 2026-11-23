@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useId } from 'react';
+import { PasswordVisibilityToggle } from '@/shared/auth/password-visibility-toggle';
 import { useAuth } from '@/portals/citizen/features/auth/hooks/use-auth';
 import { Button } from '@/portals/citizen/components/ui/button';
 import ModalShell, { ModalCloseButton } from '@/portals/citizen/components/ui/modal-shell';
@@ -47,6 +48,8 @@ function AuthForm({ barangays }: { barangays: CatalogOption[] }) {
   const [forgotStep, setForgotStep] = useState<'email' | 'sent'>('email');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [formError, setFormError] = useState('');
   const [resetSending, setResetSending] = useState(false);
   // Set once a sign-up comes back as awaiting email confirmation: the address
@@ -230,6 +233,7 @@ function AuthForm({ barangays }: { barangays: CatalogOption[] }) {
           </div>
           <div style={{ marginBottom: 20 }}>
             <label htmlFor={fid('login-password')} className={labelClass} style={{ display: 'block', marginBottom: 8 }}>Password</label>
+            <div className="relative">
             <input
               id={fid('login-password')}
               name="password"
@@ -238,12 +242,14 @@ function AuthForm({ barangays }: { barangays: CatalogOption[] }) {
               aria-describedby={formError ? errorId : undefined}
               aria-invalid={formError ? true : undefined}
               className={inputClass}
-              style={{ padding: '12px 14px' }}
-              type="password"
+              style={{ padding: '12px 44px 12px 14px' }}
+              type={showLoginPassword ? 'text' : 'password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
             />
+            <PasswordVisibilityToggle visible={showLoginPassword} onToggle={() => setShowLoginPassword((v) => !v)} />
+            </div>
           </div>
           <Button type="button" variant="ghost" onClick={() => setMode('forgot')} className="w-full text-lucena-blue text-sm" style={{ paddingTop: 8, paddingBottom: 8, marginBottom: 12 }}>Forgot Password?</Button>
           {formError && <p id={errorId} role="alert" style={{ fontSize: 13, color: '#C62828', marginBottom: 12 }}>{formError}</p>}
@@ -448,17 +454,17 @@ function AuthForm({ barangays }: { barangays: CatalogOption[] }) {
               <div>
                 <label htmlFor={fid('password')} className={signupLabelClass} style={signupLabelStyle}>Password <span className="text-lucena-error ml-0.5">*</span></label>
                 <div className="relative">
-                  <input id={fid('password')} name="new-password" required aria-required="true" autoComplete="new-password" aria-describedby={fid('password-rules')} className={signupInputClass} style={signupInputStyle} type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Create password (min. 8 chars)" />
-                  {/* type="button": inside a real <form> a bare <button> is a
-                      submit button, so toggling visibility would have submitted
-                      the signup form. */}
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} aria-pressed={showPassword} aria-label={showPassword ? 'Hide password' : 'Show password'} className="absolute right-2.5 top-1/2 -translate-y-1/2 bg-none border-none cursor-pointer text-[15px] text-dark-gray"><span aria-hidden="true">{showPassword ? '🙈' : '👁'}</span></button>
+                  <input id={fid('password')} name="new-password" required aria-required="true" autoComplete="new-password" aria-describedby={fid('password-rules')} className={signupInputClass} style={{ ...signupInputStyle, paddingRight: 40 }} type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Create password (min. 8 chars)" />
+                  <PasswordVisibilityToggle visible={showPassword} onToggle={() => setShowPassword((v) => !v)} />
                 </div>
                 <p id={fid('password-rules')} className="text-[11px] text-dark-gray" style={{ marginTop: 4, lineHeight: 1.5 }}>{PASSWORD_RULES_TEXT}</p>
               </div>
               <div>
                 <label htmlFor={fid('confirm-password')} className={signupLabelClass} style={signupLabelStyle}>Confirm Password <span className="text-lucena-error ml-0.5">*</span></label>
-                <input id={fid('confirm-password')} name="confirm-password" required aria-required="true" autoComplete="new-password" className={signupInputClass} style={signupInputStyle} type={showPassword ? 'text' : 'password'} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Re-enter password" />
+                <div className="relative">
+                  <input id={fid('confirm-password')} name="confirm-password" required aria-required="true" autoComplete="new-password" className={signupInputClass} style={{ ...signupInputStyle, paddingRight: 40 }} type={showConfirmPassword ? 'text' : 'password'} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Re-enter password" />
+                  <PasswordVisibilityToggle visible={showConfirmPassword} onToggle={() => setShowConfirmPassword((v) => !v)} />
+                </div>
               </div>
             </div>
           </div>

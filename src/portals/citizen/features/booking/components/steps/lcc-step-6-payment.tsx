@@ -97,7 +97,7 @@ export default function LCCStep6Payment({ bookingId, totalFee, downpaymentAmount
   };
 
   return (
-    <div className="bg-white border border-[#DDDDDD] rounded shadow-sm" style={{ padding: '24px 32px' }}>
+    <div className="bg-white border border-[#DDDDDD] rounded shadow-sm card-pad" style={{ padding: '24px 32px' }}>
       <h2 style={{ fontSize: 20, fontWeight: 700, color: '#003DA5', marginBottom: 8 }}>Payment Submission</h2>
       <p style={{ color: '#666666', marginBottom: 24, fontSize: 14 }}>
         Please pay the downpayment below to secure your slot.
