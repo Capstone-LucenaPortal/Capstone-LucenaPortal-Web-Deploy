@@ -302,6 +302,7 @@ export type Database = {
       booking_config: {
         Row: {
           balance_due_days_before_event: number
+          changeover_hours: number
           closing_hour: number
           downpayment_pct: number
           id: boolean
@@ -313,6 +314,7 @@ export type Database = {
         }
         Insert: {
           balance_due_days_before_event?: number
+          changeover_hours?: number
           closing_hour?: number
           downpayment_pct?: number
           id?: boolean
@@ -324,6 +326,7 @@ export type Database = {
         }
         Update: {
           balance_due_days_before_event?: number
+          changeover_hours?: number
           closing_hour?: number
           downpayment_pct?: number
           id?: boolean
@@ -565,18 +568,21 @@ export type Database = {
       }
       booking_occupancies: {
         Row: {
+          blocked: unknown
           booking_id: string
           during: unknown
           id: string
           space_code: string
         }
         Insert: {
+          blocked: unknown
           booking_id: string
           during: unknown
           id?: string
           space_code: string
         }
         Update: {
+          blocked?: unknown
           booking_id?: string
           during?: unknown
           id?: string
@@ -905,6 +911,7 @@ export type Database = {
           cancellation_reason:
             | Database["public"]["Enums"]["booking_cancellation_reason"]
             | null
+          changeover_hours: number
           citizen_id: string
           classification_code: string
           completed_at: string | null
@@ -949,6 +956,7 @@ export type Database = {
           cancellation_reason?:
             | Database["public"]["Enums"]["booking_cancellation_reason"]
             | null
+          changeover_hours: number
           citizen_id: string
           classification_code: string
           completed_at?: string | null
@@ -993,6 +1001,7 @@ export type Database = {
           cancellation_reason?:
             | Database["public"]["Enums"]["booking_cancellation_reason"]
             | null
+          changeover_hours?: number
           citizen_id?: string
           classification_code?: string
           completed_at?: string | null
@@ -4565,6 +4574,7 @@ export type Database = {
       public_booking_config: {
         Row: {
           balance_due_days_before_event: number | null
+          changeover_hours: number | null
           closing_hour: number | null
           downpayment_pct: number | null
           min_duration_hours: number | null
@@ -4573,6 +4583,7 @@ export type Database = {
         }
         Insert: {
           balance_due_days_before_event?: number | null
+          changeover_hours?: number | null
           closing_hour?: number | null
           downpayment_pct?: number | null
           min_duration_hours?: number | null
@@ -4581,6 +4592,7 @@ export type Database = {
         }
         Update: {
           balance_due_days_before_event?: number | null
+          changeover_hours?: number | null
           closing_hour?: number | null
           downpayment_pct?: number | null
           min_duration_hours?: number | null
@@ -5071,6 +5083,7 @@ export type Database = {
       }
       public_venue_availability: {
         Row: {
+          blocked: unknown
           during: unknown
           event_date: string | null
           space_code: string | null
@@ -5728,6 +5741,7 @@ export type Database = {
           cancellation_reason:
             | Database["public"]["Enums"]["booking_cancellation_reason"]
             | null
+          changeover_hours: number | null
           classification_code: string | null
           completed_at: string | null
           confirmed_at: string | null
@@ -6595,6 +6609,7 @@ export type Database = {
       super_booking_config: {
         Row: {
           balance_due_days_before_event: number | null
+          changeover_hours: number | null
           closing_hour: number | null
           downpayment_pct: number | null
           min_duration_hours: number | null
@@ -6604,6 +6619,7 @@ export type Database = {
         }
         Insert: {
           balance_due_days_before_event?: number | null
+          changeover_hours?: number | null
           closing_hour?: number | null
           downpayment_pct?: number | null
           min_duration_hours?: number | null
@@ -6613,6 +6629,7 @@ export type Database = {
         }
         Update: {
           balance_due_days_before_event?: number | null
+          changeover_hours?: number | null
           closing_hour?: number | null
           downpayment_pct?: number | null
           min_duration_hours?: number | null
@@ -7543,6 +7560,7 @@ export type Database = {
           cancellation_reason:
             | Database["public"]["Enums"]["booking_cancellation_reason"]
             | null
+          changeover_hours: number
           citizen_id: string
           classification_code: string
           completed_at: string | null
@@ -7630,6 +7648,7 @@ export type Database = {
           cancellation_reason:
             | Database["public"]["Enums"]["booking_cancellation_reason"]
             | null
+          changeover_hours: number
           citizen_id: string
           classification_code: string
           completed_at: string | null
@@ -7949,6 +7968,7 @@ export type Database = {
           cancellation_reason:
             | Database["public"]["Enums"]["booking_cancellation_reason"]
             | null
+          changeover_hours: number
           citizen_id: string
           classification_code: string
           completed_at: string | null
@@ -8009,6 +8029,10 @@ export type Database = {
         Args: { p_id: string }
         Returns: undefined
       }
+      log_staff_authenticator_reset: {
+        Args: { p_id: string }
+        Returns: undefined
+      }
       mark_contact_message_handled: {
         Args: { p_id: string; p_status: string }
         Returns: undefined
@@ -8020,6 +8044,7 @@ export type Database = {
           body: string
           channel: Database["public"]["Enums"]["notify_channel"]
           created_at: string
+          details: Json | null
           error: string | null
           event_code: string
           id: string
@@ -8042,6 +8067,11 @@ export type Database = {
         }
       }
       next_reference: { Args: { p_prefix: string }; Returns: string }
+      notice_booking_details: {
+        Args: { p_booking_id: string; p_event_code: string }
+        Returns: Json
+      }
+      notice_payment_details: { Args: { p_payment_id: string }; Returns: Json }
       notification_reason_category: {
         Args: {
           p_error: string
@@ -8049,11 +8079,6 @@ export type Database = {
         }
         Returns: string
       }
-      notice_booking_details: {
-        Args: { p_booking_id: string; p_event_code: string }
-        Returns: Json
-      }
-      notice_payment_details: { Args: { p_payment_id: string }; Returns: Json }
       notify_citizen: {
         Args: {
           p_body: string
@@ -8094,6 +8119,7 @@ export type Database = {
           cancellation_reason:
             | Database["public"]["Enums"]["booking_cancellation_reason"]
             | null
+          changeover_hours: number
           citizen_id: string
           classification_code: string
           completed_at: string | null
@@ -8333,6 +8359,7 @@ export type Database = {
           cancellation_reason:
             | Database["public"]["Enums"]["booking_cancellation_reason"]
             | null
+          changeover_hours: number
           citizen_id: string
           classification_code: string
           completed_at: string | null
@@ -8382,6 +8409,7 @@ export type Database = {
         Args: { p_incident_id: string; p_reason: string }
         Returns: undefined
       }
+      release_held_report: { Args: { p_staff_id: string }; Returns: string }
       release_incident: {
         Args: { p_incident_id: string; p_reason: string }
         Returns: undefined
@@ -8504,6 +8532,7 @@ export type Database = {
           cancellation_reason:
             | Database["public"]["Enums"]["booking_cancellation_reason"]
             | null
+          changeover_hours: number
           citizen_id: string
           classification_code: string
           completed_at: string | null
@@ -8627,6 +8656,7 @@ export type Database = {
       save_booking_config: {
         Args: {
           p_balance_due_days_before_event?: number
+          p_changeover_hours?: number
           p_closing_hour?: number
           p_downpayment_pct?: number
           p_min_duration_hours?: number
@@ -8635,6 +8665,7 @@ export type Database = {
         }
         Returns: {
           balance_due_days_before_event: number
+          changeover_hours: number
           closing_hour: number
           downpayment_pct: number
           id: boolean
@@ -8861,6 +8892,7 @@ export type Database = {
           cancellation_reason:
             | Database["public"]["Enums"]["booking_cancellation_reason"]
             | null
+          changeover_hours: number
           citizen_id: string
           classification_code: string
           completed_at: string | null
