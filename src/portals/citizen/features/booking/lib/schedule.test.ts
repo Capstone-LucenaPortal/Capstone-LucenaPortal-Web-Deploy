@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseDuringRange,
-  occupiedHourRange,
+  occupancyHours,
   computeDayStatus,
   hasTimeConflict,
   estimateVenueFee,
@@ -29,28 +29,69 @@ describe('parseDuringRange', () => {
   });
 });
 
-describe('occupiedHourRange', () => {
-  it('converts a UTC range to Asia/Manila local hours (UTC+8)', () => {
-    const result = occupiedHourRange('["2026-12-01 08:00:00+00","2026-12-01 14:00:00+00")');
-    expect(result).toEqual({ startHour: 16, endHour: 22 });
+describe('occupancyHours', () => {
+  // SCRUM-261 (DB l117): public_venue_availability gives each Occupancy's
+  // `blocked` range, its Event plus the Changeover that Booking recorded.
+  it('runs an Occupancy from its Event start to its blocked end, in Manila hours', () => {
+    const row = {
+      during: '["2026-12-01 00:00:00+00","2026-12-01 06:00:00+00")',
+      blocked: '["2026-12-01 00:00:00+00","2026-12-01 07:00:00+00")',
+    };
+    expect(occupancyHours(row)).toEqual({ startHour: 8, endHour: 15 });
   });
 
-  it('returns null when the underlying range is malformed', () => {
-    expect(occupiedHourRange('garbage')).toBeNull();
+  it("keeps a Changeover that runs past midnight on the Event's own day", () => {
+    const row = {
+      during: '["2026-12-01 12:00:00+00","2026-12-01 16:00:00+00")',
+      blocked: '["2026-12-01 12:00:00+00","2026-12-01 18:00:00+00")',
+    };
+    expect(occupancyHours(row)).toEqual({ startHour: 20, endHour: 26 });
+  });
+
+  it('falls back to the Event range when the view has no blocked column yet', () => {
+    const row = { during: '["2026-12-01 00:00:00+00","2026-12-01 06:00:00+00")' };
+    expect(occupancyHours(row)).toEqual({ startHour: 8, endHour: 14 });
+  });
+
+  it('returns null for a malformed range', () => {
+    expect(occupancyHours({ during: 'garbage', blocked: 'garbage' })).toBeNull();
   });
 });
 
 describe('computeDayStatus', () => {
+  // Opening 06:00, closing 22:00, a 6-hour minimum and a 1-hour Changeover.
+  const dayHours = { openingHour: 6, closingHour: 22, minDurationHours: 6, changeoverHours: 1 };
+
   it('is available with no occupied ranges', () => {
-    expect(computeDayStatus([], 6, 22)).toBe('available');
+    expect(computeDayStatus([], dayHours)).toBe('available');
   });
 
-  it('is partial when occupied hours are less than the full window', () => {
-    expect(computeDayStatus([{ startHour: 8, endHour: 12 }], 6, 22)).toBe('partial');
+  it('is partial while a minimum-length Event still fits after a Changeover', () => {
+    // 08:00–14:00 blocks to 15:00; 15:00–21:00 still fits.
+    expect(computeDayStatus([{ startHour: 8, endHour: 15 }], dayHours)).toBe('partial');
   });
 
-  it('is fully-booked when occupied hours cover the whole window', () => {
-    expect(computeDayStatus([{ startHour: 6, endHour: 22 }], 6, 22)).toBe('fully-booked');
+  // SCRUM-261: this replaces "booked hours >= open hours". Seven of sixteen
+  // hours are held, yet no six-hour Event fits on either side.
+  it('is full when nothing fits the minimum duration once Changeovers are counted', () => {
+    expect(computeDayStatus([{ startHour: 10, endHour: 17 }], dayHours)).toBe('fully-booked');
+  });
+
+  it('lets the last Event end exactly at closing, its Changeover running past', () => {
+    // 06:00–12:00 blocks to 13:00; 16:00–22:00 fits though its Changeover ends at 23:00.
+    expect(computeDayStatus([{ startHour: 6, endHour: 13 }], { ...dayHours, minDurationHours: 9 })).toBe('partial');
+  });
+
+  it('is full when the whole window is held', () => {
+    expect(computeDayStatus([{ startHour: 6, endHour: 23 }], dayHours)).toBe('fully-booked');
+  });
+
+  it('counts the Changeover the new Event would need before a later one', () => {
+    // 15:00 onwards held: 06:00–14:00 plus its Changeover to 15:00 fits; with a
+    // 2-hour Changeover it would have to start at 05:00, before opening.
+    const held = [{ startHour: 15, endHour: 23 }];
+    expect(computeDayStatus(held, { ...dayHours, minDurationHours: 8, changeoverHours: 1 })).toBe('partial');
+    expect(computeDayStatus(held, { ...dayHours, minDurationHours: 8, changeoverHours: 2 })).toBe('fully-booked');
   });
 });
 
@@ -61,6 +102,34 @@ describe('hasTimeConflict', () => {
 
   it('reports no conflict for a non-intersecting range', () => {
     expect(hasTimeConflict([{ startHour: 8, endHour: 12 }], 13, 2)).toBe(false);
+  });
+
+  // SCRUM-261: each existing Occupancy already runs to its blocked end; the
+  // proposed Booking holds the Space for its Event plus the current Changeover.
+  describe('with a Changeover', () => {
+    // An 08:00–14:00 Event whose 1-hour Changeover runs to 15:00.
+    const existing = [{ startHour: 8, endHour: 15 }];
+
+    it("refuses a start inside another Event's Changeover", () => {
+      expect(hasTimeConflict(existing, 14, 4, 1)).toBe(true);
+    });
+
+    it("allows a start exactly at a Changeover's end", () => {
+      expect(hasTimeConflict(existing, 15, 4, 1)).toBe(false);
+    });
+
+    it("refuses a time whose own Changeover would run into a later Event", () => {
+      // 16:00–20:00, then a 1-hour Changeover to 21:00, against an Event at 20:00.
+      expect(hasTimeConflict([{ startHour: 20, endHour: 23 }], 16, 4, 1)).toBe(true);
+    });
+
+    it('allows a time whose own Changeover ends exactly as a later Event starts', () => {
+      expect(hasTimeConflict([{ startHour: 21, endHour: 23 }], 16, 4, 1)).toBe(false);
+    });
+
+    it('with no Changeover, lets an Event end exactly as the next one starts', () => {
+      expect(hasTimeConflict([{ startHour: 20, endHour: 23 }], 16, 4, 0)).toBe(false);
+    });
   });
 });
 

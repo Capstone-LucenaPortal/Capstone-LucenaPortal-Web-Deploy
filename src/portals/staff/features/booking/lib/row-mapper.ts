@@ -8,6 +8,7 @@ import type {
   BookingPayment,
   BookingQueueItem,
   BookingStatus,
+  CalendarBooking,
   PaymentKind,
   PaymentMethod,
   RateTier,
@@ -46,6 +47,11 @@ export type StaffBookingQueueRow = {
   submitted_at: string | null;
   unverified_payment_count: number | null;
   tier_review_since: string | null;
+};
+
+/** The calendar's read: the queue's columns plus the recorded Changeover (DB l117). */
+export type StaffBookingCalendarRow = StaffBookingQueueRow & {
+  changeover_hours: number | null;
 };
 
 export type StaffBookingRow = StaffBookingQueueRow & {
@@ -153,6 +159,18 @@ export function toQueueItem(row: StaffBookingQueueRow): BookingQueueItem {
     submitted_at: row.submitted_at ?? "",
     unverified_payment_count: row.unverified_payment_count ?? 0,
     tier_review_since: row.tier_review_since,
+  };
+}
+
+/**
+ * The Changeover is the Booking's own, never today's setting (ADR 0010).
+ * bookings.changeover_hours is NOT NULL, so the fallback is only the view's
+ * typing; 0 draws no Changeover rather than inventing one.
+ */
+export function toCalendarBooking(row: StaffBookingCalendarRow): CalendarBooking {
+  return {
+    ...toQueueItem(row),
+    changeover_hours: row.changeover_hours ?? 0,
   };
 }
 

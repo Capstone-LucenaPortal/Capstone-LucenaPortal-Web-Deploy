@@ -34,6 +34,7 @@ const booking: BookingConfig = {
   closingHour: 17,
   minDurationHours: 2,
   paymentWindowHours: 48,
+  changeoverHours: 1,
 };
 
 describe("validateIncidents", () => {
@@ -118,6 +119,22 @@ describe("validateBooking", () => {
   it("requires whole positive hours for the minimum duration and payment window", () => {
     expect(validateBooking({ ...booking, minDurationHours: 0 }).minDuration).toBeDefined();
     expect(validateBooking({ ...booking, paymentWindowHours: 0 }).paymentWindow).toBeDefined();
+  });
+
+  // booking_config's CHECK is 0–4, and save_booking_config refuses anything
+  // else with 22023. 0 is valid: it turns the Changeover off.
+  it("accepts a Changeover of whole hours from 0 to 4", () => {
+    for (const changeoverHours of [0, 1, 4]) {
+      expect(validateBooking({ ...booking, changeoverHours }).changeover).toBeUndefined();
+    }
+  });
+
+  it("refuses a Changeover outside 0–4, fractional, or cleared", () => {
+    for (const changeoverHours of [-1, 5, 1.5, Number.NaN]) {
+      expect(validateBooking({ ...booking, changeoverHours }).changeover).toBe(
+        "Enter whole hours from 0 to 4.",
+      );
+    }
   });
 });
 

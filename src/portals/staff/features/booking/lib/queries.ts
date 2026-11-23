@@ -1,10 +1,10 @@
 import { createClient, type Db } from "@/shared/supabase/server";
 import { buildSearchFilter } from "@/portals/staff/lib/supabase/search-filter";
-import { countByStatus, toQueueItem } from "./row-mapper";
+import { countByStatus, toCalendarBooking, toQueueItem } from "./row-mapper";
 import { NEEDS_ACTION, statusesFor, type StatusFilter } from "./queue-params";
 import { NEEDS_ACTION_STATUSES } from "./status";
-import type { StaffBookingQueueRow } from "./row-mapper";
-import type { BookingQueueItem, BookingStatus } from "../types";
+import type { StaffBookingCalendarRow, StaffBookingQueueRow } from "./row-mapper";
+import type { BookingQueueItem, BookingStatus, CalendarBooking } from "../types";
 
 /**
  * Column lists are checked against the generated types: a column
@@ -23,6 +23,16 @@ import type { BookingQueueItem, BookingStatus } from "../types";
  * outside this one has ever used it.
  */
 const QUEUE_COLUMNS = "id, reference_number, status, cancellation_reason, event_title, event_type_label, venue_code, venue_label, rate_tier, tier_verified, organization_name, contact_person, estimated_headcount, event_date, start_time, duration_hours, total_fee, balance_amount, hold_expires_at, submitted_at, unverified_payment_count, tier_review_since";
+
+/**
+ * The calendar's list: QUEUE_COLUMNS plus the Changeover each Booking recorded
+ * (SCRUM-261, DB l117 — staff_bookings gained it as its last column, verified
+ * by live query against the sandbox on 2026-11-23; production was paused and
+ * not checked). Written
+ * out in full for the one-literal rule above; the test pins it to the queue's
+ * list plus that one column, so the two cannot drift.
+ */
+const CALENDAR_COLUMNS = "id, reference_number, status, cancellation_reason, event_title, event_type_label, venue_code, venue_label, rate_tier, tier_verified, organization_name, contact_person, estimated_headcount, event_date, start_time, duration_hours, total_fee, balance_amount, hold_expires_at, submitted_at, unverified_payment_count, tier_review_since, changeover_hours";
 
 /**
  * The columns the search box looks in — what a clerk might hold about a
@@ -234,12 +244,12 @@ export async function getBookingCalendar(
   from: string,
   to: string,
   db?: Db,
-): Promise<BookingQueueItem[]> {
+): Promise<CalendarBooking[]> {
   const supabase = db ?? await createClient();
 
   const { data, error } = await supabase
     .from("staff_bookings")
-    .select(QUEUE_COLUMNS)
+    .select(CALENDAR_COLUMNS)
     .gte("event_date", from)
     .lte("event_date", to)
     .neq("status", "cancelled")
@@ -250,5 +260,5 @@ export async function getBookingCalendar(
     throw new Error(`staff_bookings calendar read failed: ${error.message}`);
   }
 
-  return ((data as StaffBookingQueueRow[] | null) ?? []).map(toQueueItem);
+  return ((data as StaffBookingCalendarRow[] | null) ?? []).map(toCalendarBooking);
 }

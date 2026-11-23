@@ -574,15 +574,15 @@ describe("getBookingCalendar", () => {
   });
 
   /**
-   * The calendar reuses the queue's column list rather than carrying a second
-   * one, so a column verified once against the live view stays verified for
-   * both reads.
+   * The calendar reads the queue's column list plus one: the Changeover each
+   * Booking recorded (SCRUM-261, DB l117). So a column verified once against
+   * the live view stays verified for both reads.
    *
    * Asserted as the two requests agreeing rather than against a written-out
    * list, because that is the property: a copy made of the list today would
    * pass a list assertion and fail this one the day the two drift.
    */
-  it("selects the same column list the queue read does", async () => {
+  it("selects the queue's column list plus the recorded Changeover", async () => {
     const { fetch, requests } = createRecordingFetch([CANNED_QUEUE_ROW]);
     const db = createTestClient(fetch);
 
@@ -593,7 +593,27 @@ describe("getBookingCalendar", () => {
     const [queue, calendar] = requests.map((request) =>
       columnsOf(parseQueryParams(request.url)),
     );
-    expect(calendar).toEqual(queue);
+    expect(calendar).toEqual([...queue, "changeover_hours"]);
+  });
+
+  // ADR 0010: the calendar draws each Booking's own Changeover, so the read
+  // hands back what the Booking recorded, 0 included.
+  it("returns each Booking's recorded Changeover", async () => {
+    const { fetch } = createRecordingFetch([
+      { ...CANNED_QUEUE_ROW, id: "bk-old", changeover_hours: 1 },
+      { ...CANNED_QUEUE_ROW, id: "bk-off", changeover_hours: 0 },
+    ]);
+
+    const bookings = await getBookingCalendar(
+      SEPTEMBER.from,
+      SEPTEMBER.to,
+      createTestClient(fetch),
+    );
+
+    expect(bookings.map((b) => [b.id, b.changeover_hours])).toEqual([
+      ["bk-old", 1],
+      ["bk-off", 0],
+    ]);
   });
 
   /**

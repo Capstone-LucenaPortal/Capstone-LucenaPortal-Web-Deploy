@@ -184,7 +184,8 @@ on the status it returns (SCRUM-198, DB l77). Step components in
 `features/booking/components/steps/` are presentational and receive `{ bookingData, onUpdate }`.
 
 `features/booking/lib/schedule.ts` holds the pure booking helpers — `parseDuringRange`,
-`occupiedHourRange`, `computeDayStatus`, `hasTimeConflict`, `estimateVenueFee`, `formatPHP`. The
+`occupancyHours` (an Occupancy runs to its `blocked` end: the Event plus its Changeover),
+`computeDayStatus`, `hasTimeConflict`, `estimateVenueFee`, `formatPHP`. The
 form shape itself, `BookingFormData`, lives in `features/booking/types.ts`. `estimateVenueFee`
 mirrors the server's `booking_price()` but is **display-only**; the authoritative fee comes back
 from `submit_booking`.

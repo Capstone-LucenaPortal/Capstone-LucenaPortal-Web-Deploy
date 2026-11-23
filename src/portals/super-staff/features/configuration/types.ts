@@ -43,4 +43,10 @@ export type BookingConfig = {
   closingHour: number;
   minDurationHours: number;
   paymentWindowHours: number;
+  /**
+   * l117. Whole hours (0–4) after each Event during which its Space stays free
+   * for the reset; 0 turns it off. Snapshotted onto each Booking at submit, so
+   * a change reaches new Bookings only (ADR 0010).
+   */
+  changeoverHours: number;
 };

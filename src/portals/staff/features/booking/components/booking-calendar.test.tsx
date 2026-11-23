@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { BookingCalendar } from "./booking-calendar";
-import { buildMonthGrid, toBlocks } from "../lib/calendar";
-import type { BookingQueueItem } from "../types";
+import { buildMonthGrid, toBlocks, type DayHours } from "../lib/calendar";
+import type { CalendarBooking } from "../types";
 
-function booking(over: Partial<BookingQueueItem> = {}): BookingQueueItem {
+function booking(over: Partial<CalendarBooking> = {}): CalendarBooking {
   return {
     id: "bk-1",
     reference_number: "BK-2026-000031",
@@ -28,20 +28,24 @@ function booking(over: Partial<BookingQueueItem> = {}): BookingQueueItem {
     submitted_at: "2026-08-01T10:00:00+08:00",
     unverified_payment_count: 0,
     tier_review_since: null,
+    changeover_hours: 1,
     ...over,
   };
 }
 
+/** The stored settings: a 6–22 window, a 6-hour minimum, a 1-hour Changeover. */
+const DAY_HOURS: DayHours = { openingHour: 6, closingHour: 22, minDurationHours: 6, changeoverHours: 1 };
+
 const now = new Date("2026-08-14T12:00:00+08:00");
 
-function renderCalendar(bookings: BookingQueueItem[] = [], year = 2026, month = 8) {
+function renderCalendar(bookings: CalendarBooking[] = [], year = 2026, month = 8) {
   cleanup();
   const blocks = toBlocks(bookings);
   return render(
     <BookingCalendar
       year={year}
       month={month}
-      grid={buildMonthGrid(year, month, blocks, now)}
+      grid={buildMonthGrid(year, month, blocks, now, DAY_HOURS)}
       unplaced={blocks.filter((b) => b.space === null)}
       todayHref="/staff/booking?view=calendar&month=2026-08"
     />,
@@ -99,6 +103,13 @@ describe("BookingCalendar", () => {
     renderCalendar([booking({ venue_code: "full_facility" })]);
     expect(
       screen.getByText(/one Full Facility booking occupying both lanes/),
+    ).toBeInTheDocument();
+  });
+
+  it("explains the Changeover in the legend", () => {
+    renderCalendar();
+    expect(
+      screen.getByText(/Changeover: the time after an event when its space is kept free for the reset/),
     ).toBeInTheDocument();
   });
 

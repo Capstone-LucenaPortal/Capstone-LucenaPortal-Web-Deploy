@@ -32,6 +32,7 @@ const LIVE: CharterSources = {
     opening_hour: 6,
     closing_hour: 22,
     balance_due_days_before_event: 7,
+    changeover_hours: 1,
   } satisfies BookingConfig,
   siteInfo: {
     trunkline: '(042) 788-2298',

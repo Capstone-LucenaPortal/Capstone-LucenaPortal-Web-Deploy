@@ -15,6 +15,7 @@ const booking = {
   closingHour: 17,
   minDurationHours: 2,
   paymentWindowHours: 48,
+  changeoverHours: 1,
 };
 
 const incidents = {
@@ -42,6 +43,10 @@ describe("the frozen label table", () => {
       .toBe("Minimum duration (hours)");
     expect(diffBooking(booking, { ...booking, paymentWindowHours: 24 })[0].label)
       .toBe("Payment window (hours)");
+    // l117's audit label.
+    expect(diffBooking(booking, { ...booking, changeoverHours: 0 })).toEqual([
+      { label: "Changeover (hours)", before: "1", after: "0" },
+    ]);
   });
 
   it("uses the RPC's incident labels verbatim", () => {

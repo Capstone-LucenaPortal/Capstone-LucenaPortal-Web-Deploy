@@ -6,14 +6,14 @@ import * as config from "@/portals/staff/features/booking/lib/config";
 import { DEFAULT_BOOKING_CONFIG } from "@/portals/staff/features/booking/lib/config";
 import { stubProfileRow } from "@/portals/staff/features/auth/lib/stub-profile-row";
 import { STATUS_ORDER } from "@/portals/staff/features/booking/lib/status";
-import type { BookingQueueItem, BookingStatus } from "@/portals/staff/features/booking/types";
+import type { BookingStatus, CalendarBooking } from "@/portals/staff/features/booking/types";
 
 // The queue's tab row renders QueueActivityBar, which calls useRouter().
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
 }));
 
-const booking: BookingQueueItem = {
+const booking: CalendarBooking = {
   id: "bk-1",
   reference_number: "BK-2026-000031",
   status: "awaiting_payment",
@@ -36,6 +36,7 @@ const booking: BookingQueueItem = {
   submitted_at: "2026-08-09T07:55:20+00:00",
   unverified_payment_count: 0,
   tier_review_since: null,
+  changeover_hours: 1,
 };
 
 const counts = Object.fromEntries(STATUS_ORDER.map((s) => [s, 0])) as Record<

@@ -2,7 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import type { BookingFormData, DayStatus } from '@/portals/citizen/features/booking/types';
-import { toDateStr, formatHour, occupiedHourRange, computeDayStatus, hasTimeConflict } from '@/portals/citizen/features/booking/lib/schedule';
+import {
+  toDateStr,
+  formatHour,
+  occupancyHours,
+  computeDayStatus,
+  hasTimeConflict,
+  changeoverClashMessage,
+  type HourRange,
+} from '@/portals/citizen/features/booking/lib/schedule';
 import type { VenueAvailability } from '@/portals/citizen/features/booking/types';
 import { bookingService } from '@/portals/citizen/features/booking/lib/booking';
 import { catalogService, type BookingConfig } from '@/portals/citizen/lib/supabase/catalogs';
@@ -47,17 +55,28 @@ export default function LCCStep3Scheduling({ bookingData, onUpdate, onNext, onBa
   const openingHour = config?.opening_hour ?? 6;
   const closingHour = config?.closing_hour ?? 22;
   const minDuration = venueIsHourly ? 1 : config?.min_duration_hours ?? 6;
+  // The Changeover after every Event (SCRUM-261). Mock mode has no settings to
+  // read and takes the database's default, as the opening window does.
+  const changeoverHours = config?.changeover_hours ?? 1;
 
-  function occupiedRangesFor(date: Date): Array<{ startHour: number; endHour: number }> {
+  // Each row is one Space's Occupancy, listed under every Venue that uses that
+  // Space, so filtering on the Venue brings in the Atrium's and the Arena's for
+  // Full Facility, and the Arena's for rehearsal. Each runs to its blocked end.
+  function occupiedRangesFor(date: Date): HourRange[] {
     const ds = toDateStr(date);
     return availability
       .filter((row) => row.venue_code === venueCode && row.event_date === ds)
-      .map((row) => occupiedHourRange(row.during))
-      .filter((r): r is { startHour: number; endHour: number } => r !== null);
+      .map(occupancyHours)
+      .filter((r): r is HourRange => r !== null);
   }
 
   function getDayStatus(date: Date): DayStatus {
-    return computeDayStatus(occupiedRangesFor(date), openingHour, closingHour);
+    return computeDayStatus(occupiedRangesFor(date), {
+      openingHour,
+      closingHour,
+      minDurationHours: minDuration,
+      changeoverHours,
+    });
   }
 
   function getCalendarDays(): (Date | null)[] {
@@ -108,7 +127,7 @@ export default function LCCStep3Scheduling({ bookingData, onUpdate, onNext, onBa
   const validStartHours = startHourCandidates.filter((h) => h + Number(durationHours) <= closingHour);
   const conflict =
     selectedDate && startHour !== null
-      ? hasTimeConflict(occupiedRangesFor(selectedDate as Date), startHour, Number(durationHours))
+      ? hasTimeConflict(occupiedRangesFor(selectedDate as Date), startHour, Number(durationHours), changeoverHours)
       : false;
   const canProceed =
     !!selectedDate &&
@@ -253,6 +272,11 @@ export default function LCCStep3Scheduling({ bookingData, onUpdate, onNext, onBa
                   year: 'numeric',
                 })}
               </h4>
+              {changeoverHours > 0 && (
+                <p className="text-xs text-[#666666]" style={{ margin: '0 0 16px' }}>
+                  Events need {changeoverHours} hour(s) between them for the venue to be reset.
+                </p>
+              )}
               <div style={{ marginBottom: 20 }}>
                 <label htmlFor="booking-start-time" className="block text-sm font-semibold text-[#333333]" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
                   Start Time
@@ -321,7 +345,10 @@ export default function LCCStep3Scheduling({ bookingData, onUpdate, onNext, onBa
                   </div>
                   {conflict && (
                     <div style={{ fontSize: 12, color: '#991B1B', fontWeight: 600, marginTop: 8 }}>
-                      ⚠️ This time overlaps an existing booking. Please choose a different start time.
+                      ⚠️{' '}
+                      {changeoverHours > 0
+                        ? changeoverClashMessage(changeoverHours)
+                        : 'This time overlaps an existing booking. Please choose a different start time.'}
                     </div>
                   )}
                 </div>

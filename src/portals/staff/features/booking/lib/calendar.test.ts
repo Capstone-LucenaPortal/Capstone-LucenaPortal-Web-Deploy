@@ -7,10 +7,14 @@ import {
   monthBounds,
   monthGridBounds,
   toBlocks,
+  type DayHours,
 } from "./calendar";
-import type { BookingQueueItem } from "../types";
+import type { CalendarBooking } from "../types";
 
-function booking(over: Partial<BookingQueueItem> = {}): BookingQueueItem {
+/** The stored settings: a 6–22 window, a 6-hour minimum, a 1-hour Changeover. */
+const DAY_HOURS: DayHours = { openingHour: 6, closingHour: 22, minDurationHours: 6, changeoverHours: 1 };
+
+function booking(over: Partial<CalendarBooking> = {}): CalendarBooking {
   return {
     id: "bk-1",
     reference_number: "BK-2026-000031",
@@ -34,6 +38,7 @@ function booking(over: Partial<BookingQueueItem> = {}): BookingQueueItem {
     submitted_at: "2026-08-01T10:00:00+08:00",
     unverified_payment_count: 0,
     tier_review_since: null,
+    changeover_hours: 1,
     ...over,
   };
 }
@@ -99,6 +104,37 @@ describe("toBlocks", () => {
     expect(block.space).toBeNull();
   });
 
+  // SCRUM-261, ADR 0010: the Changeover is drawn from the length the Booking
+  // recorded at submit, never from today's setting.
+  it("gives the block on every Space the Booking uses its recorded Changeover", () => {
+    const blocks = toBlocks([booking({ venue_code: "full_facility", changeover_hours: 2 })]);
+    expect(blocks.map((b) => [b.space, b.changeoverHours])).toEqual([
+      ["atrium", 2],
+      ["arena", 2],
+    ]);
+  });
+
+  it("puts a rehearsal's Changeover on the Arena", () => {
+    const blocks = toBlocks([booking({ venue_code: "rehearsal_practice", changeover_hours: 1 })]);
+    expect(blocks.map((b) => [b.space, b.changeoverHours])).toEqual([["arena", 1]]);
+  });
+
+  it("gives a Booking recorded with a Changeover of 0 none", () => {
+    const [block] = toBlocks([booking({ changeover_hours: 0 })]);
+    expect(block.changeoverHours).toBe(0);
+  });
+
+  it("keeps each Booking's own length when two were made under different settings", () => {
+    const blocks = toBlocks([
+      booking({ id: "bk-old", changeover_hours: 1 }),
+      booking({ id: "bk-new", changeover_hours: 3, start_time: "16:00:00" }),
+    ]);
+    expect(blocks.map((b) => [b.bookingId, b.changeoverHours])).toEqual([
+      ["bk-old", 1],
+      ["bk-new", 3],
+    ]);
+  });
+
   it("carries the identity every block needs to be clickable", () => {
     const [block] = toBlocks([booking()]);
     expect(block.bookingId).toBe("bk-1");
@@ -110,33 +146,59 @@ describe("toBlocks", () => {
 });
 
 describe("computeDayStatus", () => {
-  // Ported from EndUser's lccData.ts, where it is already tested. Same
-  // semantics, per space instead of per venue.
+  // Each range is an Occupancy's blocked hours: its Event plus the Changeover
+  // that Booking recorded. Opening 06:00, closing 22:00, a 6-hour minimum and a
+  // 1-hour Changeover for whatever is booked next.
+  const dayHours = { openingHour: 6, closingHour: 22, minDurationHours: 6, changeoverHours: 1 };
+
   it("is available with nothing booked", () => {
-    expect(computeDayStatus([], 6, 22)).toBe("available");
+    expect(computeDayStatus([], dayHours)).toBe("available");
   });
 
-  it("is partial with some of the day taken", () => {
-    expect(computeDayStatus([{ startHour: 9, endHour: 15 }], 6, 22)).toBe("partial");
+  it("is partial while a minimum-length Event still fits after a Changeover", () => {
+    // 08:00–14:00 blocks to 15:00, and 15:00–21:00 plus its own hour fits.
+    expect(computeDayStatus([{ startHour: 8, endHour: 15 }], dayHours)).toBe("partial");
   });
 
-  it("is fully-booked when the occupied hours cover the opening window", () => {
-    expect(computeDayStatus([{ startHour: 6, endHour: 22 }], 6, 22)).toBe(
-      "fully-booked",
-    );
+  // SCRUM-261: this replaces "booked hours >= open hours". Seven of sixteen
+  // hours are held, yet no six-hour Event fits on either side, so the
+  // database would refuse every start and the day is Full.
+  it("is full when no start on the hour fits the minimum once Changeovers count", () => {
+    expect(computeDayStatus([{ startHour: 10, endHour: 17 }], dayHours)).toBe("fully-booked");
   });
 
-  it("adds separate ranges up to reach fully-booked", () => {
+  it("is full when the whole window is held", () => {
+    expect(computeDayStatus([{ startHour: 6, endHour: 23 }], dayHours)).toBe("fully-booked");
+  });
+
+  it("lets the next Event end exactly at closing, its Changeover running past", () => {
+    // 06:00–12:00 blocks to 13:00. 13:00–22:00 fits a nine-hour minimum even
+    // though its own Changeover would end at 23:00: nothing starts after
+    // closing, so the database accepts it.
     expect(
-      computeDayStatus(
-        [
-          { startHour: 6, endHour: 14 },
-          { startHour: 14, endHour: 22 },
-        ],
-        6,
-        22,
-      ),
+      computeDayStatus([{ startHour: 6, endHour: 13 }], { ...dayHours, minDurationHours: 9 }),
+    ).toBe("partial");
+  });
+
+  it("counts the Changeover the next Event would need before a later one", () => {
+    // 15:00 onwards is held. 06:00–14:00 plus a 1-hour Changeover ends at
+    // 15:00 and fits; with a 2-hour Changeover it would have to start at
+    // 05:00, before opening.
+    const held = [{ startHour: 15, endHour: 23 }];
+    expect(computeDayStatus(held, { ...dayHours, minDurationHours: 8 })).toBe("partial");
+    expect(
+      computeDayStatus(held, { ...dayHours, minDurationHours: 8, changeoverHours: 2 }),
     ).toBe("fully-booked");
+  });
+
+  it("finds a gap between two held ranges", () => {
+    // 12:00–19:00 is free: a six-hour Event and its hour fit exactly.
+    const held = [
+      { startHour: 6, endHour: 12 },
+      { startHour: 19, endHour: 23 },
+    ];
+    expect(computeDayStatus(held, dayHours)).toBe("partial");
+    expect(computeDayStatus(held, { ...dayHours, changeoverHours: 2 })).toBe("fully-booked");
   });
 });
 
@@ -196,7 +258,7 @@ describe("monthGridBounds", () => {
 
   /** The grid's own first and last day, read off the grid rather than restated. */
   function gridEdges(year: number, month: number) {
-    const grid = buildMonthGrid(year, month, [], now);
+    const grid = buildMonthGrid(year, month, [], now, DAY_HOURS);
     return {
       from: grid[0][0].date,
       to: grid[grid.length - 1][6].date,
@@ -230,7 +292,7 @@ describe("monthGridBounds", () => {
    * only then asks whether the range covers it.
    */
   function expectPaddedDayCovered(year: number, month: number, date: string) {
-    const grid = buildMonthGrid(year, month, toBlocks([booking({ event_date: date })]), now);
+    const grid = buildMonthGrid(year, month, toBlocks([booking({ event_date: date })]), now, DAY_HOURS);
     const day = grid.flat().find((d) => d.date === date);
 
     expect(day).toBeDefined();
@@ -258,7 +320,7 @@ describe("monthGridBounds", () => {
     // range would break, wherever the padding happens to land.
     for (const [year, month] of MONTHS) {
       const { from, to } = monthGridBounds(year, month);
-      for (const day of buildMonthGrid(year, month, [], now).flat()) {
+      for (const day of buildMonthGrid(year, month, [], now, DAY_HOURS).flat()) {
         expect(from <= day.date && day.date <= to).toBe(true);
       }
     }
@@ -302,7 +364,7 @@ describe("buildMonthGrid", () => {
 
   it("returns whole weeks, Sunday-first, padded from adjacent months", () => {
     // ⚠️ 1-indexed month: 8 is August. August 2026 starts on a Saturday.
-    const grid = buildMonthGrid(2026, 8, [], now);
+    const grid = buildMonthGrid(2026, 8, [], now, DAY_HOURS);
     expect(grid.every((week) => week.length === 7)).toBe(true);
     expect(grid[0][0].date).toBe("2026-07-26");
     expect(grid[0][6].date).toBe("2026-08-01");
@@ -311,7 +373,7 @@ describe("buildMonthGrid", () => {
   });
 
   it("ends on a padded Saturday", () => {
-    const grid = buildMonthGrid(2026, 8, [], now);
+    const grid = buildMonthGrid(2026, 8, [], now, DAY_HOURS);
     const last = grid[grid.length - 1][6];
     expect(last.inMonth).toBe(false);
     expect(last.date).toBe("2026-09-05");
@@ -320,12 +382,12 @@ describe("buildMonthGrid", () => {
   it("marks today, in Manila", () => {
     // A staff member in Lucena at 08:00 on the 12th must not see the 11th
     // highlighted because the server is on UTC.
-    const grid = buildMonthGrid(2026, 8, [], new Date("2026-08-12T00:30:00+08:00"));
+    const grid = buildMonthGrid(2026, 8, [], new Date("2026-08-12T00:30:00+08:00"), DAY_HOURS);
     expect(grid.flat().find((d) => d.isToday)?.date).toBe("2026-08-12");
   });
 
   it("marks no day as today when the month is not the current one", () => {
-    const grid = buildMonthGrid(2027, 3, [], now);
+    const grid = buildMonthGrid(2027, 3, [], now, DAY_HOURS);
     expect(grid.flat().some((d) => d.isToday)).toBe(false);
   });
 
@@ -335,6 +397,7 @@ describe("buildMonthGrid", () => {
       8,
       toBlocks([booking({ event_date: "2026-08-14" })]),
       now,
+      DAY_HOURS,
     );
     const days = grid.flat().filter((d) => d.blocks.length > 0);
     expect(days).toHaveLength(1);
@@ -347,6 +410,7 @@ describe("buildMonthGrid", () => {
       8,
       toBlocks([booking({ venue_code: "full_facility", event_date: "2026-08-14" })]),
       now,
+      DAY_HOURS,
     );
     const day = grid.flat().find((d) => d.date === "2026-08-14")!;
     expect(day.blocks).toHaveLength(2);
@@ -362,11 +426,54 @@ describe("buildMonthGrid", () => {
         booking({ event_date: "2026-08-14", venue_code: "atrium", start_time: "09:00:00", duration_hours: 6 }),
       ]),
       now,
-      { openingHour: 6, closingHour: 22 },
+      DAY_HOURS,
     );
     const day = grid.flat().find((d) => d.date === "2026-08-14")!;
     expect(day.statusBySpace.atrium).toBe("partial");
     expect(day.statusBySpace.arena).toBe("available");
+  });
+
+  // SCRUM-261: the day status counts each Booking's own recorded Changeover
+  // as held time, so the lane agrees with what the database will accept.
+  describe("counting Changeovers in the day status", () => {
+    const date = "2026-08-14";
+    const statusOf = (bookings: CalendarBooking[], dayHours: Parameters<typeof buildMonthGrid>[4]) =>
+      buildMonthGrid(2026, 8, toBlocks(bookings), now, dayHours)
+        .flat()
+        .find((d) => d.date === date)!.statusBySpace;
+
+    it("holds a Space until an older Booking's recorded Changeover ends, whatever today's setting", () => {
+      // 06:00–12:00 recorded a 1-hour Changeover, so the Atrium is held to
+      // 13:00. 18:00–22:00 follows. The 13:00–18:00 gap is too short for a
+      // six-hour Event even with today's Changeover set to 0. Without the
+      // recorded hour, 12:00–18:00 would look free.
+      const bookings = [
+        booking({ id: "bk-a", event_date: date, start_time: "06:00:00", duration_hours: 6, changeover_hours: 1 }),
+        booking({ id: "bk-b", event_date: date, start_time: "18:00:00", duration_hours: 4, changeover_hours: 0 }),
+      ];
+      const day = { openingHour: 6, closingHour: 22, minDurationHours: 6, changeoverHours: 0 };
+      expect(statusOf(bookings, day).atrium).toBe("fully-booked");
+    });
+
+    it("holds both Spaces for a Full Facility Event's Changeover", () => {
+      // 08:00–15:00 with a recorded 2-hour Changeover holds both Spaces to
+      // 17:00, so no six-hour Event fits before or after on either one.
+      const bookings = [
+        booking({ event_date: date, venue_code: "full_facility", start_time: "08:00:00", duration_hours: 7, changeover_hours: 2 }),
+      ];
+      const day = { openingHour: 6, closingHour: 22, minDurationHours: 6, changeoverHours: 1 };
+      expect(statusOf(bookings, day)).toEqual({ atrium: "fully-booked", arena: "fully-booked" });
+    });
+
+    it("leaves room after a Booking recorded with a Changeover of 0", () => {
+      // The same Full Facility Event with no Changeover frees both Spaces at
+      // 15:00, and 15:00–21:00 plus today's hour fits.
+      const bookings = [
+        booking({ event_date: date, venue_code: "full_facility", start_time: "08:00:00", duration_hours: 7, changeover_hours: 0 }),
+      ];
+      const day = { openingHour: 6, closingHour: 22, minDurationHours: 6, changeoverHours: 1 };
+      expect(statusOf(bookings, day)).toEqual({ atrium: "partial", arena: "partial" });
+    });
   });
 
   it("ignores an unplaced block when computing space status", () => {
@@ -376,6 +483,7 @@ describe("buildMonthGrid", () => {
       8,
       toBlocks([booking({ event_date: "2026-08-14", venue_code: "rooftop_garden" })]),
       now,
+      DAY_HOURS,
     );
     const day = grid.flat().find((d) => d.date === "2026-08-14")!;
     expect(day.statusBySpace.atrium).toBe("available");
@@ -391,6 +499,7 @@ describe("buildMonthGrid", () => {
       8,
       toBlocks([booking({ event_date: "2026-07-28" })]),
       now,
+      DAY_HOURS,
     );
     const day = grid.flat().find((d) => d.date === "2026-07-28")!;
     expect(day.inMonth).toBe(false);

@@ -44,7 +44,6 @@ export function BookingConfigView() {
     draft,
     saved,
     update,
-    errors,
     changes,
     dirty,
     confirmOpen,
@@ -82,6 +81,11 @@ export function BookingConfigView() {
   }
 
   const impact = bookingImpact(saved, draft);
+  // Validated live, not only on Save: a value the database would refuse (the
+  // Changeover's 0–4 CHECK above all) shows its message at once and keeps Save
+  // disabled. requestSave still validates the draft as well.
+  const errors = validateBooking(draft);
+  const invalid = Object.keys(errors).length > 0;
 
   return (
     <div className="pb-24">
@@ -214,6 +218,39 @@ export function BookingConfigView() {
           </CardContent>
         </Card>
 
+        <Card>
+          <CardHeader>
+            <CardTitle>Changeover</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex max-w-[12rem] flex-col gap-1">
+              <label
+                htmlFor="changeover"
+                className="text-sm font-medium text-gray-900"
+              >
+                Changeover (hours)
+              </label>
+              <Input
+                id="changeover"
+                type="number"
+                min={0}
+                max={4}
+                step={1}
+                value={numValue(draft.changeoverHours)}
+                error={errors.changeover}
+                onChange={(e) =>
+                  update({ changeoverHours: e.target.valueAsNumber })
+                }
+              />
+            </div>
+            <p className="mt-2 text-xs text-gray-500">
+              The time after each event when its space is kept free so the LCC
+              can reset it. Whole hours from 0 to 4; 0 turns it off.
+            </p>
+            <ImpactNote>{impact.changeover}</ImpactNote>
+          </CardContent>
+        </Card>
+
         <VenuesCard editor={venues} />
         <EventTypesCard editor={eventTypes} />
         <ClassificationsCard editor={classifications} />
@@ -223,7 +260,11 @@ export function BookingConfigView() {
         <Button variant="secondary" onClick={reset} disabled={!dirty || saving}>
           Cancel
         </Button>
-        <Button variant="primary" onClick={requestSave} disabled={!dirty || saving}>
+        <Button
+          variant="primary"
+          onClick={requestSave}
+          disabled={!dirty || invalid || saving}
+        >
           Save changes
         </Button>
       </div>

@@ -17,6 +17,7 @@ const booking: BookingConfig = {
   closingHour: 17,
   minDurationHours: 2,
   paymentWindowHours: 48,
+  changeoverHours: 1,
 };
 
 describe("incidentImpact", () => {
@@ -80,7 +81,11 @@ describe("yellowCardImpact", () => {
 
 describe("bookingImpact", () => {
   it("is all-null for an unchanged config", () => {
-    expect(bookingImpact(booking, booking)).toEqual({ financial: null, hours: null });
+    expect(bookingImpact(booking, booking)).toEqual({
+      financial: null,
+      hours: null,
+      changeover: null,
+    });
   });
 
   it("describes the downpayment and the unpaid-hold sweep together", () => {
@@ -95,5 +100,28 @@ describe("bookingImpact", () => {
     expect(impact.hours).toContain("9:00–17:00");
     expect(impact.hours).toContain("2-hour minimum");
     expect(impact.hours).toContain("reads these live");
+  });
+
+  // ADR 0010: the Changeover is snapshotted onto each Booking at submit.
+  it("names the new Changeover and says existing Bookings keep theirs", () => {
+    const impact = bookingImpact(booking, { ...booking, changeoverHours: 2 });
+    expect(impact.changeover).toBe(
+      "Each new booking keeps its space free for 2 hour(s) after the event so the LCC can reset it. Bookings already made keep the changeover they were booked with.",
+    );
+    expect(impact.financial).toBeNull();
+    expect(impact.hours).toBeNull();
+  });
+
+  // "free for 0 hour(s)" is nonsense; 0 means the Changeover is off.
+  it("says a Changeover of 0 turns it off for new Bookings", () => {
+    expect(bookingImpact(booking, { ...booking, changeoverHours: 0 }).changeover).toBe(
+      "New bookings will have no changeover: the space can be booked again as soon as the event ends. Bookings already made keep the changeover they were booked with.",
+    );
+  });
+
+  it("stays silent on a Changeover the form is refusing", () => {
+    expect(bookingImpact(booking, { ...booking, changeoverHours: 5 }).changeover).toBeNull();
+    expect(bookingImpact(booking, { ...booking, changeoverHours: Number.NaN }).changeover)
+      .toBeNull();
   });
 });

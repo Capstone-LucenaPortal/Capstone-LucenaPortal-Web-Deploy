@@ -144,6 +144,10 @@ async function renderCalendar(year: number, month: number, now: Date) {
   const grid = buildMonthGrid(year, month, blocks, now, {
     openingHour: config.opening_hour,
     closingHour: config.closing_hour,
+    minDurationHours: config.min_duration_hours,
+    // Today's setting, for "would one more Event fit". Every Changeover drawn
+    // is the Booking's own recorded length (ADR 0010).
+    changeoverHours: config.changeover_hours,
   });
 
   const current = parseMonth(undefined, now);

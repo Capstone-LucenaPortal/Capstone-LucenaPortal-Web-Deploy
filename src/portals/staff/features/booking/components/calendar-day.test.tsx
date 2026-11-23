@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { CalendarDay } from "./calendar-day";
-import { buildMonthGrid, toBlocks } from "../lib/calendar";
+import { buildMonthGrid, toBlocks, type DayHours } from "../lib/calendar";
 import type { DayCell } from "../lib/calendar";
-import type { BookingQueueItem } from "../types";
+import type { CalendarBooking } from "../types";
 
-function booking(over: Partial<BookingQueueItem> = {}): BookingQueueItem {
+function booking(over: Partial<CalendarBooking> = {}): CalendarBooking {
   return {
     id: "bk-1",
     reference_number: "BK-2026-000031",
@@ -29,15 +29,19 @@ function booking(over: Partial<BookingQueueItem> = {}): BookingQueueItem {
     submitted_at: "2026-08-01T10:00:00+08:00",
     unverified_payment_count: 0,
     tier_review_since: null,
+    changeover_hours: 1,
     ...over,
   };
 }
 
+/** The stored settings: a 6–22 window, a 6-hour minimum, a 1-hour Changeover. */
+const DAY_HOURS: DayHours = { openingHour: 6, closingHour: 22, minDurationHours: 6, changeoverHours: 1 };
+
 const now = new Date("2026-08-14T12:00:00+08:00");
 
 /** The real grid, so the cell under test is built the way production builds it. */
-function dayFor(date: string, bookings: BookingQueueItem[] = []): DayCell {
-  return buildMonthGrid(2026, 8, toBlocks(bookings), now)
+function dayFor(date: string, bookings: CalendarBooking[] = []): DayCell {
+  return buildMonthGrid(2026, 8, toBlocks(bookings), now, DAY_HOURS)
     .flat()
     .find((d) => d.date === date)!;
 }
@@ -115,6 +119,53 @@ describe("CalendarDay", () => {
     const atriumLane = screen.getByText("Atrium").closest("div")!;
     expect(within(atriumLane).getByText("BK-A")).toBeInTheDocument();
     expect(within(atriumLane).getByText("BK-FF")).toBeInTheDocument();
+  });
+
+  // SCRUM-261, ADR 0010: each Event is followed by its Changeover, drawn
+  // from the length the Booking recorded.
+  describe("the Changeover", () => {
+    it("follows the Event with a shaded block of the Booking's recorded length", () => {
+      renderDay(
+        dayFor("2026-08-14", [
+          booking({ start_time: "13:00:00", duration_hours: 4, changeover_hours: 2 }),
+        ]),
+      );
+      const changeover = screen.getByText("Changeover").closest("[data-changeover]")!;
+      expect(changeover).toBeInTheDocument();
+      expect(within(changeover as HTMLElement).getByText(/17:00–19:00/)).toBeInTheDocument();
+    });
+
+    it("wraps a Changeover that runs past midnight onto the clock", () => {
+      // An Event may end exactly at closing; its Changeover runs on past it.
+      renderDay(
+        dayFor("2026-08-14", [
+          booking({ start_time: "16:00:00", duration_hours: 6, changeover_hours: 3 }),
+        ]),
+      );
+      const changeover = screen.getByText("Changeover").closest("[data-changeover]")!;
+      expect(within(changeover as HTMLElement).getByText(/22:00–01:00/)).toBeInTheDocument();
+    });
+
+    it("is not a second link to the Booking", () => {
+      renderDay(dayFor("2026-08-14", [booking({ changeover_hours: 1 })]));
+      expect(screen.getAllByRole("link")).toHaveLength(1);
+    });
+
+    it("is not drawn for a Booking recorded with a Changeover of 0", () => {
+      renderDay(dayFor("2026-08-14", [booking({ changeover_hours: 0 })]));
+      expect(screen.queryByText("Changeover")).not.toBeInTheDocument();
+    });
+
+    it("shows a Full Facility Event's Changeover in both lanes", () => {
+      renderDay(
+        dayFor("2026-08-14", [booking({ venue_code: "full_facility", changeover_hours: 1 })]),
+      );
+      expect(screen.getAllByText("Changeover")).toHaveLength(2);
+      for (const label of ["Atrium", "Sports Arena"]) {
+        const lane = screen.getByText(label).closest("div")!;
+        expect(within(lane).getByText("Changeover")).toBeInTheDocument();
+      }
+    });
   });
 
   it("marks today with a visible label", () => {

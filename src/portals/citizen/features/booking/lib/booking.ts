@@ -3,6 +3,7 @@ import type { StoredRequest } from '@/portals/citizen/lib/mock/types';
 import { getSupabaseClient } from '@/portals/citizen/lib/supabase/client';
 import { LIMITS, fieldTooLong, emailError, phMobileError, boundedInt } from '@/portals/citizen/lib/validation';
 import { safeExt, canonicalMime, type DocumentUploadProgress } from '@/portals/citizen/lib/storage/file-validation';
+import { changeoverClashMessage } from '@/portals/citizen/features/booking/lib/schedule';
 import type { MyBooking, VenueAvailability, BookingSubmissionFields, SubmittedBooking } from '../types';
 
 export const bookingService = {
@@ -238,9 +239,14 @@ export function translateBookingError(
         ? 'We could not find that booking.'
         : 'Please complete your profile before booking a venue.';
 
-    case '23P01':
-      // Exclusion-constraint violation on the occupancy range.
+    case '23P01': {
+      // Exclusion-constraint violation on the occupancy range. Since DB l117,
+      // with a Changeover above 0, submit_booking names the hours it needs;
+      // the same code with any other text is a plain overlap.
+      const needs = /too close to another event; the LCC needs (\d+) hour/.exec(message ?? '');
+      if (needs) return changeoverClashMessage(Number(needs[1]));
       return 'That time is no longer available. Please choose another.';
+    }
 
     case '23503':
       // FK to a catalog row that has since been deactivated.

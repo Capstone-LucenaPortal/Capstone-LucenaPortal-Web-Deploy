@@ -250,6 +250,24 @@ describe('translateBookingError', () => {
     expect(msg).not.toMatch(/exclusion constraint/i);
   });
 
+  // SCRUM-261 (DB l117): a Booking that gets past the form but lands in a
+  // Changeover, e.g. two people submitting at once.
+  it('explains a Changeover refusal with the hours the LCC needs', () => {
+    const msg = translateBookingError(
+      'submit_booking: too close to another event; the LCC needs 2 hour(s) between events to reset the venue',
+      '23P01',
+    );
+    expect(msg).toBe(
+      'This time is too close to another event. The LCC needs 2 hour(s) between events to reset the venue.',
+    );
+  });
+
+  it('keeps the overlap wording for a plain clash', () => {
+    // With a Changeover of 0, submit_booking words it the old way.
+    const msg = translateBookingError('submit_booking: atrium is already booked for that time', '23P01');
+    expect(msg).toBe('That time is no longer available. Please choose another.');
+  });
+
   it('reports a deactivated catalog option as such, not as a payment problem', () => {
     const msg = translateBookingError('insert or update violates foreign key constraint', '23503');
     expect(msg).toMatch(/no longer available/i);

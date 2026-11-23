@@ -16,6 +16,7 @@ export function toBookingConfigArgs(c: BookingConfig) {
     p_closing_hour: c.closingHour,
     p_min_duration_hours: c.minDurationHours,
     p_payment_window_hours: c.paymentWindowHours,
+    p_changeover_hours: c.changeoverHours,
   };
 }
 

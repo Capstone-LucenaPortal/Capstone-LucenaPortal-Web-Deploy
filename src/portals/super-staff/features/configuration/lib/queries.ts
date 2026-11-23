@@ -9,7 +9,7 @@ import type { BookingConfig, IncidentsConfig, YellowCardConfig } from "../types"
 // staff_incident_config is gated is_active_staff('staff'), which a super_staff
 // does not match — roles here are exact, not hierarchical.
 const BOOKING_COLUMNS =
-  "downpayment_pct, payment_window_hours, min_duration_hours, opening_hour, closing_hour";
+  "downpayment_pct, payment_window_hours, min_duration_hours, opening_hour, closing_hour, changeover_hours";
 const INCIDENT_COLUMNS =
   "sla_hours_critical, sla_hours_high, sla_hours_medium, sla_hours_low, at_risk_threshold_pct, nudge_day, auto_close_day, confirmation_window_days, max_active_reports_per_citizen";
 const YELLOW_CARD_COLUMNS = "processing_time_target_days, at_risk_threshold_pct";
@@ -42,6 +42,7 @@ export async function getBookingConfig(): Promise<BookingConfig> {
     closingHour: required(row.closing_hour, "closing_hour"),
     minDurationHours: required(row.min_duration_hours, "min_duration_hours"),
     paymentWindowHours: required(row.payment_window_hours, "payment_window_hours"),
+    changeoverHours: required(row.changeover_hours, "changeover_hours"),
   };
 }
 

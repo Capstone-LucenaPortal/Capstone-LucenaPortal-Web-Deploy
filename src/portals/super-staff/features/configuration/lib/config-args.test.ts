@@ -12,16 +12,24 @@ describe("toBookingConfigArgs", () => {
     closingHour: 17,
     minDurationHours: 2,
     paymentWindowHours: 48,
+    changeoverHours: 1,
   };
 
-  it("builds exactly the five arguments the tab edits", () => {
+  it("builds exactly the six arguments the tab edits", () => {
     expect(toBookingConfigArgs(booking)).toEqual({
       p_downpayment_pct: 50,
       p_opening_hour: 8,
       p_closing_hour: 17,
       p_min_duration_hours: 2,
       p_payment_window_hours: 48,
+      p_changeover_hours: 1,
     });
+  });
+
+  // 0 is a real setting (the Changeover off), not "leave unchanged": it must
+  // reach the RPC as 0, which coalesce keeps, never as null or absent.
+  it("sends a Changeover of 0 as 0", () => {
+    expect(toBookingConfigArgs({ ...booking, changeoverHours: 0 }).p_changeover_hours).toBe(0);
   });
 
   it("never sends balance_due_days_before_event — omitted means unchanged", () => {

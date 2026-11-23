@@ -1,8 +1,9 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import { cn } from "@/portals/staff/lib/utils";
 import { STATUS_BADGE_VARIANT, STATUS_LABELS } from "../lib/status";
 import { SPACE_LABELS, SPACE_ORDER, type SpaceCode } from "../lib/venue-spaces";
-import type { CalendarBlock, DayCell, DayStatus } from "../lib/calendar";
+import { heldUntilHour, type CalendarBlock, type DayCell, type DayStatus } from "../lib/calendar";
 
 /** The marker colours for a lane's status. Not the status-badge palette. */
 const DAY_STATUS_DOT: Record<DayStatus, string> = {
@@ -102,7 +103,12 @@ function Lane({
         <span aria-hidden="true">{SPACE_LABELS[space]}</span>
       </p>
       {blocks.map((block) => (
-        <BlockChip key={`${block.bookingId}-${space}`} block={block} interactive={interactive} />
+        <Fragment key={`${block.bookingId}-${space}`}>
+          <BlockChip block={block} interactive={interactive} />
+          {block.changeoverHours > 0 && (
+            <ChangeoverChip block={block} interactive={interactive} />
+          )}
+        </Fragment>
       ))}
     </div>
   );
@@ -116,9 +122,7 @@ function BlockChip({
   interactive: boolean;
 }) {
   const tint = BLOCK_TINT[STATUS_BADGE_VARIANT[block.status]] ?? BLOCK_TINT.default;
-  const hours = `${String(block.startHour).padStart(2, "0")}:00–${String(
-    block.endHour,
-  ).padStart(2, "0")}:00`;
+  const hours = hourRange(block.startHour, block.endHour);
 
   const body = (
     <>
@@ -156,4 +160,44 @@ function BlockChip({
       {body}
     </Link>
   );
+}
+
+/**
+ * The reset time after an Event (SCRUM-261): its Space is held, but nothing is
+ * happening in it. Hatched and dashed so it never reads as a second Event, and
+ * not a link — it is the Booking's, and the Event chip above already opens it.
+ *
+ * Its length is the Booking's own recorded Changeover, never today's setting,
+ * so an older Booking shows the Changeover it was actually given (ADR 0010).
+ */
+function ChangeoverChip({
+  block,
+  interactive,
+}: {
+  block: CalendarBlock;
+  interactive: boolean;
+}) {
+  return (
+    <span
+      data-changeover=""
+      title={`Kept free after ${block.reference} so the LCC can reset the space`}
+      className={cn(
+        "mt-0.5 block rounded border border-dashed border-gray-300 px-1 py-0.5 text-[10px] leading-tight text-gray-500",
+        "bg-[repeating-linear-gradient(135deg,#f3f4f6_0_4px,#ffffff_4px_8px)]",
+        !interactive && "opacity-50",
+      )}
+    >
+      <span className="font-medium">Changeover</span>{" "}
+      {hourRange(block.endHour, heldUntilHour(block))}
+    </span>
+  );
+}
+
+/**
+ * "13:00–17:00". Wraps at midnight: an Event may end at closing and its
+ * Changeover run on past it, so 22 + 3 reads "01:00", not "25:00".
+ */
+function hourRange(startHour: number, endHour: number): string {
+  const clock = (hour: number) => `${String(hour % 24).padStart(2, "0")}:00`;
+  return `${clock(startHour)}–${clock(endHour)}`;
 }

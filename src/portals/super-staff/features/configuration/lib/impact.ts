@@ -4,6 +4,7 @@ import type {
   YellowCardConfig,
 } from "../types";
 import { INCIDENT_LEVELS } from "../types";
+import { isChangeoverHours } from "./validation";
 
 
 export type IncidentImpact = {
@@ -73,7 +74,26 @@ export function yellowCardImpact(
 export type BookingImpact = {
   financial: string | null;
   hours: string | null;
+  changeover: string | null;
 };
+
+const CHANGEOVER_KEPT =
+  "Bookings already made keep the changeover they were booked with.";
+
+/**
+ * ADR 0010: each Booking keeps the Changeover in force when it was submitted,
+ * so the note always says so. At 0 the "N hour(s)" wording would be nonsense,
+ * the same reason submit_booking drops it at 0 (l117 §5). Silent on a value
+ * the form is refusing, which the field's own error already names.
+ */
+function changeoverImpact(saved: BookingConfig, draft: BookingConfig) {
+  const n = draft.changeoverHours;
+  if (saved.changeoverHours === n || !isChangeoverHours(n)) return null;
+  if (n === 0) {
+    return `New bookings will have no changeover: the space can be booked again as soon as the event ends. ${CHANGEOVER_KEPT}`;
+  }
+  return `Each new booking keeps its space free for ${n} hour(s) after the event so the LCC can reset it. ${CHANGEOVER_KEPT}`;
+}
 
 export function bookingImpact(
   saved: BookingConfig,
@@ -92,5 +112,5 @@ export function bookingImpact(
       ? `The citizen booking form will offer ${draft.openingHour}:00–${draft.closingHour}:00 with a ${draft.minDurationHours}-hour minimum. It reads these live, so the change is visible on the next page load.`
       : null;
 
-  return { financial, hours };
+  return { financial, hours, changeover: changeoverImpact(saved, draft) };
 }

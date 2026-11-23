@@ -2,7 +2,8 @@ import { cache } from "react";
 import { createClient } from "@/shared/supabase/server";
 
 /**
- * The stored configuration as of 2026-08-11: 50 / 72 / 6 / 6–22 / 7.
+ * The stored configuration as of 2026-08-11: 50 / 72 / 6 / 6–22 / 7, and a
+ * 1-hour Changeover as of DB l117 (SCRUM-261).
  *
  * These are the fallbacks used when `public_booking_config` is unreachable, not
  * a second source of truth. Nothing in the UI may hardcode them — the quote
@@ -16,6 +17,7 @@ export const DEFAULT_BOOKING_CONFIG = {
   opening_hour: 6,
   closing_hour: 22,
   balance_due_days_before_event: 7,
+  changeover_hours: 1,
 } as const;
 
 export interface BookingConfig {
@@ -25,6 +27,12 @@ export interface BookingConfig {
   opening_hour: number;
   closing_hour: number;
   balance_due_days_before_event: number;
+  /**
+   * The Changeover a NEW Booking would be given. Only the calendar's day
+   * status reads it, to ask whether one more Event still fits; every drawn
+   * Changeover is the Booking's own recorded length (ADR 0010).
+   */
+  changeover_hours: number;
 }
 
 /**
@@ -51,6 +59,7 @@ type ConfigRow = {
   opening_hour: number | null;
   closing_hour: number | null;
   balance_due_days_before_event: number | null;
+  changeover_hours: number | null;
 };
 
 function toNumber(value: number | null | undefined, fallback: number): number {
@@ -71,7 +80,7 @@ export const getBookingConfig = cache(async (): Promise<BookingConfig> => {
   const { data } = await supabase
     .from("public_booking_config")
     .select(
-      "downpayment_pct, payment_window_hours, min_duration_hours, opening_hour, closing_hour, balance_due_days_before_event",
+      "downpayment_pct, payment_window_hours, min_duration_hours, opening_hour, closing_hour, balance_due_days_before_event, changeover_hours",
     )
     .maybeSingle();
 
@@ -97,6 +106,10 @@ export const getBookingConfig = cache(async (): Promise<BookingConfig> => {
     balance_due_days_before_event: toNumber(
       row?.balance_due_days_before_event,
       DEFAULT_BOOKING_CONFIG.balance_due_days_before_event,
+    ),
+    changeover_hours: toNumber(
+      row?.changeover_hours,
+      DEFAULT_BOOKING_CONFIG.changeover_hours,
     ),
   };
 });

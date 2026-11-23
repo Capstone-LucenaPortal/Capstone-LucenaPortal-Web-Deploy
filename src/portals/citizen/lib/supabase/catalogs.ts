@@ -72,6 +72,8 @@ export interface BookingConfig {
   opening_hour: number;
   closing_hour: number;
   balance_due_days_before_event: number;
+  /** Changeover (DB l117): whole hours after each Event its Space is kept free for the reset. 0–4. */
+  changeover_hours: number;
 }
 
 /** The single `public_site_info` row — trunkline and office hours, LGU-editable. */

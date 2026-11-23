@@ -68,6 +68,16 @@ export interface BookingQueueItem {
   tier_review_since: string | null;
 }
 
+/**
+ * What the calendar reads: the queue's columns plus the Changeover the Booking
+ * recorded when it was submitted (DB l117). That length is the Booking's own
+ * and never today's setting — two Bookings on one calendar can carry different
+ * Changeovers, and that is the decision, not drift (ADR 0010).
+ */
+export interface CalendarBooking extends BookingQueueItem {
+  changeover_hours: number;
+}
+
 /** Everything the detail page adds. */
 export interface Booking extends BookingQueueItem {
   event_type_code: string;

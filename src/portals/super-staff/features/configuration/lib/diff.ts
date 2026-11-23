@@ -50,6 +50,7 @@ export function diffBooking(before: BookingConfig, after: BookingConfig) {
     { get: (c) => c.minDurationHours, label: "Minimum duration (hours)" },
     { get: (c) => c.openingHour, label: "Opening hour" },
     { get: (c) => c.closingHour, label: "Closing hour" },
+    { get: (c) => c.changeoverHours, label: "Changeover (hours)" },
   ]);
 }
 

@@ -136,6 +136,14 @@ export function BookingCalendar({
           A booking marked “both spaces” is one Full Facility booking occupying
           both lanes, not two bookings.
         </span>
+        <span className="inline-flex items-center gap-1">
+          <span
+            className="inline-block h-2.5 w-4 rounded-sm border border-dashed border-gray-300 bg-[repeating-linear-gradient(135deg,#f3f4f6_0_2px,#ffffff_2px_4px)]"
+            aria-hidden="true"
+          />
+          Changeover: the time after an event when its space is kept free for
+          the reset. Each booking keeps the length it was made with.
+        </span>
       </div>
 
       {/*

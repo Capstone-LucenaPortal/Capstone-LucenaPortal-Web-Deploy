@@ -81,38 +81,80 @@ export function parseDuringRange(during: string): { start: Date; end: Date } | n
   return { start, end };
 }
 
+/** The hours an Occupancy holds its Space on a day, counted from that day's midnight. */
+export type HourRange = { startHour: number; endHour: number };
+
 function hourInManila(date: Date): number {
   return Number(
     new Intl.DateTimeFormat('en-CA', { timeZone: MANILA_TIME_ZONE, hour: '2-digit', hourCycle: 'h23' }).format(date),
   );
 }
 
-/** Pure: a `during` range literal -> its start/end hour in Asia/Manila local time. */
-export function occupiedHourRange(during: string): { startHour: number; endHour: number } | null {
-  const parsed = parseDuringRange(during);
+/**
+ * Pure: an availability row -> the hours its Occupancy holds the Space, from
+ * the Event's start to the end of its `blocked` range: the Event plus the
+ * Changeover that Booking recorded (DB l117). The end is counted from the
+ * start, so a Changeover running past midnight reads as 25, 26… rather than
+ * wrapping to the small hours.
+ *
+ * A row without `blocked` falls back to the Event range, so the calendar
+ * still shows every Booking if this Web build reaches a database l117 hasn't.
+ */
+export function occupancyHours(row: { during: string; blocked?: string | null }): HourRange | null {
+  const parsed = parseDuringRange(row.blocked ?? row.during);
   if (!parsed) return null;
-  return { startHour: hourInManila(parsed.start), endHour: hourInManila(parsed.end) };
+  const startHour = hourInManila(parsed.start);
+  const hours = (parsed.end.getTime() - parsed.start.getTime()) / 3_600_000;
+  return { startHour, endHour: startHour + hours };
 }
 
-/** Pure: a day's occupied hour ranges -> its calendar status against the venue's opening window. */
+/**
+ * Pure: a day's Occupancies -> its calendar status for one Venue.
+ *
+ * Full means no start on the hour can fit the minimum duration once
+ * Changeovers are counted (SCRUM-261): the Event must end by closing, and
+ * neither it nor its own Changeover may clash. Its Changeover may run past
+ * closing, as the database allows. Booked hours alone don't decide it: seven
+ * held hours in the middle of the day can leave no room for a six-hour Event.
+ */
 export function computeDayStatus(
-  occupiedRanges: Array<{ startHour: number; endHour: number }>,
-  openingHour: number,
-  closingHour: number,
+  occupiedRanges: HourRange[],
+  dayHours: { openingHour: number; closingHour: number; minDurationHours: number; changeoverHours: number },
 ): DayStatus {
   if (occupiedRanges.length === 0) return 'available';
-  const totalHours = occupiedRanges.reduce((sum, r) => sum + Math.max(0, r.endHour - r.startHour), 0);
-  return totalHours >= closingHour - openingHour ? 'fully-booked' : 'partial';
+  const { openingHour, closingHour, minDurationHours, changeoverHours } = dayHours;
+  for (let start = openingHour; start + minDurationHours <= closingHour; start++) {
+    if (!hasTimeConflict(occupiedRanges, start, minDurationHours, changeoverHours)) return 'partial';
+  }
+  return 'fully-booked';
 }
 
-/** Pure: does a proposed start/duration overlap any already-occupied range? */
+/**
+ * Pure: does a proposed Booking clash with any Occupancy already on the day?
+ *
+ * Each Occupancy runs to its blocked end (`occupancyHours`). The proposed
+ * Booking holds the Space for its Event plus `changeoverHours`, the setting in
+ * force now, which is what it would record. So the rule works both ways, as
+ * the database's EXCLUDE on `blocked` does (DB l117): a start inside another
+ * Event's Changeover clashes, and so does a time whose own Changeover would
+ * run into a later Event.
+ */
 export function hasTimeConflict(
-  occupiedRanges: Array<{ startHour: number; endHour: number }>,
+  occupiedRanges: HourRange[],
   startHour: number,
   durationHours: number,
+  changeoverHours = 0,
 ): boolean {
-  const endHour = startHour + durationHours;
-  return occupiedRanges.some((r) => startHour < r.endHour && endHour > r.startHour);
+  const blockedEnd = startHour + durationHours + changeoverHours;
+  return occupiedRanges.some((r) => startHour < r.endHour && blockedEnd > r.startHour);
+}
+
+/**
+ * Pure: the warning for a time that clashes once Changeovers are counted.
+ * The form and the translated `submit_booking` refusal say the same thing.
+ */
+export function changeoverClashMessage(changeoverHours: number): string {
+  return `This time is too close to another event. The LCC needs ${changeoverHours} hour(s) between events to reset the venue.`;
 }
 
 /**

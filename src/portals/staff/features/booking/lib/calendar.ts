@@ -1,16 +1,18 @@
 import { MANILA_TIME_ZONE } from "@/shared/dates/manila";
 import { SPACE_ORDER, spacesForVenue, type SpaceCode } from "./venue-spaces";
-import type { BookingQueueItem, BookingStatus } from "../types";
+import type { BookingStatus, CalendarBooking } from "../types";
 
 /**
  * The calendar maths. Every function here is pure and takes its month or its
  * `now` explicitly — that is the whole reason the calendar is testable, and it
  * is why no Date is ever constructed from a hardcoded string outside a test.
  *
- * `computeDayStatus` and `hasTimeConflict` are ported from
- * Capstone-LucenaPortal-EndUser/lccData.ts, where they are already tested.
- * Their comments came with them. Re-testing them here is not duplication: this
- * repo's copy can drift and these tests are what notices.
+ * `hasTimeConflict` is ported from Capstone-LucenaPortal-EndUser/lccData.ts,
+ * comments and all. `computeDayStatus` was too, until SCRUM-261 replaced its
+ * "booked hours >= open hours" with the rule the database enforces since l117:
+ * a day is Full when no start on the hour fits the minimum duration once
+ * Changeovers are counted. The citizen form's copy (#163) follows the same
+ * rule; these tests are what notices if this one drifts.
  *
  * `parseDuringRange` and `occupiedHourRange` are deliberately NOT ported. They
  * exist to decode a `tstzrange` literal from public_venue_availability, and
@@ -58,8 +60,22 @@ export interface CalendarBlock {
   date: string;
   startHour: number;
   endHour: number;
+  /**
+   * The Changeover the Booking recorded at submit: whole hours after endHour
+   * during which this Space is kept free for the reset. 0 draws none. Read
+   * off the Booking, never today's setting (ADR 0010).
+   */
+  changeoverHours: number;
   /** True for a venue that consumes both spaces, so a block can say so. */
   spansBothSpaces: boolean;
+}
+
+/**
+ * The hour a block's Space is held until: the Event's end plus the Changeover
+ * the Booking recorded — the `blocked` range bk_sync_occupancy writes (l117).
+ */
+export function heldUntilHour(block: CalendarBlock): number {
+  return block.endHour + block.changeoverHours;
 }
 
 export type DayStatus = "available" | "partial" | "fully-booked";
@@ -72,9 +88,6 @@ export interface DayCell {
   statusBySpace: Record<SpaceCode, DayStatus>;
 }
 
-/** The stored opening window: 6–22 as of 2026-08-11. */
-const DEFAULT_WINDOW = { openingHour: 6, closingHour: 22 };
-
 /**
  * One block per (booking, space) pair — exactly the shape of
  * `booking_occupancies`, which is what makes "every occupancy row has exactly
@@ -84,7 +97,7 @@ const DEFAULT_WINDOW = { openingHour: 6, closingHour: 22 };
  * other seven, matching bk_sync_occupancy: one transition releases a hold and
  * everything else holds it.
  */
-export function toBlocks(bookings: BookingQueueItem[]): CalendarBlock[] {
+export function toBlocks(bookings: CalendarBooking[]): CalendarBlock[] {
   const blocks: CalendarBlock[] = [];
 
   for (const booking of bookings) {
@@ -109,6 +122,9 @@ export function toBlocks(bookings: BookingQueueItem[]): CalendarBlock[] {
       // booking that would run past closing. If the closing hour is ever
       // removed, this is the line that has to change.
       endHour: startHour + booking.duration_hours,
+      // The same length on every Space the Booking uses: bk_sync_occupancy
+      // writes one blocked range per Space from the one recorded figure.
+      changeoverHours: booking.changeover_hours,
       spansBothSpaces: spaces.length > 1,
     };
 
@@ -126,18 +142,43 @@ export function toBlocks(bookings: BookingQueueItem[]): CalendarBlock[] {
   return blocks;
 }
 
-/** Pure: a day's occupied hour ranges -> its status against the opening window. */
+/**
+ * What decides whether a Space has room left on a day: the opening window, the
+ * shortest Event that can be booked, and the Changeover a NEW Booking would be
+ * given — today's setting, because that is what bk_on_submit will record on it.
+ */
+export interface DayHours {
+  openingHour: number;
+  closingHour: number;
+  minDurationHours: number;
+  changeoverHours: number;
+}
+
+/**
+ * Pure: a day's held hour ranges -> its status.
+ *
+ * Each range is an Occupancy's BLOCKED hours, its Event plus the Changeover
+ * that Booking recorded. The day is Full when no start on the hour fits the
+ * minimum duration plus a new Booking's own Changeover without touching one —
+ * exactly what submit_booking and the EXCLUDE on (space, blocked) will accept
+ * (DB l117), so the calendar never shows room the database would refuse.
+ * SCRUM-261 retired "booked hours >= open hours", which called a day with a
+ * seven-hour Event in the middle part-booked when no six-hour Event fits it.
+ *
+ * Only the Event must end by closing; its Changeover may run past, because no
+ * Booking starts after closing for it to collide with.
+ */
 export function computeDayStatus(
-  occupiedRanges: Array<{ startHour: number; endHour: number }>,
-  openingHour: number,
-  closingHour: number,
+  heldRanges: Array<{ startHour: number; endHour: number }>,
+  day: DayHours,
 ): DayStatus {
-  if (occupiedRanges.length === 0) return "available";
-  const totalHours = occupiedRanges.reduce(
-    (sum, r) => sum + Math.max(0, r.endHour - r.startHour),
-    0,
-  );
-  return totalHours >= closingHour - openingHour ? "fully-booked" : "partial";
+  if (heldRanges.length === 0) return "available";
+
+  const needs = day.minDurationHours + day.changeoverHours;
+  for (let start = day.openingHour; start + day.minDurationHours <= day.closingHour; start++) {
+    if (!hasTimeConflict(heldRanges, start, needs)) return "partial";
+  }
+  return "fully-booked";
 }
 
 /**
@@ -252,7 +293,9 @@ export function buildMonthGrid(
   month: number,
   blocks: CalendarBlock[],
   now: Date,
-  window: { openingHour: number; closingHour: number } = DEFAULT_WINDOW,
+  // Required, with no default: the live settings come from the route, and a
+  // default here would be a second copy of DEFAULT_BOOKING_CONFIG.
+  dayHours: DayHours,
 ): DayCell[][] {
   const today = todayInManila(now);
 
@@ -282,10 +325,12 @@ export function buildMonthGrid(
       SPACE_ORDER.map((space) => [
         space,
         computeDayStatus(
-          // An unplaced block cannot occupy a lane it is not in.
-          dayBlocks.filter((b) => b.space === space),
-          window.openingHour,
-          window.closingHour,
+          // An unplaced block cannot occupy a lane it is not in. Each block
+          // holds its Space until its own recorded Changeover ends.
+          dayBlocks
+            .filter((b) => b.space === space)
+            .map((b) => ({ startHour: b.startHour, endHour: heldUntilHour(b) })),
+          dayHours,
         ),
       ]),
     ) as Record<SpaceCode, DayStatus>;

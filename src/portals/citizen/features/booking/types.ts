@@ -134,6 +134,8 @@ export interface VenueAvailability {
   space_code: string;
   during: string;
   event_date: string;
+  /** The Event plus the Changeover its Booking recorded (DB l117). */
+  blocked: string;
 }
 
 export interface BookingSubmissionFields {

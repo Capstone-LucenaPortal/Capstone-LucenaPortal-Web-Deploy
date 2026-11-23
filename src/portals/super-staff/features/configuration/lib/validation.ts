@@ -124,6 +124,14 @@ const isPct = (n: number) => Number.isInteger(n) && n >= 0 && n <= 100;
 const isHour = (n: number) => Number.isInteger(n) && n >= 0 && n <= 23;
 
 /**
+ * booking_config's CHECK (l117). 0 is a real value — the Changeover off — so
+ * this is not isPositiveInt. Exported because the impact note must not
+ * describe a value the form is refusing.
+ */
+export const isChangeoverHours = (n: number) =>
+  Number.isInteger(n) && n >= 0 && n <= 4;
+
+/**
  * The cross-field rules are not cosmetic: opening_hour, closing_hour and
  * min_duration_hours are read LIVE by the citizen booking form
  * (LCCStep3Scheduling.tsx), so an incoherent pair makes the public form
@@ -147,6 +155,9 @@ export function validateBooking(c: BookingConfig): ConfigErrors {
     errors.minDuration = "The minimum booking is longer than the day is open.";
   }
   if (!isPositiveInt(c.paymentWindowHours)) errors.paymentWindow = "Enter whole hours ≥ 1.";
+  if (!isChangeoverHours(c.changeoverHours)) {
+    errors.changeover = "Enter whole hours from 0 to 4.";
+  }
   return errors;
 }
 
