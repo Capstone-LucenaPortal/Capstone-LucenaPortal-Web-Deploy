@@ -147,10 +147,18 @@ afternoon.
 _Avoid_: Venue, Sub-venue, Section, Zone
 
 **Occupancy**:
-A Booking's claim on a single Space for a single stretch of time. A Booking claims every Space its
-Venue is made of, and holds them from the moment it is submitted until it is cancelled — which is
-why two Bookings collide when they share a Space, not when they share a Venue.
+A Booking's claim on a single Space for a single stretch of time — its Event plus the Changeover
+after it. A Booking claims every Space its Venue is made of, and holds them from the moment it is
+submitted until it is cancelled — which is why two Bookings collide when they share a Space, not
+when they share a Venue.
 _Avoid_: Slot, Block, Booked time, Reservation
+
+**Changeover**:
+The time after an Event during which its Space is reset for the next one and cannot be booked.
+It belongs to whichever Event comes first on the day, whatever order the Bookings were made in,
+and follows every Venue, rehearsal access included. Its length is set by the city, and a Booking
+keeps the length in force when it was submitted — changing it later reaches only new Bookings.
+_Avoid_: Buffer, Turnaround (that is a service-time promise), Clean-up time, Gap
 
 **Classification**:
 What kind of organisation is holding the event, which is what determines whether it is charged
