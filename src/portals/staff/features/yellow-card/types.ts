@@ -40,6 +40,47 @@ export interface YellowCardQueueItem {
   deadline_state: DeadlineState | null;
 }
 
+/**
+ * A card's own status (`active`, `revoked`, `superseded`), distinct from its
+ * application's: a Revocation acts on the card, and the application stays
+ * `approved` (Central-System-Documents ADR 0011).
+ */
+export type YellowCardCardStatus =
+  Database["public"]["Enums"]["yellow_card_status"];
+
+/** What a Correction replaces and why (DB l120). */
+export interface YellowCardCorrection {
+  replaced_card_id: string;
+  replaced_card_number: string;
+  /** The replaced card's status now, which may have changed since filing. */
+  replaced_card_status: YellowCardCardStatus | null;
+  /** The Citizen's "What needs correcting?", required on every Correction. */
+  note: string;
+}
+
+/** The Yellow Card an approved application issued (DB l119, l120). */
+export interface YellowCardIssuedCard {
+  id: string;
+  card_number: string;
+  status: YellowCardCardStatus;
+  /** The stored name ("Ana Reyes"); the card face prints it as "REYES, ANA". */
+  holder_name: string;
+  /** A date, `YYYY-MM-DD`. */
+  issued_on: string;
+  /** Set exactly when the card is `revoked`. */
+  revocation: {
+    reason: string;
+    revoked_by_name: string;
+    revoked_at: string;
+  } | null;
+  /** Set exactly when the card is `superseded`: the card that replaced it. */
+  superseded_by: {
+    card_number: string;
+    /** The reference number of the Correction that issued that card. */
+    correction_reference: string;
+  } | null;
+}
+
 /** Everything the detail page needs. Superset of the list shape. */
 export interface YellowCardApplication extends YellowCardQueueItem {
   date_of_birth: string;
@@ -56,6 +97,16 @@ export interface YellowCardApplication extends YellowCardQueueItem {
   needs_dedup_review: boolean;
   decided_at: string | null;
   review_cycles: number;
+  /** Null for a first application; set means this is a Correction. */
+  correction: YellowCardCorrection | null;
+  /**
+   * The applicant says they already hold a printed Yellow Card. It changes no
+   * outcome: it only prompts a check of the paper registry.
+   */
+  holds_printed_card: boolean;
+  printed_card_number: string | null;
+  /** Null until approval issues a card. */
+  issued_card: YellowCardIssuedCard | null;
 }
 
 /**

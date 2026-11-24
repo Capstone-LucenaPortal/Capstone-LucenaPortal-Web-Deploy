@@ -282,6 +282,12 @@ const VIEW_ROW: MyYellowCardApplication = {
   current_reason: 'Test Request Revision',
   current_reviewed_at: '2026-08-07T02:00:00Z',
   document_count: 1,
+  is_correction: false,
+  replaces_card_id: null,
+  replaced_card_number: null,
+  correction_note: null,
+  holds_printed_card: false,
+  printed_card_number: null,
 };
 
 describe('mapApplicationToFormValues', () => {
@@ -663,6 +669,99 @@ describe('yellowCardService.submitApplication field validation (live path)', () 
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+/**
+ * DB l120 gave `submit_yellow_card_application` four defaulted parameters: the
+ * Correction and the existing-holder answer. A first application with no
+ * printed card sends exactly today's 14, so it still reaches a database that
+ * has not taken l120.
+ */
+describe('yellowCardService.submitApplication parameters (live path)', () => {
+  async function paramsSentFor(fields: YellowCardApplicationFields) {
+    const rpc = vi.fn().mockResolvedValue({ data: { id: 'x', reference_number: 'YC-2026-000001' }, error: null });
+    const fakeClient = { rpc } as unknown as ReturnType<typeof supabaseClientModule.getSupabaseClient>;
+    const spy = vi.spyOn(supabaseClientModule, 'getSupabaseClient').mockReturnValue(fakeClient);
+    try {
+      await yellowCardService.submitApplication(fields);
+      return rpc.mock.calls[0][1];
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  it('sends exactly the original parameters for a first application', async () => {
+    expect(await paramsSentFor(VALID_SUBMIT_FIELDS)).toEqual({
+      p_first_name: 'Juan',
+      p_last_name: 'Dela Cruz',
+      p_date_of_birth: '1990-01-15',
+      p_gender_code: 'male',
+      p_civil_status_code: 'single',
+      p_barangay_code: 'bocohan',
+      p_complete_address: '123 Rizal Street',
+      p_contact_number: '09171234567',
+      p_email_address: 'juan@example.com',
+      p_years_of_residency: 5,
+      p_voter_id_number: '123-456-789',
+      p_privacy_consent: true,
+      p_middle_name: null,
+      p_suffix: null,
+    });
+  });
+
+  it('sends nothing new for explicit defaults: not a Correction, no printed card', async () => {
+    const params = await paramsSentFor({
+      ...VALID_SUBMIT_FIELDS,
+      isCorrection: false,
+      correctionNote: '',
+      holdsPrintedCard: false,
+      printedCardNumber: '',
+    });
+    expect(params).not.toHaveProperty('p_is_correction');
+    expect(params).not.toHaveProperty('p_correction_note');
+    expect(params).not.toHaveProperty('p_holds_printed_card');
+    expect(params).not.toHaveProperty('p_printed_card_number');
+  });
+
+  it('marks a Correction and sends its trimmed note', async () => {
+    const params = await paramsSentFor({
+      ...VALID_SUBMIT_FIELDS,
+      isCorrection: true,
+      correctionNote: '  My last name is misspelled.  ',
+    });
+    expect(params).toMatchObject({
+      p_is_correction: true,
+      p_correction_note: 'My last name is misspelled.',
+    });
+  });
+
+  it('sends the printed card answer and its trimmed number', async () => {
+    const params = await paramsSentFor({
+      ...VALID_SUBMIT_FIELDS,
+      holdsPrintedCard: true,
+      printedCardNumber: ' 0457 ',
+    });
+    expect(params).toMatchObject({ p_holds_printed_card: true, p_printed_card_number: '0457' });
+  });
+
+  it('sends the printed card answer without a number when none is given', async () => {
+    const params = await paramsSentFor({
+      ...VALID_SUBMIT_FIELDS,
+      holdsPrintedCard: true,
+      printedCardNumber: '   ',
+    });
+    expect(params).toMatchObject({ p_holds_printed_card: true });
+    expect(params).not.toHaveProperty('p_printed_card_number');
+  });
+
+  it('drops a printed card number when the applicant holds no printed card', async () => {
+    const params = await paramsSentFor({
+      ...VALID_SUBMIT_FIELDS,
+      holdsPrintedCard: false,
+      printedCardNumber: '0457',
+    });
+    expect(params).not.toHaveProperty('p_printed_card_number');
   });
 });
 

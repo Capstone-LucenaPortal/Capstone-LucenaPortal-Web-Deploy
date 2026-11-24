@@ -565,6 +565,17 @@ export const yellowCardService = {
       p_privacy_consent: fields.privacyConsent,
       p_middle_name: fields.middleName?.trim() || null,
       p_suffix: fields.suffix?.trim() || null,
+      // DB l120's four parameters are defaulted, and go out only when they say
+      // something: a first application with no printed card sends exactly the
+      // 14 above, as it did before l120.
+      ...(fields.isCorrection && { p_is_correction: true }),
+      ...(fields.isCorrection && fields.correctionNote?.trim() && {
+        p_correction_note: fields.correctionNote.trim(),
+      }),
+      ...(fields.holdsPrintedCard && { p_holds_printed_card: true }),
+      ...(fields.holdsPrintedCard && fields.printedCardNumber?.trim() && {
+        p_printed_card_number: fields.printedCardNumber.trim(),
+      }),
     };
     const { data, error } = await client.rpc('submit_yellow_card_application', params);
     if (error) throw new YellowCardSubmitError(translateSubmitError(error.message, error.code));

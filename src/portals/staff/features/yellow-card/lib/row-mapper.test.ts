@@ -88,6 +88,35 @@ describe("toApplication", () => {
     needs_dedup_review: false,
     decided_at: null,
     review_cycles: 0,
+    is_correction: false,
+    replaces_card_id: null,
+    replaced_card_number: null,
+    replaced_card_status: null,
+    correction_note: null,
+    holds_printed_card: false,
+    printed_card_number: null,
+    card_id: null,
+    card_number: null,
+    card_status: null,
+    card_holder_name: null,
+    card_issued_on: null,
+    card_revoked_reason: null,
+    card_revoked_by_name: null,
+    card_revoked_at: null,
+    card_superseded_by_number: null,
+    card_superseded_by_reference: null,
+  };
+
+  /** An approved application whose card is still Active. */
+  const approved: StaffYellowCardApplicationRow = {
+    ...row,
+    status: "approved",
+    decided_at: "2026-11-20T03:00:00+00:00",
+    card_id: "c1d2e3f4-0000-4000-8000-000000000001",
+    card_number: "LC-2026-000012",
+    card_status: "active",
+    card_holder_name: "Ana Reyes",
+    card_issued_on: "2026-11-20",
   };
 
   it("returns null when the row is null, so the page can call notFound()", () => {
@@ -106,6 +135,115 @@ describe("toApplication", () => {
 
   it("treats a null privacy_consent as not consented", () => {
     expect(toApplication({ ...row, privacy_consent: null })?.privacy_consent).toBe(false);
+  });
+
+  describe("Correction", () => {
+    it("is null on a first application", () => {
+      expect(toApplication(row)?.correction).toBeNull();
+    });
+
+    it("carries the replaced card and the Citizen's note", () => {
+      const application = toApplication({
+        ...row,
+        is_correction: true,
+        replaces_card_id: "c1d2e3f4-0000-4000-8000-000000000001",
+        replaced_card_number: "LC-2026-000012",
+        replaced_card_status: "revoked",
+        correction_note: "My middle name is misspelled.",
+      });
+      expect(application?.correction).toEqual({
+        replaced_card_id: "c1d2e3f4-0000-4000-8000-000000000001",
+        replaced_card_number: "LC-2026-000012",
+        replaced_card_status: "revoked",
+        note: "My middle name is misspelled.",
+      });
+    });
+
+    it("throws when the view returns a Correction with no replaced card", () => {
+      expect(() =>
+        toApplication({ ...row, is_correction: true, replaces_card_id: null }),
+      ).toThrow(/replaces_card_id/);
+    });
+  });
+
+  describe("existing holder", () => {
+    it("says no printed card by default", () => {
+      const application = toApplication(row);
+      expect(application?.holds_printed_card).toBe(false);
+      expect(application?.printed_card_number).toBeNull();
+    });
+
+    it("carries the printed card answer and its number", () => {
+      const application = toApplication({
+        ...row,
+        holds_printed_card: true,
+        printed_card_number: "0457",
+      });
+      expect(application?.holds_printed_card).toBe(true);
+      expect(application?.printed_card_number).toBe("0457");
+    });
+
+    it("treats a null holds_printed_card as no printed card", () => {
+      expect(
+        toApplication({ ...row, holds_printed_card: null })?.holds_printed_card,
+      ).toBe(false);
+    });
+  });
+
+  describe("issued card", () => {
+    it("is null when the application issued no card", () => {
+      expect(toApplication(row)?.issued_card).toBeNull();
+    });
+
+    it("carries an Active card with no revocation and no successor", () => {
+      expect(toApplication(approved)?.issued_card).toEqual({
+        id: "c1d2e3f4-0000-4000-8000-000000000001",
+        card_number: "LC-2026-000012",
+        status: "active",
+        holder_name: "Ana Reyes",
+        issued_on: "2026-11-20",
+        revocation: null,
+        superseded_by: null,
+      });
+    });
+
+    it("carries the reason, the revoker and the time of a Revocation", () => {
+      const card = toApplication({
+        ...approved,
+        card_status: "revoked",
+        card_revoked_reason: "Not a Lucena resident.",
+        card_revoked_by_name: "Juan Dela Cruz",
+        card_revoked_at: "2026-11-24T02:00:00+00:00",
+      })?.issued_card;
+      expect(card?.status).toBe("revoked");
+      expect(card?.revocation).toEqual({
+        reason: "Not a Lucena resident.",
+        revoked_by_name: "Juan Dela Cruz",
+        revoked_at: "2026-11-24T02:00:00+00:00",
+      });
+      expect(card?.superseded_by).toBeNull();
+    });
+
+    it("carries the card that superseded it and the Correction that issued that card", () => {
+      const card = toApplication({
+        ...approved,
+        card_status: "superseded",
+        card_superseded_by_number: "LC-2026-000031",
+        card_superseded_by_reference: "YC-2026-000140",
+      })?.issued_card;
+      expect(card?.status).toBe("superseded");
+      expect(card?.superseded_by).toEqual({
+        card_number: "LC-2026-000031",
+        correction_reference: "YC-2026-000140",
+      });
+      expect(card?.revocation).toBeNull();
+    });
+
+    it("throws when the view returns a card with no status", () => {
+      expect(() => toApplication({ ...approved, card_status: null })).toThrow(
+        /card_status/,
+      );
+    });
   });
 });
 

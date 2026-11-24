@@ -64,6 +64,15 @@ export interface MyYellowCardApplication {
   current_reason: string | null;
   current_reviewed_at: string | null;
   document_count: number;
+  // A Correction and the existing-holder answer (DB l120, verified against
+  // the Sandbox 2026-11-24). A Correction's form prefills from these.
+  is_correction: boolean;
+  /** The card a Correction replaces; null on a first application. */
+  replaces_card_id: string | null;
+  replaced_card_number: string | null;
+  correction_note: string | null;
+  holds_printed_card: boolean;
+  printed_card_number: string | null;
 }
 
 export interface MyYellowCard {
@@ -94,6 +103,17 @@ export interface YellowCardApplicationFields {
   yearsOfResidency: number;
   voterIdNumber: string;
   privacyConsent: boolean;
+  /**
+   * A Correction of the Citizen's active card. The database finds the card
+   * itself from `auth.uid()`; no field names it. Defaults to false.
+   */
+  isCorrection?: boolean;
+  /** "What needs correcting?", required by the database on a Correction. */
+  correctionNote?: string;
+  /** "I already hold a printed Yellow Card". Defaults to false. */
+  holdsPrintedCard?: boolean;
+  /** Optional; sent only with `holdsPrintedCard`. */
+  printedCardNumber?: string;
 }
 
 /**

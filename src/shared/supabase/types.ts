@@ -2839,6 +2839,7 @@ export type Database = {
           civil_status_code: string
           complete_address: string
           contact_number: string
+          correction_note: string | null
           created_at: string
           current_review_id: string | null
           date_of_birth: string
@@ -2847,12 +2848,15 @@ export type Database = {
           email_address: string
           first_name: string
           gender_code: string
+          holds_printed_card: boolean
           id: string
           last_name: string
           middle_name: string | null
           needs_dedup_review: boolean
+          printed_card_number: string | null
           privacy_consent: boolean
           reference_number: string
+          replaces_card_id: string | null
           sla_clock_started_at: string | null
           sla_elapsed_seconds: number
           sla_target_hours: number
@@ -2870,6 +2874,7 @@ export type Database = {
           civil_status_code: string
           complete_address: string
           contact_number: string
+          correction_note?: string | null
           created_at?: string
           current_review_id?: string | null
           date_of_birth: string
@@ -2878,12 +2883,15 @@ export type Database = {
           email_address: string
           first_name: string
           gender_code: string
+          holds_printed_card?: boolean
           id?: string
           last_name: string
           middle_name?: string | null
           needs_dedup_review?: boolean
+          printed_card_number?: string | null
           privacy_consent: boolean
           reference_number: string
+          replaces_card_id?: string | null
           sla_clock_started_at?: string | null
           sla_elapsed_seconds?: number
           sla_target_hours: number
@@ -2901,6 +2909,7 @@ export type Database = {
           civil_status_code?: string
           complete_address?: string
           contact_number?: string
+          correction_note?: string | null
           created_at?: string
           current_review_id?: string | null
           date_of_birth?: string
@@ -2909,12 +2918,15 @@ export type Database = {
           email_address?: string
           first_name?: string
           gender_code?: string
+          holds_printed_card?: boolean
           id?: string
           last_name?: string
           middle_name?: string | null
           needs_dedup_review?: boolean
+          printed_card_number?: string | null
           privacy_consent?: boolean
           reference_number?: string
+          replaces_card_id?: string | null
           sla_clock_started_at?: string | null
           sla_elapsed_seconds?: number
           sla_target_hours?: number
@@ -2996,6 +3008,27 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "public_genders"
             referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "yellow_card_applications_replaces_card_id_fkey"
+            columns: ["replaces_card_id"]
+            isOneToOne: false
+            referencedRelation: "my_yellow_cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yellow_card_applications_replaces_card_id_fkey"
+            columns: ["replaces_card_id"]
+            isOneToOne: false
+            referencedRelation: "staff_yellow_card_queue"
+            referencedColumns: ["card_id"]
+          },
+          {
+            foreignKeyName: "yellow_card_applications_replaces_card_id_fkey"
+            columns: ["replaces_card_id"]
+            isOneToOne: false
+            referencedRelation: "yellow_cards"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -3301,8 +3334,11 @@ export type Database = {
           holder_name: string
           id: string
           issued_by: string | null
+          revoked_at: string | null
+          revoked_by: string | null
           revoked_reason: string | null
           status: Database["public"]["Enums"]["yellow_card_status"]
+          superseded_by: string | null
           valid_from: string
           verification_token: string
           voter_id_number_normalized: string
@@ -3319,8 +3355,11 @@ export type Database = {
           holder_name: string
           id?: string
           issued_by?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
           revoked_reason?: string | null
           status?: Database["public"]["Enums"]["yellow_card_status"]
+          superseded_by?: string | null
           valid_from?: string
           verification_token?: string
           voter_id_number_normalized: string
@@ -3337,8 +3376,11 @@ export type Database = {
           holder_name?: string
           id?: string
           issued_by?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
           revoked_reason?: string | null
           status?: Database["public"]["Enums"]["yellow_card_status"]
+          superseded_by?: string | null
           valid_from?: string
           verification_token?: string
           voter_id_number_normalized?: string
@@ -3447,6 +3489,48 @@ export type Database = {
             columns: ["issued_by"]
             isOneToOne: false
             referencedRelation: "super_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yellow_cards_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "my_staff_profile"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yellow_cards_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "staff_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yellow_cards_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "super_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yellow_cards_superseded_by_fkey"
+            columns: ["superseded_by"]
+            isOneToOne: true
+            referencedRelation: "my_yellow_cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yellow_cards_superseded_by_fkey"
+            columns: ["superseded_by"]
+            isOneToOne: true
+            referencedRelation: "staff_yellow_card_queue"
+            referencedColumns: ["card_id"]
+          },
+          {
+            foreignKeyName: "yellow_cards_superseded_by_fkey"
+            columns: ["superseded_by"]
+            isOneToOne: true
+            referencedRelation: "yellow_cards"
             referencedColumns: ["id"]
           },
         ]
@@ -4367,6 +4451,7 @@ export type Database = {
           civil_status_code: string | null
           complete_address: string | null
           contact_number: string | null
+          correction_note: string | null
           current_decision:
             | Database["public"]["Enums"]["yellow_card_decision"]
             | null
@@ -4379,12 +4464,17 @@ export type Database = {
           email_address: string | null
           first_name: string | null
           gender_code: string | null
+          holds_printed_card: boolean | null
           id: string | null
+          is_correction: boolean | null
           last_name: string | null
           middle_name: string | null
           needs_dedup_review: boolean | null
+          printed_card_number: string | null
           privacy_consent: boolean | null
           reference_number: string | null
+          replaced_card_number: string | null
+          replaces_card_id: string | null
           sla_target_hours: number | null
           status:
             | Database["public"]["Enums"]["yellow_card_application_status"]
@@ -4436,6 +4526,27 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "public_genders"
             referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "yellow_card_applications_replaces_card_id_fkey"
+            columns: ["replaces_card_id"]
+            isOneToOne: false
+            referencedRelation: "my_yellow_cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yellow_card_applications_replaces_card_id_fkey"
+            columns: ["replaces_card_id"]
+            isOneToOne: false
+            referencedRelation: "staff_yellow_card_queue"
+            referencedColumns: ["card_id"]
+          },
+          {
+            foreignKeyName: "yellow_card_applications_replaces_card_id_fkey"
+            columns: ["replaces_card_id"]
+            isOneToOne: false
+            referencedRelation: "yellow_cards"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -6311,9 +6422,20 @@ export type Database = {
         Row: {
           barangay_code: string | null
           barangay_name: string | null
+          card_holder_name: string | null
+          card_id: string | null
+          card_issued_on: string | null
+          card_number: string | null
+          card_revoked_at: string | null
+          card_revoked_by_name: string | null
+          card_revoked_reason: string | null
+          card_status: Database["public"]["Enums"]["yellow_card_status"] | null
+          card_superseded_by_number: string | null
+          card_superseded_by_reference: string | null
           civil_status_code: string | null
           complete_address: string | null
           contact_number: string | null
+          correction_note: string | null
           current_review_id: string | null
           date_of_birth: string | null
           deadline_state: string | null
@@ -6323,12 +6445,20 @@ export type Database = {
           email_address: string | null
           first_name: string | null
           gender_code: string | null
+          holds_printed_card: boolean | null
           id: string | null
+          is_correction: boolean | null
           last_name: string | null
           middle_name: string | null
           needs_dedup_review: boolean | null
+          printed_card_number: string | null
           privacy_consent: boolean | null
           reference_number: string | null
+          replaced_card_number: string | null
+          replaced_card_status:
+            | Database["public"]["Enums"]["yellow_card_status"]
+            | null
+          replaces_card_id: string | null
           review_cycles: number | null
           sla_clock_started_at: string | null
           sla_elapsed_seconds: number | null
@@ -6397,6 +6527,27 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "public_genders"
             referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "yellow_card_applications_replaces_card_id_fkey"
+            columns: ["replaces_card_id"]
+            isOneToOne: false
+            referencedRelation: "my_yellow_cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yellow_card_applications_replaces_card_id_fkey"
+            columns: ["replaces_card_id"]
+            isOneToOne: false
+            referencedRelation: "staff_yellow_card_queue"
+            referencedColumns: ["card_id"]
+          },
+          {
+            foreignKeyName: "yellow_card_applications_replaces_card_id_fkey"
+            columns: ["replaces_card_id"]
+            isOneToOne: false
+            referencedRelation: "yellow_cards"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -8595,6 +8746,7 @@ export type Database = {
           civil_status_code: string
           complete_address: string
           contact_number: string
+          correction_note: string | null
           created_at: string
           current_review_id: string | null
           date_of_birth: string
@@ -8603,12 +8755,15 @@ export type Database = {
           email_address: string
           first_name: string
           gender_code: string
+          holds_printed_card: boolean
           id: string
           last_name: string
           middle_name: string | null
           needs_dedup_review: boolean
+          printed_card_number: string | null
           privacy_consent: boolean
           reference_number: string
+          replaces_card_id: string | null
           sla_clock_started_at: string | null
           sla_elapsed_seconds: number
           sla_target_hours: number
@@ -8626,6 +8781,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      revoke_yellow_card: {
+        Args: { p_card_id: string; p_reason: string }
+        Returns: undefined
       }
       route_incident: {
         Args: {
@@ -9022,12 +9181,16 @@ export type Database = {
           p_civil_status_code: string
           p_complete_address: string
           p_contact_number: string
+          p_correction_note?: string
           p_date_of_birth: string
           p_email_address: string
           p_first_name: string
           p_gender_code: string
+          p_holds_printed_card?: boolean
+          p_is_correction?: boolean
           p_last_name: string
           p_middle_name?: string
+          p_printed_card_number?: string
           p_privacy_consent: boolean
           p_suffix?: string
           p_voter_id_number: string
@@ -9039,6 +9202,7 @@ export type Database = {
           civil_status_code: string
           complete_address: string
           contact_number: string
+          correction_note: string | null
           created_at: string
           current_review_id: string | null
           date_of_birth: string
@@ -9047,12 +9211,15 @@ export type Database = {
           email_address: string
           first_name: string
           gender_code: string
+          holds_printed_card: boolean
           id: string
           last_name: string
           middle_name: string | null
           needs_dedup_review: boolean
+          printed_card_number: string | null
           privacy_consent: boolean
           reference_number: string
+          replaces_card_id: string | null
           sla_clock_started_at: string | null
           sla_elapsed_seconds: number
           sla_target_hours: number
@@ -9488,6 +9655,7 @@ export type Database = {
           civil_status_code: string
           complete_address: string
           contact_number: string
+          correction_note: string | null
           created_at: string
           current_review_id: string | null
           date_of_birth: string
@@ -9496,12 +9664,15 @@ export type Database = {
           email_address: string
           first_name: string
           gender_code: string
+          holds_printed_card: boolean
           id: string
           last_name: string
           middle_name: string | null
           needs_dedup_review: boolean
+          printed_card_number: string | null
           privacy_consent: boolean
           reference_number: string
+          replaces_card_id: string | null
           sla_clock_started_at: string | null
           sla_elapsed_seconds: number
           sla_target_hours: number
@@ -9586,6 +9757,7 @@ export type Database = {
           civil_status_code: string
           complete_address: string
           contact_number: string
+          correction_note: string | null
           created_at: string
           current_review_id: string | null
           date_of_birth: string
@@ -9594,12 +9766,15 @@ export type Database = {
           email_address: string
           first_name: string
           gender_code: string
+          holds_printed_card: boolean
           id: string
           last_name: string
           middle_name: string | null
           needs_dedup_review: boolean
+          printed_card_number: string | null
           privacy_consent: boolean
           reference_number: string
+          replaces_card_id: string | null
           sla_clock_started_at: string | null
           sla_elapsed_seconds: number
           sla_target_hours: number
@@ -9689,6 +9864,7 @@ export type Database = {
         | "pii_access"
         | "calendar"
         | "auth"
+        | "yellow_card"
       audit_target_kind:
         | "staff_account"
         | "citizen"
@@ -9702,6 +9878,7 @@ export type Database = {
         | "incident"
         | "booking"
         | "calendar_entry"
+        | "yellow_card"
       booking_cancellation_reason:
         | "rejected_by_staff"
         | "cancelled_by_citizen"
@@ -9917,6 +10094,7 @@ export const Constants = {
         "pii_access",
         "calendar",
         "auth",
+        "yellow_card",
       ],
       audit_target_kind: [
         "staff_account",
@@ -9931,6 +10109,7 @@ export const Constants = {
         "incident",
         "booking",
         "calendar_entry",
+        "yellow_card",
       ],
       booking_cancellation_reason: [
         "rejected_by_staff",

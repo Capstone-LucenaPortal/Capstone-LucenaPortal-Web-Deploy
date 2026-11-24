@@ -20,7 +20,9 @@ import type {
  * cannot parse, so the row type degrades to GenericStringError[].
  *
  * The results are still cast to their row types below. All three were verified
- * by live query on 2026-08-07. Do not add a column without doing the same.
+ * by live query on 2026-08-07; DETAIL_COLUMNS' Correction, existing-holder and
+ * issued-card columns (DB l119, l120) on the Sandbox on 2026-11-24. Do not add
+ * a column without doing the same.
  *
  * The detail list is a superset of the queue's, and is written out rather than
  * built from it: the two reads answer different screens' questions and their
@@ -30,7 +32,7 @@ import type {
  * ties the two together any more, though: a column the view gains for both
  * screens has to be added in both places.
  */
-const DETAIL_COLUMNS = "id, reference_number, first_name, middle_name, last_name, suffix, barangay_name, status, submitted_at, due_at, document_count, deadline_state, date_of_birth, gender_code, civil_status_code, complete_address, contact_number, email_address, years_of_residency, voter_id_number, privacy_consent, needs_dedup_review, decided_at, review_cycles";
+const DETAIL_COLUMNS = "id, reference_number, first_name, middle_name, last_name, suffix, barangay_name, status, submitted_at, due_at, document_count, deadline_state, date_of_birth, gender_code, civil_status_code, complete_address, contact_number, email_address, years_of_residency, voter_id_number, privacy_consent, needs_dedup_review, decided_at, review_cycles, is_correction, replaces_card_id, replaced_card_number, replaced_card_status, correction_note, holds_printed_card, printed_card_number, card_id, card_number, card_status, card_holder_name, card_issued_on, card_revoked_reason, card_revoked_by_name, card_revoked_at, card_superseded_by_number, card_superseded_by_reference";
 
 /**
  * Layer 52 views. Note the column names that differ from the obvious guesses:

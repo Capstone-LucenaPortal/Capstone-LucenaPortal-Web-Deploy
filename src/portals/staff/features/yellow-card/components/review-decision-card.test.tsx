@@ -30,6 +30,10 @@ function application(status: YellowCardStatus): YellowCardApplication {
     needs_dedup_review: false,
     decided_at: null,
     review_cycles: 0,
+    correction: null,
+    holds_printed_card: false,
+    printed_card_number: null,
+    issued_card: null,
   };
 }
 

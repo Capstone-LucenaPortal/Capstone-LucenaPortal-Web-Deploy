@@ -7,7 +7,7 @@ import type { AuditArea } from "../types";
  * neutral `default` variant for every area — semantic colors (success/warning/
  * destructive) would imply a good/bad meaning the area does not carry.
  *
- * The variant map is keyed off the seven `audit_area` enum values so a member
+ * The variant map is keyed off the eight `audit_area` enum values so a member
  * added by a later migration still renders (via `areaLabel`) instead of blanking.
  */
 const VARIANTS: Record<AuditArea, "default"> = {
@@ -18,6 +18,7 @@ const VARIANTS: Record<AuditArea, "default"> = {
   pii_access: "default",
   calendar: "default",
   auth: "default",
+  yellow_card: "default",
 };
 
 export function AreaBadge({ area }: { area: AuditArea }) {

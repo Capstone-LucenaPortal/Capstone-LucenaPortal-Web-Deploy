@@ -6,6 +6,8 @@
 // empty until the calendar screen ships, for the same reason.
 // `auth` (DB l79) holds Auth Events for staff-side accounts: signed in, Session
 // ended, password changed, password recovery requested. Citizens produce none.
+// `yellow_card` (DB l119) holds Yellow Card Revocations, written by
+// `revoke_yellow_card`.
 export type AuditArea =
   | "accounts"
   | "configuration"
@@ -13,7 +15,8 @@ export type AuditArea =
   | "content"
   | "pii_access"
   | "calendar"
-  | "auth";
+  | "auth"
+  | "yellow_card";
 
 export type AuditEntry = {
   id: string;

@@ -2,8 +2,11 @@ import { parseDeadlineState } from "./deadline";
 import { STATUS_ORDER } from "./status";
 import type {
   YellowCardApplication,
+  YellowCardCardStatus,
+  YellowCardCorrection,
   YellowCardDecision,
   YellowCardDocument,
+  YellowCardIssuedCard,
   YellowCardQueueItem,
   YellowCardReview,
   YellowCardStatus,
@@ -42,6 +45,25 @@ export type StaffYellowCardApplicationRow = StaffYellowCardQueueRow & {
   needs_dedup_review: boolean | null;
   decided_at: string | null;
   review_cycles: number | null;
+  // A Correction and the existing-holder answer (DB l120).
+  is_correction: boolean | null;
+  replaces_card_id: string | null;
+  replaced_card_number: string | null;
+  replaced_card_status: YellowCardCardStatus | null;
+  correction_note: string | null;
+  holds_printed_card: boolean | null;
+  printed_card_number: string | null;
+  // The card this application issued (DB l119), and its successor (DB l120).
+  card_id: string | null;
+  card_number: string | null;
+  card_status: YellowCardCardStatus | null;
+  card_holder_name: string | null;
+  card_issued_on: string | null;
+  card_revoked_reason: string | null;
+  card_revoked_by_name: string | null;
+  card_revoked_at: string | null;
+  card_superseded_by_number: string | null;
+  card_superseded_by_reference: string | null;
 };
 
 /**
@@ -100,6 +122,71 @@ export function toApplication(
     needs_dedup_review: row.needs_dedup_review ?? false,
     decided_at: row.decided_at,
     review_cycles: row.review_cycles ?? 0,
+    correction: toCorrection(row),
+    holds_printed_card: row.holds_printed_card ?? false,
+    printed_card_number: row.printed_card_number,
+    issued_card: toIssuedCard(row),
+  };
+}
+
+/**
+ * The replaced card's id is load-bearing: the database sets it on every
+ * Correction (DB l120's CHECK), so a Correction without one is a wrong query.
+ */
+function toCorrection(
+  row: StaffYellowCardApplicationRow,
+): YellowCardCorrection | null {
+  if (!row.is_correction) return null;
+  if (!row.replaces_card_id) {
+    throw new Error(
+      `staff_yellow_card_queue returned Correction ${row.id ?? "(no id)"} with no replaces_card_id`,
+    );
+  }
+
+  return {
+    replaced_card_id: row.replaces_card_id,
+    replaced_card_number: row.replaced_card_number ?? "",
+    replaced_card_status: row.replaced_card_status,
+    note: row.correction_note ?? "",
+  };
+}
+
+/**
+ * The card's status is load-bearing the way an application's is: it decides
+ * whether the Revoke control renders. A card with no status is a wrong query,
+ * not a degraded row.
+ */
+function toIssuedCard(
+  row: StaffYellowCardApplicationRow,
+): YellowCardIssuedCard | null {
+  if (!row.card_id) return null;
+  if (!row.card_status) {
+    throw new Error(
+      `staff_yellow_card_queue returned card ${row.card_id} with no card_status`,
+    );
+  }
+
+  return {
+    id: row.card_id,
+    card_number: row.card_number ?? "",
+    status: row.card_status,
+    holder_name: row.card_holder_name ?? "",
+    issued_on: row.card_issued_on ?? "",
+    revocation:
+      row.card_status === "revoked"
+        ? {
+            reason: row.card_revoked_reason ?? "",
+            revoked_by_name: row.card_revoked_by_name ?? "a staff member",
+            revoked_at: row.card_revoked_at ?? "",
+          }
+        : null,
+    superseded_by:
+      row.card_status === "superseded"
+        ? {
+            card_number: row.card_superseded_by_number ?? "",
+            correction_reference: row.card_superseded_by_reference ?? "",
+          }
+        : null,
   };
 }
 

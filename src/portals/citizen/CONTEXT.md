@@ -73,6 +73,20 @@ in the card's printed form (`LAST, FIRST MIDDLE SUFFIX`, in capitals) and is sho
 returned.
 _Avoid_: Validation, Lookup, Scan
 
+**Revocation**:
+Staff withdrawing a Yellow Card that should not be honoured — issued to the wrong person, on a
+false document, or in error — with a reason the Citizen is told. It is final: a revoked card is
+never reinstated, and Verification tells the Verifier not to accept it. It is not how wrong details
+are fixed; that is a **Correction**. It withdraws the card in the portal only; a printed card the
+city handed out is recalled by the city.
+_Avoid_: Cancellation, Suspension, Deactivation
+
+**Superseded card**:
+A Yellow Card replaced by a newer one issued to the same Citizen. It was valid until the moment the
+replacement was issued, and Verification tells the Verifier to ask for the holder's current card.
+A revoked card never becomes superseded.
+_Avoid_: Old card, Expired card, Replaced card
+
 **Yellow Card Application**:
 A Citizen's request to be issued a Yellow Card, tracked from submission through decision. Distinct
 from the **Yellow Card** itself — an Application may never become one, and a Citizen may have
@@ -83,12 +97,20 @@ _Avoid_: Yellow Card request, Form, Submission
 A reviewer's decision that an Application — or a Booking's Tier Claim — cannot be judged as
 submitted and needs the Citizen to correct something. It is not a refusal — the Application or
 Booking stays alive and awaits the Citizen.
-_Avoid_: Rejection, Denial, Correction, Bounce-back
+_Avoid_: Rejection, Denial, Bounce-back
 
 **Resubmission**:
 A Citizen's answer to a Revision Request: the same Application or Tier Claim, sent back with
 corrections. It never creates a second Application or Booking.
 _Avoid_: Reapplication, New application, Resubmit
+
+**Correction**:
+A Yellow Card Application a Citizen files while holding an active card, to replace the details
+printed on it. The old card stays valid until the Correction is approved, when it becomes a
+**Superseded card** and a new card with a new number is issued. Distinct from a **Revision
+Request**, which fixes an Application before any decision, and from a Profile edit, which never
+changes a card.
+_Avoid_: Amendment, Card update, Reissue
 
 **Duplicate Review**:
 A flag on an Application saying a human must check whether this Citizen already holds or has

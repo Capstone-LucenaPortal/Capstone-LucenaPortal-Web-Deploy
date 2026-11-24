@@ -35,6 +35,12 @@ const application = (status: string): MyYellowCardApplication => ({
   current_reason: null,
   current_reviewed_at: null,
   document_count: 1,
+  is_correction: false,
+  replaces_card_id: null,
+  replaced_card_number: null,
+  correction_note: null,
+  holds_printed_card: false,
+  printed_card_number: null,
 });
 
 // Typed against the union, so a misspelt status here fails the typecheck
