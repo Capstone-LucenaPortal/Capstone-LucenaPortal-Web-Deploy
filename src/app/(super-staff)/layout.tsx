@@ -11,6 +11,7 @@ export const metadata: Metadata = {
   // Staff-side pages stay out of search results (ADR 0009). Not a robots.txt
   // Disallow, which would advertise the path.
   robots: { index: false, follow: false },
+  icons: { icon: "/seal-192.png", apple: "/seal-192.png" },
 };
 
 export default function RootLayout({

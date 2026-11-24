@@ -30,7 +30,7 @@ export const metadata: Metadata = {
   description:
     'Official e-services portal of the City Government of Lucena. Apply for a Yellow Card, file an incident report, and book the Lucena Convention Center (LCC).',
   applicationName: 'Lucena City Portal',
-  icons: { icon: '/favicon.svg' },
+  icons: { icon: '/seal-192.png', apple: '/seal-192.png' },
   openGraph: {
     type: 'website',
     siteName: 'Lucena City Portal',

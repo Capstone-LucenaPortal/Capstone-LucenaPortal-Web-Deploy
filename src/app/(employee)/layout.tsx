@@ -10,6 +10,7 @@ export const metadata: Metadata = {
   title: "City employee sign-in · Lucena City",
   description: "Sign-in for Lucena City employees.",
   robots: { index: false, follow: false },
+  icons: { icon: "/seal-192.png", apple: "/seal-192.png" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

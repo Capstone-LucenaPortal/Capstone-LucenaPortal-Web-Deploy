@@ -17,7 +17,7 @@ export const metadata: Metadata = {
     title: "Responder",
     statusBarStyle: "default",
   },
-  icons: { apple: "/Lucena_City_Seal.png" },
+  icons: { icon: "/seal-192.png", apple: "/Lucena_City_Seal.png" },
 };
 
 export const viewport: Viewport = {
