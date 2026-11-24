@@ -46,8 +46,15 @@ export default async function YellowCardDetailPage({
   // same render pass, so this awaits a promise that is already in flight.
   const user = await getCurrentStaffUser();
 
-  const { application, documents, latestReview, genderLabel, civilStatusLabel } =
-    dossier;
+  const {
+    application,
+    documents,
+    latestReview,
+    supersedingCorrection,
+    replacedCardApplicationId,
+    genderLabel,
+    civilStatusLabel,
+  } = dossier;
 
   return (
     <div>
@@ -69,6 +76,8 @@ export default async function YellowCardDetailPage({
         application={application}
         actorName={user.full_name}
         latestReview={latestReview}
+        supersedingCorrection={supersedingCorrection}
+        replacedCardApplicationId={replacedCardApplicationId}
       />
 
       <Card className="mt-6">

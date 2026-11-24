@@ -82,6 +82,25 @@ disagree about the word; the entitlement rule does not distinguish them, and
 neither does this term.
 _Avoid_: Attachment, upload, file.
 
+### Yellow Cards
+
+**Revocation**:
+Defined in [`CONTEXT-MAP.md`](../../../CONTEXT-MAP.md), with **Superseded card** and
+**Correction**. To Staff, a card is revoked from the review page of the approved application
+that issued it, and that application stays Approved: the decision stood, only the card was
+withdrawn. A superseded card is not revoked; its replacement is, from its Correction's page.
+A Correction carries a badge in the queue, and its review page names the card it replaces and
+quotes the Citizen's note. It is decided like any Application; approving it supersedes the old
+card and issues a new number.
+_Avoid_: Cancellation, Suspension, Deactivation.
+
+**Existing holder**:
+An applicant who says they already hold a printed Yellow Card, given out by the city before the
+portal. It changes no outcome and blocks nothing: the review page prompts a check of the paper
+registry, with the printed card's number when they gave one. The database spells it
+`holds_printed_card` and `printed_card_number`.
+_Avoid_: Duplicate (the voter-ID duplicate-review flag is a different check).
+
 ### Incidents
 
 **Verified**:

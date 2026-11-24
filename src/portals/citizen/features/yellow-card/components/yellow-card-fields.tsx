@@ -3,7 +3,7 @@
 import { useId } from 'react';
 import { PhoneInput } from '@/portals/citizen/components/ui/phone-input';
 import type { CatalogOption } from '@/portals/citizen/lib/supabase/catalogs';
-import type { YellowCardFieldValues } from '@/portals/citizen/features/yellow-card/types';
+import type { PrintedCardValues, YellowCardFieldValues } from '@/portals/citizen/features/yellow-card/types';
 import { LIMITS } from '@/portals/citizen/lib/validation';
 
 const INPUT_CLASS =
@@ -147,5 +147,75 @@ export function YellowCardFields({ values, onChange, genders, civilStatuses, bar
         </div>
       </div>
     </>
+  );
+}
+
+/** The database's caps (DB l120): refused past them, never clipped. */
+const CORRECTION_NOTE_MAX = 500;
+const PRINTED_CARD_NUMBER_MAX = 64;
+
+/**
+ * The existing-holder question, on the apply form and on a Correction (DB l120).
+ * The number is optional and asked only once the box is ticked; the service
+ * drops it if the box is unticked again.
+ */
+export function PrintedCardQuestion({
+  values,
+  onChange,
+}: {
+  values: PrintedCardValues;
+  onChange: <K extends keyof PrintedCardValues>(field: K, value: PrintedCardValues[K]) => void;
+}) {
+  const id = useId();
+  return (
+    <div style={{ marginBottom: 32, paddingBottom: 32, borderBottom: '1px solid #DDDDDD' }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', fontSize: 14, color: '#333333' }}>
+        <input
+          type="checkbox"
+          checked={values.holdsPrintedCard}
+          onChange={(e) => onChange('holdsPrintedCard', e.target.checked)}
+          style={{ cursor: 'pointer', width: 18, height: 18 }}
+        />
+        <span>I already hold a printed Yellow Card</span>
+      </label>
+      {values.holdsPrintedCard && (
+        <div className="mb-5" style={{ marginTop: 16 }}>
+          <label htmlFor={`${id}-printed-card-number`} className="block text-sm font-semibold text-text-dark mb-2">
+            Printed card number (optional)
+          </label>
+          <input
+            id={`${id}-printed-card-number`}
+            className={INPUT_CLASS}
+            style={INPUT_STYLE}
+            placeholder="The number on your printed card"
+            value={values.printedCardNumber}
+            onChange={(e) => onChange('printedCardNumber', e.target.value)}
+            maxLength={PRINTED_CARD_NUMBER_MAX}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** "What needs correcting?", required on a Correction (ADR 0011). */
+export function CorrectionNoteField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const id = useId();
+  return (
+    <div className="mb-5" style={{ marginBottom: 40 }}>
+      <label htmlFor={`${id}-correction-note`} className="block text-sm font-semibold text-text-dark mb-2">
+        <Required /> What needs correcting?
+      </label>
+      <textarea
+        id={`${id}-correction-note`}
+        className={INPUT_CLASS}
+        style={{ ...INPUT_STYLE, minHeight: 96, resize: 'vertical' }}
+        placeholder="For example: my last name is misspelled, or I moved to another barangay."
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        maxLength={CORRECTION_NOTE_MAX}
+        required
+      />
+    </div>
   );
 }

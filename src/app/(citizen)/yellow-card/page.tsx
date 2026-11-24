@@ -1,23 +1,26 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState, useEffect, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/portals/citizen/features/auth/hooks/use-auth';
 import ProtectedRoute from '@/portals/citizen/features/auth/components/protected-route';
 import { Button, OUTLINED_GHOST_STYLE, WIDE_PRIMARY_STYLE } from '@/portals/citizen/components/ui/button';
-import { YellowCardFields } from '@/portals/citizen/features/yellow-card/components/yellow-card-fields';
+import { YellowCardFields, PrintedCardQuestion, CorrectionNoteField } from '@/portals/citizen/features/yellow-card/components/yellow-card-fields';
 import { VoterIdUpload } from '@/portals/citizen/features/yellow-card/components/voter-id-upload';
 import { catalogService, type CatalogOption, type YellowCardConfig, type YellowCardDocumentType } from '@/portals/citizen/lib/supabase/catalogs';
 import { type DocumentUploadProgress } from '@/portals/citizen/lib/storage/file-validation';
-import type { SubmittedApplication, YellowCardFieldValues } from '@/portals/citizen/features/yellow-card/types';
-import { yellowCardService, YellowCardSubmitError, computeAgeError, liveApplicationNotice, liveNoticeCopy, type LiveApplicationNotice } from '@/portals/citizen/features/yellow-card/lib/yellow-card';
+import type { PrintedCardValues, SubmittedApplication, YellowCardFieldValues } from '@/portals/citizen/features/yellow-card/types';
+import { yellowCardService, YellowCardSubmitError, computeAgeError, liveApplicationNotice, liveNoticeCopy, correctionStart, correctionStatusCopy, type CorrectionStart, type LiveApplicationNotice } from '@/portals/citizen/features/yellow-card/lib/yellow-card';
+import { isCorrectionMode } from '@/portals/citizen/features/yellow-card/lib/correction-mode';
 import { ReceiptLink } from '@/portals/citizen/features/receipts/components/receipt-link';
 import { PROFILE_TAB_YELLOW_CARD, profileTabHref } from '@/portals/citizen/features/profile/lib/tabs';
 import { AGENCY_NAME } from '@/portals/citizen/lib/contact-info';
 
-interface FormData extends YellowCardFieldValues {
+interface FormData extends YellowCardFieldValues, PrintedCardValues {
   idFile: File | null;
   privacyConsent: boolean;
+  /** "What needs correcting?" — asked, and sent, only on a Correction. */
+  correctionNote: string;
 }
 
 const EMPTY_FORM: FormData = {
@@ -36,6 +39,9 @@ const EMPTY_FORM: FormData = {
   yearsOfResidency: '',
   idFile: null,
   privacyConsent: false,
+  holdsPrintedCard: false,
+  printedCardNumber: '',
+  correctionNote: '',
 };
 
 type SubmissionPhase = 'form' | 'submitting' | 'uploading' | 'success' | 'upload-failed';
@@ -44,9 +50,12 @@ function YellowCardContent() {
   const router = useRouter();
   const { user } = useAuth();
   void user;
+  // `/yellow-card?mode=correction`, linked from an active Digital Card.
+  const correctionMode = isCorrectionMode(useSearchParams());
 
   const [checkingExisting, setCheckingExisting] = useState(true);
   const [liveNotice, setLiveNotice] = useState<LiveApplicationNotice | null>(null);
+  const [correction, setCorrection] = useState<CorrectionStart>({ kind: 'unavailable' });
   // Why the applications read failed. Set, it stands in for both the notice and
   // the form: "couldn't check" must not look like "nothing to check".
   const [checkError, setCheckError] = useState('');
@@ -96,6 +105,10 @@ function YellowCardContent() {
       ]);
       setCheckError(failure);
       setLiveNotice(applications ? liveApplicationNotice(applications, cards) : null);
+      const start: CorrectionStart = applications ? correctionStart(applications, cards) : { kind: 'unavailable' };
+      setCorrection(start);
+      // A Correction opens on what the card was approved with (ADR 0011).
+      if (correctionMode && start.kind === 'ready') setFormData({ ...EMPTY_FORM, ...start.values });
       setGenders(g);
       setCivilStatuses(c);
       setBarangays(b);
@@ -103,7 +116,15 @@ function YellowCardContent() {
       setDocumentTypes(docs);
       setCheckingExisting(false);
     })();
-  }, [checkAttempt]);
+  }, [checkAttempt, correctionMode]);
+
+  // Correction mode with nothing to correct (no active card, or a Correction
+  // already waiting) falls back to the ordinary page, whose notice says why.
+  const isCorrection = correctionMode && correction.kind === 'ready';
+  const correctedCardNumber = correction.kind === 'ready' ? correction.cardNumber : '';
+  // Kept from the moment of submission, so the success screen still says which
+  // card stays valid after the form is gone.
+  const [submittedCorrectionOf, setSubmittedCorrectionOf] = useState<string | null>(null);
 
   // Re-runs the whole load: an outage that failed this read probably failed the
   // catalogs too, and the form would otherwise open with empty dropdowns.
@@ -117,7 +138,7 @@ function YellowCardContent() {
     setEligibilityError(computeAgeError(formData.dateOfBirth) ?? '');
   }, [formData.dateOfBirth]);
 
-  const handleInputChange = (field: keyof FormData, value: string | boolean | File | null) => {
+  const handleInputChange = <K extends keyof FormData>(field: K, value: FormData[K]) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -162,11 +183,16 @@ function YellowCardContent() {
       failValidation('Please fill in every required field before submitting.');
       return;
     }
+    if (isCorrection && !formData.correctionNote.trim()) {
+      failValidation('A Correction must say what needs correcting.');
+      return;
+    }
     if (!formData.privacyConsent) {
       failValidation('Please accept the Data Privacy consent to submit your application.');
       return;
     }
-    if (documentRequired && !formData.idFile) {
+    // A Correction always carries a new Voter's ID, whatever the catalog says.
+    if ((documentRequired || isCorrection) && !formData.idFile) {
       failValidation(`Please upload your ${documentLabel}.`);
       return;
     }
@@ -189,8 +215,13 @@ function YellowCardContent() {
         yearsOfResidency: Number(formData.yearsOfResidency),
         voterIdNumber: formData.voterIdNumber,
         privacyConsent: formData.privacyConsent,
+        isCorrection,
+        correctionNote: isCorrection ? formData.correctionNote : undefined,
+        holdsPrintedCard: formData.holdsPrintedCard,
+        printedCardNumber: formData.printedCardNumber,
       });
       setSubmittedApplication(application);
+      setSubmittedCorrectionOf(isCorrection ? correctedCardNumber : null);
       if (formData.idFile) {
         await attemptUpload(application, formData.idFile);
       } else {
@@ -245,8 +276,15 @@ function YellowCardContent() {
   // An approved application blocks a new one just as a pending one does, so a
   // cardholder lands here too. `describeLiveApplication` decides which of the
   // three situations this is; the page only renders them.
-  if (liveNotice) {
+  // A cardholder in Correction mode gets the form, not the "you already have a
+  // card" notice that would otherwise stop them.
+  if (liveNotice && !isCorrection) {
     const { icon, heading, detail } = liveNoticeCopy(liveNotice);
+    // A Correction is only ever filed against an issued card; without one there
+    // is no card number to say "stays valid" about.
+    const correctedCard = liveNotice.kind === 'approved' ? liveNotice.card : null;
+    const waiting = correctedCard && liveNotice.kind === 'approved' ? liveNotice.correction : undefined;
+    const waitingCopy = waiting && correctedCard && correctionStatusCopy(waiting, correctedCard.number);
     return (
       <section className="page-section" style={{ padding: '80px clamp(16px, 5vw, 48px)', maxWidth: 1000, margin: '0 auto', textAlign: 'center' }}>
         <div style={{ fontSize: 48, marginBottom: 16 }}>{icon}</div>
@@ -254,7 +292,20 @@ function YellowCardContent() {
           {heading}
         </h1>
         <p style={{ fontSize: 15, color: '#666666', marginBottom: 24 }}>{detail}</p>
+        {waiting && waitingCopy && (
+          <div role="status" style={{ maxWidth: 560, margin: '0 auto 24px', padding: '16px 20px', background: '#FFF7ED', border: '1px solid #FDBA74', borderRadius: 6, textAlign: 'left' }}>
+            <p style={{ fontSize: 14, fontWeight: 700, color: '#9A3412', marginBottom: 6 }}>
+              Correction #{waiting.reference}: <span>{waitingCopy.label}</span>
+            </p>
+            <p style={{ fontSize: 13, color: '#7C2D12', lineHeight: 1.6 }}>{waitingCopy.detail}</p>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+          {waiting?.status === 'revision_requested' && (
+            <Button variant="primary" onClick={() => router.push(`/yellow-card/${waiting.applicationId}/revise`)}>
+              Revise &amp; Resubmit
+            </Button>
+          )}
           {liveNotice.kind === 'revision' && (
             <Button variant="primary" onClick={() => router.push(`/yellow-card/${liveNotice.applicationId}/revise`)}>
               Revise &amp; Resubmit
@@ -278,13 +329,20 @@ function YellowCardContent() {
         <div style={{ textAlign: 'center', marginBottom: 48 }}>
           <div style={{ fontSize: 80, marginBottom: 24 }}>{phase === 'success' ? '✓' : '⚠️'}</div>
           <h1 style={{ fontSize: 'clamp(28px, 6vw, 40px)', fontWeight: 700, color: '#003DA5', marginBottom: 12 }}>
-            {phase === 'success' ? 'Yellow Card Application Submitted Successfully!' : 'Application Submitted — Document Upload Failed'}
+            {phase === 'success'
+              ? submittedCorrectionOf ? 'Card Correction Submitted' : 'Yellow Card Application Submitted Successfully!'
+              : 'Application Submitted — Document Upload Failed'}
           </h1>
           <p style={{ fontSize: 16, color: '#666666' }}>
             {phase === 'success'
-              ? 'Your application has been received and is now being processed.'
+              ? submittedCorrectionOf ? 'Your Correction has been received and is now being processed.' : 'Your application has been received and is now being processed.'
               : "Your application was saved, but we could not upload your Voter's ID. Please retry below."}
           </p>
+          {submittedCorrectionOf && (
+            <p style={{ fontSize: 15, fontWeight: 600, color: '#047857', marginTop: 12 }}>
+              Your current card {submittedCorrectionOf} stays valid until we decide on this Correction.
+            </p>
+          )}
         </div>
 
         <div className="bg-white border border-[#DDDDDD] rounded p-8 shadow-sm" style={{ background: '#003DA5', color: 'white', marginBottom: 40 }}>
@@ -334,7 +392,11 @@ function YellowCardContent() {
                 <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#003DA5', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flexShrink: 0 }}>3</div>
                 <div>
                   <p style={{ fontSize: 15, fontWeight: 600, color: '#333333', marginBottom: 4 }}>Card Issuance</p>
-                  <p style={{ fontSize: 13, color: '#666666' }}>Once approved, you&#39;ll be notified to claim your Yellow Card at the City Hall or via mail.</p>
+                  <p style={{ fontSize: 13, color: '#666666' }}>
+                    {submittedCorrectionOf
+                      ? 'Once approved, a new card with a new number replaces your current one on your Digital Card. Until then, keep using your current card.'
+                      : 'Once approved, your Digital Yellow Card appears in your profile, ready to show or download.'}
+                  </p>
                 </div>
               </div>
             </div>
@@ -375,8 +437,19 @@ function YellowCardContent() {
   return (
     <section className="page-section" style={{ padding: '48px clamp(16px, 5vw, 48px) 80px', maxWidth: 1400, margin: '0 auto' }}>
       <div style={{ marginBottom: 48 }}>
-        <h1 style={{ fontSize: 'clamp(28px, 6vw, 40px)', fontWeight: 700, color: '#003DA5', marginBottom: 12 }}>Get Your Yellow Card</h1>
-        <p style={{ fontSize: 16, color: '#666666' }}>Apply for Lucena City&#39;s Yellow Card and unlock exclusive benefits and priority services.</p>
+        <h1 style={{ fontSize: 'clamp(28px, 6vw, 40px)', fontWeight: 700, color: '#003DA5', marginBottom: 12 }}>
+          {isCorrection ? 'Correct Your Card Details' : 'Get Your Yellow Card'}
+        </h1>
+        <p style={{ fontSize: 16, color: '#666666' }}>
+          {isCorrection
+            ? 'Change what needs correcting below and upload your Voter\u2019s ID. Once approved, a new card with a new number replaces your current one.'
+            : 'Apply for Lucena City\u2019s Yellow Card and unlock exclusive benefits and priority services.'}
+        </p>
+        {isCorrection && (
+          <p style={{ fontSize: 15, fontWeight: 600, color: '#047857', marginTop: 12 }}>
+            Your current card {correctedCardNumber} stays valid until this Correction is decided.
+          </p>
+        )}
       </div>
 
       <div className="step-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 24, marginBottom: 60 }}>
@@ -424,7 +497,7 @@ function YellowCardContent() {
             <h2 style={{ fontSize: 18, fontWeight: 700, color: '#003DA5', marginBottom: 24 }}>Required Documents</h2>
             <div className="mb-5">
               <label className="block text-sm font-semibold text-text-dark mb-2">
-                {documentRequired && <span style={{ color: '#C62828' }}>*</span>} {documentLabel}
+                {(documentRequired || isCorrection) && <span style={{ color: '#C62828' }}>*</span>} {documentLabel}
               </label>
               <VoterIdUpload
                 file={formData.idFile}
@@ -438,6 +511,13 @@ function YellowCardContent() {
             </div>
           </div>
 
+          {isCorrection && (
+            <CorrectionNoteField
+              value={formData.correctionNote}
+              onChange={(value) => handleInputChange('correctionNote', value)}
+            />
+          )}
+
           <YellowCardFields
             values={formData}
             onChange={(field, value) => handleInputChange(field, value)}
@@ -445,6 +525,8 @@ function YellowCardContent() {
             civilStatuses={civilStatuses}
             barangays={barangays}
           />
+
+          <PrintedCardQuestion values={formData} onChange={(field, value) => setFormData((prev) => ({ ...prev, [field]: value }))} />
 
           {/* The consent statement — text a citizen agrees to, so treat its
               wording as versioned even though the RPC stores only a boolean.
@@ -477,7 +559,7 @@ function YellowCardContent() {
               happens, and there is nothing to read. Clicking now always
               produces a reason. */}
           <Button variant="primary" onClick={handleSubmit} loading={phase === 'submitting' || phase === 'uploading'} className="w-full text-base font-bold" style={{ paddingTop: 16, paddingBottom: 16 }}>
-            {phase === 'submitting' ? 'Submitting…' : phase === 'uploading' ? 'Uploading document…' : 'Submit Application'}
+            {phase === 'submitting' ? 'Submitting…' : phase === 'uploading' ? 'Uploading document…' : isCorrection ? 'Submit Correction' : 'Submit Application'}
           </Button>
           {!formData.privacyConsent && (
             <p style={{ fontSize: 12, color: '#B45309', textAlign: 'center', marginTop: 12 }}>
@@ -532,7 +614,10 @@ function YellowCardContent() {
 export default function YellowCardPage() {
   return (
     <ProtectedRoute>
-      <YellowCardContent />
+      {/* `useSearchParams` needs a Suspense boundary in the App Router. */}
+      <Suspense fallback={null}>
+        <YellowCardContent />
+      </Suspense>
     </ProtectedRoute>
   );
 }

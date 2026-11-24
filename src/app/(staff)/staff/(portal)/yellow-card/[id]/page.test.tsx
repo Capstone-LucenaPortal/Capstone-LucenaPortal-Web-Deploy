@@ -35,6 +35,7 @@ const dossier: YellowCardReviewDossier = {
     due_at: "2026-06-30T16:23:45.547482+00:00",
     document_count: 1,
     deadline_state: "on_track",
+    is_correction: false,
     date_of_birth: "1990-05-14",
     gender_code: "male",
     civil_status_code: "married",
@@ -64,6 +65,8 @@ const dossier: YellowCardReviewDossier = {
     },
   ],
   latestReview: null,
+  supersedingCorrection: null,
+  replacedCardApplicationId: null,
   genderLabel: "Male",
   civilStatusLabel: "Married",
 };
@@ -197,6 +200,64 @@ describe("YellowCardDetailPage", () => {
 
     // The seeded sandbox rows have no yellow_card_reviews behind them.
     expect(screen.getByText(/Rejected on/)).toBeInTheDocument();
+  });
+
+  /**
+   * Revoking a card leaves the application approved (ADR 0011): the header
+   * badge says Approved while the card below says Revoked or Superseded.
+   */
+  it("keeps the Approved badge and links a superseded card to the Correction that replaced it", async () => {
+    stubReads({
+      application: {
+        ...dossier.application,
+        status: "approved",
+        decided_at: "2026-11-12T03:00:00.000Z",
+        issued_card: {
+          id: "card-45",
+          card_number: "LC-2026-000045",
+          status: "superseded",
+          holder_name: "Juan Dela Cruz",
+          issued_on: "2026-11-12",
+          revocation: null,
+          superseded_by: {
+            card_number: "LC-2026-000312",
+            correction_reference: "YC-2026-000210",
+          },
+        },
+      },
+      supersedingCorrection: { id: "correction-1", decided_at: "2026-11-20T06:30:00.000Z" },
+    });
+
+    render(await YellowCardDetailPage({ params: Promise.resolve({ id: "app-1" }) }));
+
+    expect(screen.getByText("Approved", { selector: "span" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "YC-2026-000210" })).toHaveAttribute(
+      "href",
+      "/staff/yellow-card/correction-1",
+    );
+  });
+
+  it("links a Correction's replaced card to the application that issued it", async () => {
+    stubReads({
+      application: {
+        ...dossier.application,
+        is_correction: true,
+        correction: {
+          replaced_card_id: "card-45",
+          replaced_card_number: "LC-2026-000045",
+          replaced_card_status: "active",
+          note: "My middle name is misspelled.",
+        },
+      },
+      replacedCardApplicationId: "issuer-1",
+    });
+
+    render(await YellowCardDetailPage({ params: Promise.resolve({ id: "app-1" }) }));
+
+    expect(screen.getByRole("link", { name: "LC-2026-000045" })).toHaveAttribute(
+      "href",
+      "/staff/yellow-card/issuer-1",
+    );
   });
 
   it("calls notFound when the id does not resolve", async () => {

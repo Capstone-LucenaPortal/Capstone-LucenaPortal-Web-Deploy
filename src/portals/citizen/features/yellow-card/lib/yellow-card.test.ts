@@ -1,7 +1,8 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import type { MyYellowCardApplication, YellowCardApplicationFields } from '@/portals/citizen/features/yellow-card/types';
-import { yellowCardService, YellowCardSubmitError, mapApplicationToFormValues, mapResubmitToParams, computeAgeError, liveApplicationNotice, liveNoticeCopy, LIVE_APPLICATION_STATUSES, type LiveApplicationStatus, type LiveApplicationNotice, translateResubmitError, translateUploadError, translateSubmitError, verifyCard, translateWithdrawError } from '@/portals/citizen/features/yellow-card/lib/yellow-card';
+import { yellowCardService, YellowCardSubmitError, mapApplicationToFormValues, mapResubmitToParams, computeAgeError, liveApplicationNotice, liveNoticeCopy, LIVE_APPLICATION_STATUSES, type LiveApplicationStatus, type LiveApplicationNotice, translateResubmitError, translateUploadError, translateSubmitError, verifyCard, translateWithdrawError, correctionStart, correctionStatusCopy } from '@/portals/citizen/features/yellow-card/lib/yellow-card';
 import * as supabaseClientModule from '@/portals/citizen/lib/supabase/client';
+import { requestService } from '@/portals/citizen/lib/mock/request-store';
 
 // The vitest environment for this project is 'node', which has no `localStorage` global.
 // requestService.addRequest() (invoked by submitApplication's mock-mode branch) calls
@@ -116,6 +117,77 @@ describe('liveApplicationNotice', () => {
       kind: 'processing',
       reference: 'YC-2026-000091',
     });
+  });
+});
+
+/**
+ * A Correction is filed while the card is active, so the newest live
+ * application is the Correction, not the approved one that issued the card.
+ * The page keeps the card in front and shows the Correction's status beside it
+ * (ticket #171).
+ */
+describe('liveApplicationNotice with a Correction waiting', () => {
+  const approved = { id: 'app-1', reference_number: 'YC-2026-000050', status: 'approved', is_correction: false };
+  const activeCard = { card_number: 'LC-2026-000004', application_id: 'app-1', status: 'active' };
+  const correction = (status: string) => ({
+    id: 'app-2',
+    reference_number: 'YC-2026-000091',
+    status,
+    is_correction: true,
+  });
+
+  it.each(['pending', 'resubmitted', 'revision_requested'])(
+    'keeps the active card and carries a %s Correction beside it',
+    (status) => {
+      expect(liveApplicationNotice([correction(status), approved], [activeCard])).toEqual({
+        kind: 'approved',
+        reference: 'YC-2026-000050',
+        card: { number: 'LC-2026-000004', status: 'active' },
+        correction: { applicationId: 'app-2', reference: 'YC-2026-000091', status },
+      });
+    },
+  );
+
+  it.each(['rejected', 'withdrawn'])('drops a %s Correction: only the card remains', (status) => {
+    expect(liveApplicationNotice([correction(status), approved], [activeCard])).toEqual({
+      kind: 'approved',
+      reference: 'YC-2026-000050',
+      card: { number: 'LC-2026-000004', status: 'active' },
+    });
+  });
+
+  it('reports an approved Correction with the new card it issued', () => {
+    const newCard = { card_number: 'LC-2026-000120', application_id: 'app-2', status: 'active' };
+    const oldCard = { ...activeCard, status: 'superseded' };
+    expect(liveApplicationNotice([correction('approved'), approved], [newCard, oldCard])).toEqual({
+      kind: 'approved',
+      reference: 'YC-2026-000091',
+      card: { number: 'LC-2026-000120', status: 'active' },
+    });
+  });
+});
+
+describe('correctionStatusCopy', () => {
+  it.each(['pending', 'resubmitted'] as const)('says a %s Correction is under review and the card stays valid', (status) => {
+    const { label, detail } = correctionStatusCopy(
+      { applicationId: 'app-2', reference: 'YC-2026-000091', status },
+      'LC-2026-000004',
+    );
+    expect(label).toBe('Under review');
+    expect(detail).toBe(
+      'Your Correction #YC-2026-000091 is with a reviewer. Card #LC-2026-000004 stays valid until it is decided.',
+    );
+  });
+
+  it('asks for changes on a Correction sent back for revision, and the card still stays valid', () => {
+    const { label, detail } = correctionStatusCopy(
+      { applicationId: 'app-2', reference: 'YC-2026-000091', status: 'revision_requested' },
+      'LC-2026-000004',
+    );
+    expect(label).toBe('Needs your changes');
+    expect(detail).toBe(
+      'Your Correction #YC-2026-000091 was sent back for changes. Update it and resubmit. Card #LC-2026-000004 stays valid until it is decided.',
+    );
   });
 });
 
@@ -246,6 +318,49 @@ describe('yellowCardService.submitApplication in mock mode (no backend)', () => 
   });
 });
 
+describe('yellowCardService.submitApplication: a Correction in mock mode', () => {
+  it('accepts a Correction and records it like any application', async () => {
+    const fields: YellowCardApplicationFields = {
+      firstName: 'Juan',
+      lastName: 'Dela Cruz',
+      dateOfBirth: '1990-01-15',
+      genderCode: 'male',
+      civilStatusCode: 'single',
+      barangayCode: 'bocohan',
+      completeAddress: '123 Rizal Street',
+      contactNumber: '09171234567',
+      emailAddress: 'juan@example.com',
+      yearsOfResidency: 5,
+      voterIdNumber: '123-456-789',
+      privacyConsent: true,
+      isCorrection: true,
+      correctionNote: 'My last name is misspelled.',
+      holdsPrintedCard: true,
+      printedCardNumber: '0457',
+    };
+    const addRequest = vi.spyOn(requestService, 'addRequest');
+    try {
+      const result = await yellowCardService.submitApplication(fields);
+
+      expect(result.reference_number).toMatch(/^YC-\d{4}-\d{6}$/);
+      expect(addRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'Yellow Card Application',
+          arn: result.reference_number,
+          details: expect.objectContaining({
+            isCorrection: true,
+            correctionNote: 'My last name is misspelled.',
+            holdsPrintedCard: true,
+            printedCardNumber: '0457',
+          }),
+        }),
+      );
+    } finally {
+      addRequest.mockRestore();
+    }
+  });
+});
+
 describe('yellowCardService.uploadVoterIdDocument in mock mode (no backend)', () => {
   it('resolves without throwing', async () => {
     const file = new File(['test'], 'voter-id.jpg', { type: 'image/jpeg' });
@@ -317,6 +432,74 @@ describe('mapApplicationToFormValues', () => {
 
   it('stringifies years_of_residency for a text input', () => {
     expect(mapApplicationToFormValues({ ...VIEW_ROW, years_of_residency: 0 }).yearsOfResidency).toBe('0');
+  });
+});
+
+/**
+ * A Correction prefills from the APPROVED application the active card was
+ * issued from, never the Profile: the card prints what was approved, and the
+ * Citizen corrects that (ticket #171, ADR 0011).
+ */
+describe('correctionStart', () => {
+  const approved: MyYellowCardApplication = {
+    ...VIEW_ROW,
+    id: 'app-approved',
+    reference_number: 'YC-2026-000050',
+    status: 'approved',
+    holds_printed_card: true,
+    printed_card_number: '0457',
+  };
+  const activeCard = { card_number: 'LC-2026-000004', application_id: 'app-approved', status: 'active' };
+
+  it('opens on the active card, prefilled from its approved application', () => {
+    expect(correctionStart([approved], [activeCard])).toEqual({
+      kind: 'ready',
+      cardNumber: 'LC-2026-000004',
+      values: {
+        voterIdNumber: '123-456-789',
+        firstName: 'Kin',
+        middleName: '',
+        lastName: 'Tester',
+        suffix: '',
+        dateOfBirth: '1990-01-15',
+        genderCode: 'male',
+        civilStatusCode: 'single',
+        barangayCode: 'bocohan',
+        completeAddress: '123 Rizal Street',
+        contactNumber: '09171234567',
+        emailAddress: 'kin@example.com',
+        yearsOfResidency: '5',
+        holdsPrintedCard: true,
+        printedCardNumber: '0457',
+      },
+    });
+  });
+
+  it('prefills from the application the card came from, not the newest one', () => {
+    const rejectedLater = { ...VIEW_ROW, id: 'app-later', status: 'rejected', first_name: 'Someone' };
+    const start = correctionStart([rejectedLater, approved], [activeCard]);
+    expect(start.kind === 'ready' && start.values.firstName).toBe('Kin');
+  });
+
+  it.each([
+    ['no card', []],
+    ['a revoked card', [{ ...activeCard, status: 'revoked' }]],
+    ['a superseded card', [{ ...activeCard, status: 'superseded' }]],
+  ])('has nothing to correct with %s', (_label, cards) => {
+    expect(correctionStart([approved], cards)).toEqual({ kind: 'unavailable' });
+  });
+
+  it.each(['pending', 'resubmitted', 'revision_requested'])(
+    'does not open a second Correction while one is %s',
+    (status) => {
+      const waiting = { ...VIEW_ROW, id: 'app-correction', status, is_correction: true };
+      expect(correctionStart([waiting, approved], [activeCard])).toEqual({ kind: 'unavailable' });
+    },
+  );
+
+  it.each(['rejected', 'withdrawn'])('opens again once an earlier Correction was %s', (status) => {
+    const decided = { ...VIEW_ROW, id: 'app-correction', status, is_correction: true };
+    expect(correctionStart([decided, approved], [activeCard]).kind).toBe('ready');
   });
 });
 
@@ -486,6 +669,73 @@ describe('translateSubmitError', () => {
     expect(translateSubmitError('unexpected server error', 'XX999')).toBe(
       'We could not submit your application right now. Please try again later.',
     );
+  });
+});
+
+/**
+ * DB l119b and l120's refusals, quoted from their `raise exception` texts. Each
+ * shares its errcode with an older refusal, so the message tells them apart.
+ */
+describe('translateSubmitError: Corrections (DB l119b, l120)', () => {
+  const RPC = 'submit_yellow_card_application: ';
+
+  it('points a cardholder filing an ordinary application to a Correction, naming the card', () => {
+    expect(
+      translateSubmitError(
+        `${RPC}you already hold an active Yellow Card, LC-2026-000123. A new application cannot be filed while it is active`,
+        '23505',
+      ),
+    ).toBe('You already hold LC-2026-000123. To change its details, file a Correction.');
+  });
+
+  it('reads the cardholder refusal from the message alone, before the older "already" match', () => {
+    expect(
+      translateSubmitError(
+        `${RPC}you already hold an active Yellow Card, LC-2026-000123. A new application cannot be filed while it is active`,
+      ),
+    ).toBe('You already hold LC-2026-000123. To change its details, file a Correction.');
+  });
+
+  it('asks a Correction with no note to say what needs correcting', () => {
+    expect(translateSubmitError(`${RPC}a Correction must say what needs correcting`, '22023')).toBe(
+      'A Correction must say what needs correcting.',
+    );
+  });
+
+  it('sends a Correction with no active card to an ordinary application', () => {
+    expect(
+      translateSubmitError(
+        `${RPC}a Correction replaces an active Yellow Card, and you hold none. Apply with an ordinary application`,
+        '22023',
+      ),
+    ).toBe('You have no active Yellow Card to correct. Apply with an ordinary application instead.');
+  });
+
+  it('refuses a second Correction while one waits', () => {
+    expect(
+      translateSubmitError(
+        `${RPC}you already have a live application. Withdraw it before applying again`,
+        '23505',
+        { isCorrection: true },
+      ),
+    ).toBe(
+      'You already have a Correction waiting for a decision. You can file another once it is decided or withdrawn.',
+    );
+  });
+
+  it('keeps the ordinary duplicate message for an ordinary application', () => {
+    expect(
+      translateSubmitError(`${RPC}you already have a live application. Withdraw it before applying again`, '23505'),
+    ).toMatch(/^You already have a Yellow Card application\./);
+  });
+
+  it('names the limits on the note and the printed card number', () => {
+    expect(
+      translateSubmitError(`${RPC}the correction note is 501 characters; the limit is 500`, '22023'),
+    ).toBe('"What needs correcting?" must be 500 characters or fewer.');
+    expect(
+      translateSubmitError(`${RPC}the printed card number is 65 characters; the limit is 64`, '22023'),
+    ).toBe('The printed card number must be 64 characters or fewer.');
   });
 });
 
@@ -753,6 +1003,39 @@ describe('yellowCardService.submitApplication parameters (live path)', () => {
     });
     expect(params).toMatchObject({ p_holds_printed_card: true });
     expect(params).not.toHaveProperty('p_printed_card_number');
+  });
+
+  it('refuses a Correction with no note before calling the RPC', async () => {
+    const rpc = vi.fn();
+    const fakeClient = { rpc } as unknown as ReturnType<typeof supabaseClientModule.getSupabaseClient>;
+    const spy = vi.spyOn(supabaseClientModule, 'getSupabaseClient').mockReturnValue(fakeClient);
+    try {
+      await expect(
+        yellowCardService.submitApplication({ ...VALID_SUBMIT_FIELDS, isCorrection: true, correctionNote: '   ' }),
+      ).rejects.toThrow('A Correction must say what needs correcting.');
+      expect(rpc).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('translates a refused second Correction as one', async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: null,
+      error: {
+        code: '23505',
+        message: 'submit_yellow_card_application: you already have a live application. Withdraw it before applying again',
+      },
+    });
+    const fakeClient = { rpc } as unknown as ReturnType<typeof supabaseClientModule.getSupabaseClient>;
+    const spy = vi.spyOn(supabaseClientModule, 'getSupabaseClient').mockReturnValue(fakeClient);
+    try {
+      await expect(
+        yellowCardService.submitApplication({ ...VALID_SUBMIT_FIELDS, isCorrection: true, correctionNote: 'Name' }),
+      ).rejects.toThrow(/^You already have a Correction waiting for a decision\./);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('drops a printed card number when the applicant holds no printed card', async () => {

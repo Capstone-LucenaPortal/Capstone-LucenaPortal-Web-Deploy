@@ -6,7 +6,11 @@ import {
   parseProcedureName,
   parseQueryParams,
 } from "@/portals/staff/lib/supabase/testing";
-import { readAwaitingReviewCount, writeReviewDecision } from "./review";
+import {
+  readAwaitingReviewCount,
+  writeReviewDecision,
+  writeRevocation,
+} from "./review";
 
 /**
  * The logic behind the module's two server actions, on the same recording-fetch
@@ -168,6 +172,115 @@ describe("writeReviewDecision", () => {
       ok: false,
       message: expect.stringContaining("no longer awaiting review"),
       stale: true,
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The Revocation
+// ---------------------------------------------------------------------------
+
+/**
+ * Setting the card's status, stamping who and when, the Audit Entry and the
+ * Citizen's notice all happen inside revoke_yellow_card (DB l119b). What is
+ * pinned here is that it stays one call with the card and the reason.
+ */
+describe("writeRevocation", () => {
+  it("reaches the database as one call to the revoke procedure", async () => {
+    const { fetch, requests } = createRecordingFetch();
+
+    await writeRevocation(createTestClient(fetch), {
+      cardId: "card-1",
+      reason: "Approved without checking residency.",
+    });
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].method).toBe("POST");
+    expect(parseProcedureName(requests[0].url)).toBe("revoke_yellow_card");
+  });
+
+  it("passes the card and the trimmed reason as its arguments", async () => {
+    const { fetch, requests } = createRecordingFetch();
+
+    await writeRevocation(createTestClient(fetch), {
+      cardId: "card-1",
+      reason: "  Approved without checking residency.  ",
+    });
+
+    expect(requests[0].body).toEqual({
+      p_card_id: "card-1",
+      p_reason: "Approved without checking residency.",
+    });
+  });
+
+  it("reports success", async () => {
+    const { fetch } = createRecordingFetch();
+
+    expect(
+      await writeRevocation(createTestClient(fetch), {
+        cardId: "card-1",
+        reason: "Approved without checking residency.",
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  /**
+   * 22023 here is a card that is no longer active: a colleague revoked it, or
+   * a Correction replaced it, while this page was open.
+   */
+  it("translates a card that is no longer active into the conflict sentence and marks the page stale", async () => {
+    const { fetch } = createFailingFetch({
+      status: 400,
+      code: "22023",
+      message: "revoke_yellow_card: card LC-2026-000045 is revoked, not active",
+    });
+
+    const result = await writeRevocation(createTestClient(fetch), {
+      cardId: "card-1",
+      reason: "Approved without checking residency.",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      message: expect.stringContaining("no longer active"),
+      stale: true,
+    });
+  });
+
+  it("translates a refused caller into the permission sentence", async () => {
+    const { fetch } = createFailingFetch({
+      status: 403,
+      code: "42501",
+      message: "revoke_yellow_card: caller is not active Yellow Card staff",
+    });
+
+    const result = await writeRevocation(createTestClient(fetch), {
+      cardId: "card-1",
+      reason: "Approved without checking residency.",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      message: expect.stringContaining("permission to revoke"),
+      stale: false,
+    });
+  });
+
+  it("translates an unknown card into the missing sentence", async () => {
+    const { fetch } = createFailingFetch({
+      status: 404,
+      code: "PT404",
+      message: "revoke_yellow_card: card card-1 not found",
+    });
+
+    const result = await writeRevocation(createTestClient(fetch), {
+      cardId: "card-1",
+      reason: "Approved without checking residency.",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      message: expect.stringContaining("no longer exists"),
     });
   });
 });

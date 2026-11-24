@@ -137,6 +137,17 @@ export interface YellowCardFieldValues {
   yearsOfResidency: string;
 }
 
+/**
+ * The existing-holder answer, asked on the apply form and on a Correction
+ * (DB l120). It changes nothing but what Staff are shown.
+ */
+export interface PrintedCardValues {
+  /** "I already hold a printed Yellow Card". */
+  holdsPrintedCard: boolean;
+  /** Optional; sent only with `holdsPrintedCard`. */
+  printedCardNumber: string;
+}
+
 export interface SubmittedApplication {
   id: string;
   reference_number: string;

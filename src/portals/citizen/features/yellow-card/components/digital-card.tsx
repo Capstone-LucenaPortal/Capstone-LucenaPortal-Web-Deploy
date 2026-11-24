@@ -1,10 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import ModalShell, { ModalCloseButton } from '@/portals/citizen/components/ui/modal-shell';
 import { yellowCardOfficeName } from '@/portals/citizen/lib/contact-info';
 import { digitalCardFace } from '@/portals/citizen/features/yellow-card/lib/digital-card';
 import { CARD_ASPECT_RATIO, renderDigitalCard } from '@/portals/citizen/features/yellow-card/lib/render-digital-card';
+import { CORRECTION_HREF } from '@/portals/citizen/features/yellow-card/lib/correction-mode';
 import type { MyYellowCard, MyYellowCardApplication } from '@/portals/citizen/features/yellow-card/types';
 
 interface Props {
@@ -160,6 +162,11 @@ function ActiveDigitalCard({
             </a>
           </div>
         )}
+        {/* Only an active card can be corrected (ADR 0011): a revoked card is
+            final, and a superseded one already has a newer card. */}
+        <Link href={CORRECTION_HREF} style={{ fontSize: 14, fontWeight: 600, color: '#003DA5', textDecoration: 'underline' }}>
+          Correct my card details
+        </Link>
       </div>
 
       {shownKey === drawKey && drawing.status === 'ready' && (

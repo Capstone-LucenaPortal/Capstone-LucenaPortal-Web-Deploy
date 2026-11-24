@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { formatDate } from "@/portals/staff/lib/utils";
+import { Badge } from "@/portals/staff/components/ui/badge";
 import { LinkTabs } from "@/portals/staff/components/ui/link-tabs";
 import { QueueActivityBar } from "@/portals/staff/components/queue/queue-activity-bar";
 import { countAwaitingReview } from "../lib/actions";
@@ -118,7 +119,13 @@ export function ApplicationQueue({
                   {formatDate(application.submitted_at)}
                 </td>
                 <td className="px-4 py-3">
-                  <YellowCardStatusBadge status={application.status} />
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <YellowCardStatusBadge status={application.status} />
+                    {/* Purple, because blue is already Resubmitted's. */}
+                    {application.is_correction && (
+                      <Badge className="bg-purple-100 text-purple-800">Correction</Badge>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-3">
                   <DeadlineBadge

@@ -38,6 +38,12 @@ export interface YellowCardQueueItem {
    * (l80). NULL when the clock is not running — never a state of its own.
    */
   deadline_state: DeadlineState | null;
+  /**
+   * A Correction: filed by a Citizen holding an active card, to replace the
+   * details printed on it. The detail screen reads what it replaces from
+   * `YellowCardApplication.correction`.
+   */
+  is_correction: boolean;
 }
 
 /**
@@ -79,6 +85,16 @@ export interface YellowCardIssuedCard {
     /** The reference number of the Correction that issued that card. */
     correction_reference: string;
   } | null;
+}
+
+/**
+ * The Correction whose approval superseded a card: its application id, for a
+ * link to its review page, and when it was approved, which is when the card
+ * was superseded.
+ */
+export interface SupersedingCorrection {
+  id: string;
+  decided_at: string | null;
 }
 
 /** Everything the detail page needs. Superset of the list shape. */

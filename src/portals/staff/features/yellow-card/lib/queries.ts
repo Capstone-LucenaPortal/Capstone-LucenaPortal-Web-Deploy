@@ -19,10 +19,10 @@ import type { YellowCardQueueItem, YellowCardStatus } from "../types";
  * parse, so the row type degrades to GenericStringError[].
  *
  * The result is still cast to its row type below. Verified by live
- * query against staff_yellow_card_queue on 2026-08-07. Do not add a column
- * without doing the same.
+ * query against staff_yellow_card_queue on 2026-08-07; is_correction (DB l120)
+ * on the Sandbox on 2026-11-24. Do not add a column without doing the same.
  */
-const QUEUE_COLUMNS = "id, reference_number, first_name, middle_name, last_name, suffix, barangay_name, status, submitted_at, due_at, document_count, deadline_state";
+const QUEUE_COLUMNS = "id, reference_number, first_name, middle_name, last_name, suffix, barangay_name, status, submitted_at, due_at, document_count, deadline_state, is_correction";
 
 /**
  * The columns the search box looks in. A reviewer looks an application up by

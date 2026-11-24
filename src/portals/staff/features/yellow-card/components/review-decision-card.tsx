@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/portals/staff/components/ui/card";
 import { Modal } from "@/portals/staff/components/ui/modal";
@@ -8,8 +9,11 @@ import { Toast } from "@/portals/staff/components/ui/toast";
 import { formatDate } from "@/portals/staff/lib/utils";
 import { reviewApplication } from "../lib/actions";
 import { isReviewable } from "../lib/status";
+import { IssuedCardSection } from "./issued-card-section";
 import type {
+  SupersedingCorrection,
   YellowCardApplication,
+  YellowCardCorrection,
   YellowCardDecision,
   YellowCardReview,
 } from "../types";
@@ -18,6 +22,8 @@ export function ReviewDecisionCard({
   application,
   actorName,
   latestReview = null,
+  supersedingCorrection = null,
+  replacedCardApplicationId = null,
 }: {
   application: YellowCardApplication;
   /** Shown in the confirmation copy so the reviewer sees whose name is recorded. */
@@ -27,6 +33,10 @@ export function ReviewDecisionCard({
    * card still renders where no review has been read (or none exists yet).
    */
   latestReview?: YellowCardReview | null;
+  /** From the dossier; read only when the issued card is superseded. */
+  supersedingCorrection?: SupersedingCorrection | null;
+  /** From the dossier; for a Correction, the application whose card it replaces. */
+  replacedCardApplicationId?: string | null;
 }) {
   const [openModal, setOpenModal] = useState<YellowCardDecision | null>(null);
   const [reason, setReason] = useState("");
@@ -66,7 +76,24 @@ export function ReviewDecisionCard({
       <CardContent>
         <div className="space-y-4">
           <DedupBanner application={application} />
+          {application.correction && (
+            <CorrectionNotice
+              correction={application.correction}
+              replacedCardApplicationId={replacedCardApplicationId}
+            />
+          )}
+          <ExistingHolderHint application={application} />
           <ReviewContext application={application} latestReview={latestReview} />
+
+          {/* Only an approval issues a card. A seeded approved row may have none. */}
+          {application.status === "approved" && application.issued_card && (
+            <IssuedCardSection
+              application={application}
+              card={application.issued_card}
+              actorName={actorName}
+              supersedingCorrection={supersedingCorrection}
+            />
+          )}
 
           {error && <Toast message={error} variant="error" />}
 
@@ -95,10 +122,13 @@ export function ReviewDecisionCard({
       </CardContent>
 
       <Modal open={openModal === "approve"} onClose={() => setOpenModal(null)}>
-        <h2 className="text-lg font-bold text-gray-900">Approve application</h2>
+        <h2 className="text-lg font-bold text-gray-900">
+          {application.correction ? "Approve Correction" : "Approve application"}
+        </h2>
         <p className="mt-1 text-sm text-gray-500">
-          Approve this application? The Yellow Card is issued immediately and the
-          decision is recorded under {actorName}.
+          {application.correction
+            ? `Approve this Correction? ${replacedCardFate(application.correction)} The decision is recorded under ${actorName}.`
+            : `Approve this application? The Yellow Card is issued immediately and the decision is recorded under ${actorName}.`}
         </p>
         <div className="mt-6 flex justify-end gap-2">
           <Button variant="secondary" onClick={() => setOpenModal(null)}>
@@ -299,6 +329,81 @@ function DedupBanner({ application }: { application: YellowCardApplication }) {
     <div className="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
       Flagged for duplicate review — this voter ID matches an existing record.
       Check before approving.
+    </div>
+  );
+}
+
+/**
+ * What approving a Correction does to the card it replaces. Only an Active
+ * card is superseded: a card revoked since the Correction was filed stays
+ * revoked, and the new card is issued all the same (ADR 0011).
+ */
+function replacedCardFate(correction: YellowCardCorrection): string {
+  const card = `Yellow Card ${correction.replaced_card_number}`;
+  const outcome =
+    correction.replaced_card_status === "revoked"
+      ? "stays revoked"
+      : "becomes Superseded";
+  return `${card} ${outcome} and a new card is issued with a new card number.`;
+}
+
+/**
+ * What a Correction replaces and why (Central-System-Documents ADR 0011).
+ *
+ * The replaced card's status is named only when it is no longer Active: a
+ * card revoked since the Correction was filed changes what approving means.
+ * The link goes to the application that issued the card, where its own
+ * Yellow Card section is; it is left out when that row could not be read.
+ */
+function CorrectionNotice({
+  correction,
+  replacedCardApplicationId,
+}: {
+  correction: YellowCardCorrection;
+  replacedCardApplicationId: string | null;
+}) {
+  const status = correction.replaced_card_status;
+
+  return (
+    <section
+      aria-label="Correction"
+      className="rounded-md border border-purple-200 bg-purple-50 p-3 text-sm text-purple-900"
+    >
+      <p className="text-xs font-medium uppercase tracking-wide">Correction</p>
+      <p className="mt-1">
+        Replaces{" "}
+        {replacedCardApplicationId ? (
+          <Link
+            href={`/staff/yellow-card/${replacedCardApplicationId}`}
+            className="font-medium underline"
+          >
+            {correction.replaced_card_number}
+          </Link>
+        ) : (
+          <span className="font-medium">{correction.replaced_card_number}</span>
+        )}
+        {status && status !== "active" && ` (${status})`}.
+      </p>
+      <span className="mt-2 block font-medium">What needs correcting?</span>
+      <blockquote className="mt-2 border-l-2 border-current/30 pl-3 italic">
+        {correction.note}
+      </blockquote>
+    </section>
+  );
+}
+
+/**
+ * The applicant says they already hold a printed Yellow Card. It changes no
+ * outcome; it only prompts a check of the paper registry, so it shows in every
+ * status and blocks nothing.
+ */
+function ExistingHolderHint({ application }: { application: YellowCardApplication }) {
+  if (!application.holds_printed_card) return null;
+
+  return (
+    <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+      Existing holder: printed card no. {application.printed_card_number || "not given"};
+      check the paper registry.
     </div>
   );
 }

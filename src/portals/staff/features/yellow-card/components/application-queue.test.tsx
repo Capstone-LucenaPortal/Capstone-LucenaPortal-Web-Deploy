@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { ApplicationQueue } from "./application-queue";
 import type { YellowCardQueueItem, YellowCardStatus } from "../types";
 
@@ -56,6 +56,7 @@ function item(overrides: Partial<YellowCardQueueItem> = {}): YellowCardQueueItem
     due_at: "2026-06-30T16:23:45.547482+00:00",
     document_count: 1,
     deadline_state: "on_track",
+    is_correction: false,
     ...overrides,
   };
 }
@@ -82,6 +83,26 @@ describe("ApplicationQueue", () => {
       "href",
       "/staff/yellow-card/app-1",
     );
+  });
+
+  it("badges a Correction's row beside its status, and not a first application's", () => {
+    render(
+      <ApplicationQueue
+        applications={[
+          item({ id: "app-1", reference_number: "YC-2026-000069" }),
+          item({ id: "app-2", reference_number: "YC-2026-000210", is_correction: true }),
+        ]}
+        matchCount={2}
+        counts={counts}
+        status="all"
+        search=""
+      />,
+    );
+
+    const [, first, correction] = screen.getAllByRole("row");
+    expect(within(correction).getByText("Correction")).toBeInTheDocument();
+    expect(within(correction).getByText("Pending Review")).toBeInTheDocument();
+    expect(within(first).queryByText("Correction")).not.toBeInTheDocument();
   });
 
   it("carries the active status through the search form so a search keeps the tab", () => {

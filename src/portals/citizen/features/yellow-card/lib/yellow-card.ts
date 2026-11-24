@@ -2,7 +2,7 @@ import { getSupabaseClient } from '@/portals/citizen/lib/supabase/client';
 import { requestService } from '@/portals/citizen/lib/mock/request-store';
 import { LIMITS, fieldTooLong, emailError, phMobileError, boundedInt, birthDateError } from '@/portals/citizen/lib/validation';
 import { safeExt, canonicalMime, type DocumentUploadProgress } from '@/portals/citizen/lib/storage/file-validation';
-import type { MyYellowCardApplication, MyYellowCard, YellowCardApplicationFields, YellowCardFieldValues, SubmittedApplication, VerifiedCard } from '../types';
+import type { MyYellowCardApplication, MyYellowCard, YellowCardApplicationFields, YellowCardFieldValues, PrintedCardValues, SubmittedApplication, VerifiedCard } from '../types';
 
 /** Pure: a view row -> prefilled form values. Nulls become '' to keep inputs controlled. */
 export function mapApplicationToFormValues(app: MyYellowCardApplication): YellowCardFieldValues {
@@ -20,6 +20,50 @@ export function mapApplicationToFormValues(app: MyYellowCardApplication): Yellow
     contactNumber: app.contact_number ?? '',
     emailAddress: app.email_address ?? '',
     yearsOfResidency: app.years_of_residency != null ? String(app.years_of_residency) : '',
+  };
+}
+
+/**
+ * Where a Correction of the Citizen's card starts (ADR 0011): the active card it
+ * replaces, and the form prefilled from the APPROVED application that card was
+ * issued from, not from the Profile, because the card prints what was approved.
+ * The existing-holder answer carries over too.
+ *
+ * `unavailable` with no active card (nothing to correct), and while another
+ * application waits, which the database would refuse anyway: one live
+ * application per Citizen, and a cardholder's only possible one is a Correction.
+ */
+export type CorrectionStart =
+  | { kind: 'ready'; cardNumber: string; values: YellowCardFieldValues & PrintedCardValues }
+  | { kind: 'unavailable' };
+
+/** Statuses of an application still waiting for a decision. Unlike
+ *  `LIVE_APPLICATION_STATUSES`, `approved` is not one: since DB l119b an
+ *  approved application no longer blocks a Correction. */
+const WAITING_STATUSES = ['pending', 'resubmitted', 'revision_requested'] as const satisfies readonly LiveApplicationStatus[];
+type WaitingStatus = (typeof WAITING_STATUSES)[number];
+
+function isWaitingStatus(status: string): status is WaitingStatus {
+  return (WAITING_STATUSES as readonly string[]).includes(status);
+}
+
+export function correctionStart(
+  applications: MyYellowCardApplication[],
+  cards: Pick<MyYellowCard, 'card_number' | 'application_id' | 'status'>[],
+): CorrectionStart {
+  const card = cards.find((c) => c.status === 'active');
+  const approved = card && applications.find((a) => a.id === card.application_id);
+  if (!card || !approved || applications.some((a) => isWaitingStatus(a.status))) {
+    return { kind: 'unavailable' };
+  }
+  return {
+    kind: 'ready',
+    cardNumber: card.card_number,
+    values: {
+      ...mapApplicationToFormValues(approved),
+      holdsPrintedCard: approved.holds_printed_card ?? false,
+      printedCardNumber: approved.printed_card_number ?? '',
+    },
   };
 }
 
@@ -144,8 +188,9 @@ export function isLiveApplicationStatus(status: string): status is LiveApplicati
 export type LiveApplicationNotice =
   /** Sent back for changes: the citizen can resubmit without starting over. */
   | { kind: 'revision'; applicationId: string; reference: string }
-  /** Decided in their favour. `card` is null until one has been issued. */
-  | { kind: 'approved'; reference: string; card: ApprovedCard | null }
+  /** Decided in their favour. `card` is null until one has been issued.
+   *  `correction` is a Correction of that card still waiting, if there is one. */
+  | { kind: 'approved'; reference: string; card: ApprovedCard | null; correction?: WaitingCorrection }
   /** `pending` or `resubmitted` — genuinely still with a reviewer. */
   | { kind: 'processing'; reference: string };
 
@@ -183,19 +228,65 @@ type CardRow = Pick<MyYellowCard, 'card_number' | 'application_id' | 'status'>;
  * printing a blank one.
  */
 export function liveApplicationNotice(
-  applications: Pick<MyYellowCardApplication, 'id' | 'reference_number' | 'status'>[],
+  applications: (Pick<MyYellowCardApplication, 'id' | 'reference_number' | 'status'> &
+    Partial<Pick<MyYellowCardApplication, 'is_correction'>>)[],
   cards: CardRow[],
 ): LiveApplicationNotice | null {
-  for (const application of applications) {
+  // A waiting Correction is newer than the approved application whose card it
+  // corrects, but the card is what the Citizen holds: the Correction is looked
+  // at last, and rides along on that card's notice (ticket #171).
+  const correction = applications.find(
+    (a): a is typeof a & { status: WaitingStatus } => !!a.is_correction && isWaitingStatus(a.status),
+  );
+  const ordered = correction ? [...applications.filter((a) => a !== correction), correction] : applications;
+
+  for (const application of ordered) {
     // The guard is what narrows `status` for the exhaustive switch below.
     if (isLiveApplicationStatus(application.status)) {
-      return describeLiveApplication(
+      const notice = describeLiveApplication(
         { id: application.id, reference_number: application.reference_number, status: application.status },
         cards,
       );
+      if (correction && application !== correction && notice.kind === 'approved') {
+        return {
+          ...notice,
+          correction: {
+            applicationId: correction.id,
+            reference: correction.reference_number,
+            status: correction.status,
+          },
+        };
+      }
+      return notice;
     }
   }
   return null;
+}
+
+/** A Correction still waiting for a decision, shown beside the card it corrects. */
+export interface WaitingCorrection {
+  applicationId: string;
+  reference: string;
+  status: WaitingStatus;
+}
+
+/** The status line for a waiting Correction. Every variant says the card stays
+ *  valid: that is the one thing a Citizen with a Correction in flight must know. */
+export function correctionStatusCopy(
+  correction: WaitingCorrection,
+  cardNumber: string,
+): { label: string; detail: string } {
+  const stillValid = `Card #${cardNumber} stays valid until it is decided.`;
+  if (correction.status === 'revision_requested') {
+    return {
+      label: 'Needs your changes',
+      detail: `Your Correction #${correction.reference} was sent back for changes. Update it and resubmit. ${stillValid}`,
+    };
+  }
+  return {
+    label: 'Under review',
+    detail: `Your Correction #${correction.reference} is with a reviewer. ${stillValid}`,
+  };
 }
 
 /** Exhaustive over `LiveApplicationStatus`: adding a member to
@@ -353,14 +444,45 @@ const DUPLICATE_APPLICATION_MESSAGE =
  * application guard; '22023' is a Postgres data-exception, raised for bad
  * input generally.
  */
-export function translateSubmitError(message: string, code?: string): string {
+export function translateSubmitError(
+  message: string,
+  code?: string,
+  { isCorrection = false }: { isCorrection?: boolean } = {},
+): string {
+  const m = (message ?? '').toLowerCase();
+
+  // DB l119b and l120 (ADR 0011). Each shares its errcode with an older
+  // refusal, so these are read from the message and come before the code
+  // fallbacks. The cardholder refusal goes first: its text also contains
+  // "already" and "application", which the message fallback below would match.
+  const heldCard = /already hold an active yellow card, ([^\s.]+)/i.exec(message ?? '');
+  if (heldCard) {
+    return `You already hold ${heldCard[1]}. To change its details, file a Correction.`;
+  }
+  if (m.includes('and you hold none')) {
+    return 'You have no active Yellow Card to correct. Apply with an ordinary application instead.';
+  }
+  if (m.includes('must say what needs correcting')) {
+    return 'A Correction must say what needs correcting.';
+  }
+  if (m.includes('correction note is') && m.includes('the limit is')) {
+    return '"What needs correcting?" must be 500 characters or fewer.';
+  }
+  if (m.includes('printed card number is') && m.includes('the limit is')) {
+    return 'The printed card number must be 64 characters or fewer.';
+  }
+  // A cardholder can only have a live application by filing a Correction, so
+  // on a Correction the live application in the way is another Correction.
+  if (isCorrection && (code === '23505' || m.includes('live application'))) {
+    return 'You already have a Correction waiting for a decision. You can file another once it is decided or withdrawn.';
+  }
+
   if (code === '23505') {
     return DUPLICATE_APPLICATION_MESSAGE;
   }
   if (code === '22023') {
     return 'Please check that all required fields are filled in correctly.';
   }
-  const m = message.toLowerCase();
   if (m.includes('no profile') || m.includes('complete your profile')) {
     return 'Please complete your profile before applying for a Yellow Card.';
   }
@@ -547,7 +669,10 @@ export const yellowCardService = {
       fieldTooLong("Voter's ID number", voterIdNumber, LIMITS.shortText) ??
       emailError(emailAddress) ??
       phMobileError(contactNumber) ??
-      (yearsOfResidency === null ? 'Years of residency must be a whole number between 0 and 120.' : null);
+      (yearsOfResidency === null ? 'Years of residency must be a whole number between 0 and 120.' : null) ??
+      (fields.isCorrection && !fields.correctionNote?.trim()
+        ? 'A Correction must say what needs correcting.'
+        : null);
     if (problem) throw new YellowCardSubmitError(problem);
 
     const params = {
@@ -578,7 +703,11 @@ export const yellowCardService = {
       }),
     };
     const { data, error } = await client.rpc('submit_yellow_card_application', params);
-    if (error) throw new YellowCardSubmitError(translateSubmitError(error.message, error.code));
+    if (error) {
+      throw new YellowCardSubmitError(
+        translateSubmitError(error.message, error.code, { isCorrection: fields.isCorrection }),
+      );
+    }
     return data as unknown as SubmittedApplication;
   },
 

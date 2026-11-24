@@ -1,7 +1,7 @@
 "use server";
 
 /**
- * The Yellow Card module's two server actions, and nothing else.
+ * The Yellow Card module's server actions, and nothing else.
  *
  * These are shells: they build the real client, hand it to ./review.ts, and own
  * revalidation. Everything with a rule in it lives there — see the note at the
@@ -16,7 +16,9 @@ import type { ActionResult } from "@/portals/staff/lib/supabase/errors";
 import {
   readAwaitingReviewCount,
   writeReviewDecision,
+  writeRevocation,
   type ReviewDecisionInput,
+  type RevocationInput,
 } from "./review";
 
 /**
@@ -48,6 +50,25 @@ export async function reviewApplication(
 
   // The dashboard's counts only move when a decision actually lands.
   if (result.ok) revalidatePath("/staff/dashboard");
+
+  return result;
+}
+
+/**
+ * Revokes the card an approved application issued. The application itself
+ * stays approved, so only its own page changes: the queue and the dashboard
+ * count applications, not cards.
+ */
+export async function revokeCard(
+  input: RevocationInput & { applicationId: string },
+): Promise<ActionResult> {
+  const result = await writeRevocation(await createClient(), input);
+
+  // Re-read on a stale failure too, for the same reason reviewApplication
+  // does: a colleague revoked first, or a Correction replaced the card.
+  if (result.ok || result.stale) {
+    revalidatePath(`/staff/yellow-card/${input.applicationId}`);
+  }
 
   return result;
 }

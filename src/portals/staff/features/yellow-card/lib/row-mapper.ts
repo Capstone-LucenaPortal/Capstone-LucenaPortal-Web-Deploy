@@ -30,6 +30,8 @@ export type StaffYellowCardQueueRow = {
   due_at: string | null;
   document_count: number | null;
   deadline_state: string | null;
+  /** Set means this is a Correction (DB l120), which the queue badges. */
+  is_correction: boolean | null;
 };
 
 export type StaffYellowCardApplicationRow = StaffYellowCardQueueRow & {
@@ -45,8 +47,8 @@ export type StaffYellowCardApplicationRow = StaffYellowCardQueueRow & {
   needs_dedup_review: boolean | null;
   decided_at: string | null;
   review_cycles: number | null;
-  // A Correction and the existing-holder answer (DB l120).
-  is_correction: boolean | null;
+  // A Correction (is_correction is on the queue row) and the existing-holder
+  // answer (DB l120).
   replaces_card_id: string | null;
   replaced_card_number: string | null;
   replaced_card_status: YellowCardCardStatus | null;
@@ -100,6 +102,7 @@ export function toQueueItem(row: StaffYellowCardQueueRow): YellowCardQueueItem {
     // Not degraded to null like the cosmetic columns: an unknown value would
     // silently hide the warning this column exists to show.
     deadline_state: parseDeadlineState(row.deadline_state),
+    is_correction: row.is_correction ?? false,
   };
 }
 

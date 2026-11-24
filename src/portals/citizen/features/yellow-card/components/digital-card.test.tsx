@@ -78,6 +78,24 @@ describe('DigitalCard', () => {
     expect(download).toHaveAttribute('download', 'yellow-card-LC-2026-063813.png');
   });
 
+  // A Correction replaces an active card's details (ADR 0011, ticket #171).
+  it('offers an active card a link to correct its details', async () => {
+    await showActiveCard();
+
+    expect(screen.getByRole('link', { name: 'Correct my card details' })).toHaveAttribute(
+      'href',
+      '/yellow-card?mode=correction',
+    );
+  });
+
+  it('keeps the correction link when the card cannot be drawn', async () => {
+    renderDigitalCard.mockRejectedValue(new Error('no canvas'));
+    render(<DigitalCard activeCard={activeCard} nonActiveCard={null} application={application} />);
+
+    await screen.findByText(/could not be drawn on this device/i);
+    expect(screen.getByRole('link', { name: 'Correct my card details' })).toBeInTheDocument();
+  });
+
   it('opens the card full screen, and Escape closes it and gives focus back to Show card', async () => {
     const user = userEvent.setup();
     await showActiveCard();
@@ -125,6 +143,7 @@ describe('DigitalCard', () => {
     );
 
     expect(screen.getByText(notice)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Correct my card details' })).not.toBeInTheDocument();
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Show card' })).not.toBeInTheDocument();
     await waitFor(() => expect(renderDigitalCard).not.toHaveBeenCalled());
@@ -134,6 +153,7 @@ describe('DigitalCard', () => {
     render(<DigitalCard activeCard={null} nonActiveCard={null} application={null} />);
 
     expect(screen.getByText('Your digital Yellow Card will appear here')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Correct my card details' })).not.toBeInTheDocument();
     expect(renderDigitalCard).not.toHaveBeenCalled();
   });
 });

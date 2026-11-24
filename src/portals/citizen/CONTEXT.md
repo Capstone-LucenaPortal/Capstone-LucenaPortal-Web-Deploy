@@ -74,17 +74,13 @@ returned.
 _Avoid_: Validation, Lookup, Scan
 
 **Revocation**:
-Staff withdrawing a Yellow Card that should not be honoured — issued to the wrong person, on a
-false document, or in error — with a reason the Citizen is told. It is final: a revoked card is
-never reinstated, and Verification tells the Verifier not to accept it. It is not how wrong details
-are fixed; that is a **Correction**. It withdraws the card in the portal only; a printed card the
-city handed out is recalled by the city.
+Defined in [`CONTEXT-MAP.md`](../../../CONTEXT-MAP.md). To a Citizen, a revoked card is gone for
+good: their Digital Card says it was revoked, they are told the reason, and they may apply again.
 _Avoid_: Cancellation, Suspension, Deactivation
 
 **Superseded card**:
-A Yellow Card replaced by a newer one issued to the same Citizen. It was valid until the moment the
-replacement was issued, and Verification tells the Verifier to ask for the holder's current card.
-A revoked card never becomes superseded.
+Defined in [`CONTEXT-MAP.md`](../../../CONTEXT-MAP.md). To a Citizen it is the card their
+**Correction** replaced; the card they hold now is the new one.
 _Avoid_: Old card, Expired card, Replaced card
 
 **Yellow Card Application**:
@@ -105,11 +101,9 @@ corrections. It never creates a second Application or Booking.
 _Avoid_: Reapplication, New application, Resubmit
 
 **Correction**:
-A Yellow Card Application a Citizen files while holding an active card, to replace the details
-printed on it. The old card stays valid until the Correction is approved, when it becomes a
-**Superseded card** and a new card with a new number is issued. Distinct from a **Revision
-Request**, which fixes an Application before any decision, and from a Profile edit, which never
-changes a card.
+Defined in [`CONTEXT-MAP.md`](../../../CONTEXT-MAP.md). To a Citizen it is how wrong details on
+their card are fixed: they file it while holding an active card, which stays valid until the
+Correction is approved.
 _Avoid_: Amendment, Card update, Reissue
 
 **Duplicate Review**:

@@ -64,6 +64,24 @@ _Avoid_: release (that is a responder handing a ticket back, within the same cyc
 Staff routing a report that was routed before. Only a report nobody holds can be rerouted; a held one must be released first. A reroute to another department takes the report out of the old department's pool and makes it a pool arrival in the new one's; a reroute to the same department, say to change its level, is not an arrival. A reroute is not a new **Cycle**, does not restart the SLA clock, and is not told to the citizen. Routing a report again after a responder's **Reject** is a reroute too. The database spells it a `rerouted` event. See **Routing** in the Staff glossary, and **Reroute** and **Reject** in the Responder glossary.
 _Avoid_: transfer, reassign (nobody is assigned until a responder claims it)
 
+### Revocation
+
+**Revocation**:
+Staff withdrawing a Yellow Card that should not be honoured — issued to the wrong person, on a false document, or in error — with a reason the Citizen is told. It is final: a revoked card is never reinstated, and Verification tells the Verifier not to accept it. Only an active card can be revoked. It withdraws the card, not the decision: the Yellow Card Application that issued it stays approved, and the Citizen may apply again. It is not how wrong details are fixed; that is a **Correction**. It withdraws the card in the portal only; a printed card the city handed out is recalled by the city. Staff revoke from the review page of the Application that issued the card; the Citizen sees it on their Digital Card; Super-staff find it in the Audit Log. The database spells it `revoke_yellow_card` and a card status of `revoked`.
+_Avoid_: Cancellation, Suspension, Deactivation
+
+### Superseded card
+
+**Superseded card**:
+A Yellow Card replaced by a newer one issued to the same Citizen, when a **Correction** is approved. It was valid until the moment the replacement was issued, and Verification tells the Verifier to ask for the holder's current card. A revoked card never becomes superseded, and a superseded card is never revoked: it is already not valid, and the card to withdraw is its replacement. The database spells it a card status of `superseded`.
+_Avoid_: Old card, Expired card, Replaced card
+
+### Correction
+
+**Correction**:
+A Yellow Card Application a Citizen files while holding an active card, to replace the details printed on it. The old card stays valid until the Correction is approved, when it becomes a **Superseded card** and a new card with a new number is issued. The new card belongs to the Correction, so it is revoked from the Correction's review page, not the old card's. Distinct from a **Revision Request**, which fixes an Application before any decision, and from a Profile edit, which never changes a card.
+_Avoid_: Amendment, Card update, Reissue
+
 ### Monitoring
 
 **Monitoring** means two different things depending on the Portal. Since #72 (ADR 0008) Super-staff's old Monitoring screen is **System Health**:

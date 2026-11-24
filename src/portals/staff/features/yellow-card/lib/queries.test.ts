@@ -26,6 +26,7 @@ const CANNED_QUEUE_ROW: StaffYellowCardQueueRow = {
   due_at: "2026-08-04T02:11:09.114000+00:00",
   document_count: 3,
   deadline_state: "overdue",
+  is_correction: false,
 };
 
 describe("getYellowCardQueue", () => {
@@ -62,6 +63,7 @@ describe("getYellowCardQueue", () => {
       "due_at",
       "document_count",
       "deadline_state",
+      "is_correction",
     ]);
   });
 
@@ -179,6 +181,7 @@ describe("getYellowCardQueue", () => {
         due_at: "2026-08-04T02:11:09.114000+00:00",
         document_count: 3,
         deadline_state: "overdue",
+        is_correction: false,
       },
     ]);
   });

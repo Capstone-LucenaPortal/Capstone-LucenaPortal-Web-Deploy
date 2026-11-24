@@ -7,6 +7,7 @@ import type {
   StaffYellowCardReviewRow,
 } from "./row-mapper";
 import type {
+  SupersedingCorrection,
   YellowCardApplication,
   YellowCardDocument,
   YellowCardReview,
@@ -61,6 +62,18 @@ export interface YellowCardReviewDossier {
   documents: YellowCardDocument[];
   /** Null before anyone has reviewed it. */
   latestReview: YellowCardReview | null;
+  /**
+   * The Correction whose approval superseded this application's card. Null
+   * unless the card is `superseded`, and null when no row answers that
+   * Correction's reference. A failed read raises, like the other reads.
+   */
+  supersedingCorrection: SupersedingCorrection | null;
+  /**
+   * For a Correction, the application that issued the card it replaces, for
+   * the "Replaces …" link. Null for a first application, and null when no row
+   * answers that card. A failed read raises, like the other reads.
+   */
+  replacedCardApplicationId: string | null;
   genderLabel: string;
   civilStatusLabel: string;
 }
@@ -71,12 +84,12 @@ export interface YellowCardReviewDossier {
  * concurrency shape, which catalogs exist, or the fallback rule.
  *
  * Two-phase on purpose: the application is read first and a nonexistent id
- * returns null without firing the other four reads.
+ * returns null without firing any other read.
  *
  * The current staff user is deliberately not here. It is owned by the auth
  * feature and answers "who is looking", not "what is being looked at".
  *
- * This is the module's whole interface. The three reads below are private, and
+ * This is the module's whole interface. The five reads below are private, and
  * stay private: an export is an export, and the next caller to import one will
  * not read the comment above it. See ADR-0003.
  */
@@ -87,9 +100,18 @@ export async function getReviewDossier(
   const application = await readApplication(id, db);
   if (!application) return null;
 
-  const [documents, latestReview, genders, civilStatuses] = await Promise.all([
+  const [
+    documents,
+    latestReview,
+    supersedingCorrection,
+    replacedCardApplicationId,
+    genders,
+    civilStatuses,
+  ] = await Promise.all([
     readLiveDocuments(application.id, db),
     readLatestReview(application.id, db),
+    readSupersedingCorrection(application, db),
+    readReplacedCardApplicationId(application, db),
     getLabels("public_genders"),
     getLabels("public_civil_statuses"),
   ]);
@@ -98,6 +120,8 @@ export async function getReviewDossier(
     application,
     documents,
     latestReview,
+    supersedingCorrection,
+    replacedCardApplicationId,
     // An unlabelled code still tells the reviewer something; an empty field
     // does not. Fall back rather than blanking. This is also how a failed
     // catalog read degrades — getLabels swallows it and returns an empty map.
@@ -175,4 +199,66 @@ async function readLatestReview(
   }
 
   return toReview(data as StaffYellowCardReviewRow | null);
+}
+
+/**
+ * The Correction that superseded this application's card, read only when the
+ * card is `superseded`.
+ *
+ * The card's row names its successor by the Correction's YC- reference, which
+ * the review page cannot link to, and carries no date. That Correction's own
+ * queue row has both: its id, and its decided_at, which is the moment
+ * yc_issue_card superseded the old card. staff_yellow_card_queue holds every
+ * application in every status, so the row is there for anyone who can see
+ * this one. A DB column was considered and left for after the defense (#169).
+ */
+async function readSupersedingCorrection(
+  application: YellowCardApplication,
+  db?: Db,
+): Promise<SupersedingCorrection | null> {
+  const reference = application.issued_card?.superseded_by?.correction_reference;
+  if (application.issued_card?.status !== "superseded" || !reference) return null;
+
+  const supabase = db ?? await createClient();
+  const { data, error } = await supabase
+    .from("staff_yellow_card_queue")
+    .select("id, decided_at")
+    .eq("reference_number", reference)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`staff_yellow_card_queue Correction read failed: ${error.message}`);
+  }
+
+  return data?.id ? { id: data.id, decided_at: data.decided_at } : null;
+}
+
+/**
+ * The application that issued the card a Correction replaces, read only for a
+ * Correction.
+ *
+ * The Correction names the card by its id, and the review page is addressed
+ * by application id. staff_yellow_card_queue holds every application in every
+ * status, each with the card it issued as card_id, so that application's row
+ * is there for anyone who can see this one (#170).
+ */
+async function readReplacedCardApplicationId(
+  application: YellowCardApplication,
+  db?: Db,
+): Promise<string | null> {
+  const cardId = application.correction?.replaced_card_id;
+  if (!cardId) return null;
+
+  const supabase = db ?? await createClient();
+  const { data, error } = await supabase
+    .from("staff_yellow_card_queue")
+    .select("id")
+    .eq("card_id", cardId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`staff_yellow_card_queue replaced card read failed: ${error.message}`);
+  }
+
+  return data?.id ?? null;
 }

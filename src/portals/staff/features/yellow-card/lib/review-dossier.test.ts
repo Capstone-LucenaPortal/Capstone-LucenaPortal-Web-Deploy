@@ -3,7 +3,9 @@ import {
   columnsOf,
   createTableFetch,
   createTestClient,
+  parseQueryParams,
   requestTo,
+  type ParsedQueryParams,
 } from "@/portals/staff/lib/supabase/testing";
 import * as catalogs from "@/portals/staff/lib/supabase/catalogs";
 import { getReviewDossier } from "./review-dossier";
@@ -35,6 +37,7 @@ const CANNED_QUEUE_ROW: StaffYellowCardQueueRow = {
   due_at: "2026-08-04T02:11:09.114000+00:00",
   document_count: 3,
   deadline_state: "overdue",
+  is_correction: false,
 };
 
 const CANNED_APPLICATION_ROW: StaffYellowCardApplicationRow = {
@@ -52,7 +55,6 @@ const CANNED_APPLICATION_ROW: StaffYellowCardApplicationRow = {
   needs_dedup_review: false,
   decided_at: null,
   review_cycles: 0,
-  is_correction: false,
   replaces_card_id: null,
   replaced_card_number: null,
   replaced_card_status: null,
@@ -141,7 +143,7 @@ describe("getReviewDossier", () => {
     expect(await getReviewDossier(APP_ID, createTestClient(fetch))).toBeNull();
   });
 
-  it("does not fire the other four reads when there is nothing to show", async () => {
+  it("does not fire any other read when there is nothing to show", async () => {
     const getLabels = stubCatalogs();
     const { fetch, requests } = createTableFetch({});
 
@@ -195,6 +197,8 @@ describe("getReviewDossier", () => {
       "documents",
       "genderLabel",
       "latestReview",
+      "replacedCardApplicationId",
+      "supersedingCorrection",
     ]);
     expect(dossier!.application).not.toHaveProperty("genderLabel");
   });
@@ -557,5 +561,197 @@ describe("getReviewDossier — the latest review read", () => {
       reviewed_at: "2026-08-03T07:45:12.000000+00:00",
       reviewed_by_name: "Ana Reyes",
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The Correction that replaced a superseded card
+// ---------------------------------------------------------------------------
+
+/**
+ * A superseded card names its successor by the Correction's YC- reference,
+ * not its application id, and carries no date. The review page links by id
+ * and says "on <date>", so the dossier reads that Correction's row — once, and
+ * only for a superseded card.
+ */
+describe("getReviewDossier — the superseding Correction read", () => {
+  const SUPERSEDED_ROW: StaffYellowCardApplicationRow = {
+    ...CANNED_APPLICATION_ROW,
+    status: "approved",
+    decided_at: "2026-11-12T03:00:00.000000+00:00",
+    card_id: "card-45",
+    card_number: "LC-2026-000045",
+    card_status: "superseded",
+    card_holder_name: "Maria Dela Cruz",
+    card_issued_on: "2026-11-12",
+    card_superseded_by_number: "LC-2026-000312",
+    card_superseded_by_reference: "YC-2026-000210",
+  };
+
+  const CORRECTION_ID = "9b0e7c1e-2f43-4c5a-9a51-0c8f6c1d2e3f";
+
+  /**
+   * Both reads go to staff_yellow_card_queue, so they are told apart by their
+   * filter: the Correction is looked up by reference_number, the application
+   * by id.
+   */
+  function createSupersededFetch(correction: unknown[]) {
+    const requests: ParsedQueryParams[] = [];
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const params = parseQueryParams(new Request(input, init).url);
+      requests.push(params);
+      const body =
+        params.table !== APPLICATIONS
+          ? []
+          : params.filters["reference_number"]
+            ? correction
+            : [SUPERSEDED_ROW];
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+    return { fetch, requests };
+  }
+
+  it("reads the Correction's id and approval time by its reference", async () => {
+    stubCatalogs();
+    const { fetch, requests } = createSupersededFetch([
+      { id: CORRECTION_ID, decided_at: "2026-11-20T06:30:00.000000+00:00" },
+    ]);
+
+    const dossier = await getReviewDossier(APP_ID, createTestClient(fetch));
+
+    const lookup = requests.find((request) => request.filters["reference_number"]);
+    expect(lookup?.table).toBe(APPLICATIONS);
+    expect(lookup?.filters["reference_number"]).toEqual(["eq.YC-2026-000210"]);
+    expect(columnsOf(lookup!)).toEqual(["id", "decided_at"]);
+    expect(dossier?.supersedingCorrection).toEqual({
+      id: CORRECTION_ID,
+      decided_at: "2026-11-20T06:30:00.000000+00:00",
+    });
+  });
+
+  /** Not visible, or gone: the page still names the card, without a link. */
+  it("reports no Correction when the reference finds no row", async () => {
+    stubCatalogs();
+    const { fetch } = createSupersededFetch([]);
+
+    const dossier = await getReviewDossier(APP_ID, createTestClient(fetch));
+
+    expect(dossier?.supersedingCorrection).toBeNull();
+  });
+
+  it.each(["active", "revoked"] as const)(
+    "makes no extra read for a %s card",
+    async (status) => {
+      stubCatalogs();
+      const { fetch, requests } = createTableFetch({
+        [APPLICATIONS]: [{ ...SUPERSEDED_ROW, card_status: status }],
+      });
+
+      const dossier = await getReviewDossier(APP_ID, createTestClient(fetch));
+
+      requestTo(requests, APPLICATIONS);
+      expect(dossier?.supersedingCorrection).toBeNull();
+    },
+  );
+});
+
+/**
+ * A Correction names the card it replaces by the card's id. The review page
+ * links "Replaces …" to the application that issued that card, so the dossier
+ * reads that application's id by its card_id — once, and only for a
+ * Correction.
+ */
+describe("getReviewDossier — the replaced card's application read", () => {
+  const REPLACED_CARD_ID = "c1d2e3f4-0000-4000-8000-000000000045";
+  const ISSUER_ID = "6a1f0d2c-8e3b-4f7a-b1c2-3d4e5f607182";
+
+  const CORRECTION_ROW: StaffYellowCardApplicationRow = {
+    ...CANNED_APPLICATION_ROW,
+    reference_number: "YC-2026-000210",
+    is_correction: true,
+    replaces_card_id: REPLACED_CARD_ID,
+    replaced_card_number: "LC-2026-000045",
+    replaced_card_status: "active",
+    correction_note: "My surname is misspelled.",
+  };
+
+  /**
+   * Both reads go to staff_yellow_card_queue, so they are told apart by their
+   * filter: the issuer is looked up by card_id, the application by id.
+   */
+  function createCorrectionFetch(issuer: unknown[]) {
+    const requests: ParsedQueryParams[] = [];
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const params = parseQueryParams(new Request(input, init).url);
+      requests.push(params);
+      const body =
+        params.table !== APPLICATIONS
+          ? []
+          : params.filters["card_id"]
+            ? issuer
+            : [CORRECTION_ROW];
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+    return { fetch, requests };
+  }
+
+  it("reads the issuing application's id by the replaced card's id", async () => {
+    stubCatalogs();
+    const { fetch, requests } = createCorrectionFetch([{ id: ISSUER_ID }]);
+
+    const dossier = await getReviewDossier(APP_ID, createTestClient(fetch));
+
+    const lookup = requests.find((request) => request.filters["card_id"]);
+    expect(lookup?.table).toBe(APPLICATIONS);
+    expect(lookup?.filters["card_id"]).toEqual([`eq.${REPLACED_CARD_ID}`]);
+    expect(columnsOf(lookup!)).toEqual(["id"]);
+    expect(dossier?.replacedCardApplicationId).toBe(ISSUER_ID);
+  });
+
+  /** Not visible, or gone: the page still names the card, without a link. */
+  it("reports no application when the card id finds no row", async () => {
+    stubCatalogs();
+    const { fetch } = createCorrectionFetch([]);
+
+    const dossier = await getReviewDossier(APP_ID, createTestClient(fetch));
+
+    expect(dossier?.replacedCardApplicationId).toBeNull();
+  });
+
+  it("makes no extra read for a first application", async () => {
+    stubCatalogs();
+    const { fetch, requests } = createFullDossierFetch();
+
+    const dossier = await getReviewDossier(APP_ID, createTestClient(fetch));
+
+    requestTo(requests, APPLICATIONS);
+    expect(dossier?.replacedCardApplicationId).toBeNull();
+  });
+
+  it("raises when the read fails rather than dropping the link silently", async () => {
+    stubCatalogs();
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const params = parseQueryParams(new Request(input, init).url);
+      if (params.table === APPLICATIONS && params.filters["card_id"]) {
+        return new Response(JSON.stringify({ message: "permission denied", code: "42501" }), {
+          status: 500,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify(params.table === APPLICATIONS ? [CORRECTION_ROW] : []), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+
+    await expect(getReviewDossier(APP_ID, createTestClient(fetch))).rejects.toThrow(
+      /staff_yellow_card_queue replaced card read failed: permission denied/,
+    );
   });
 });

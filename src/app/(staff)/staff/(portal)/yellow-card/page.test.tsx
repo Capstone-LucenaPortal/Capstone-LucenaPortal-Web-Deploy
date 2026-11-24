@@ -32,6 +32,7 @@ const application: YellowCardQueueItem = {
   due_at: "2026-06-30T16:23:45.547482+00:00",
   document_count: 1,
   deadline_state: "on_track",
+  is_correction: false,
 };
 
 beforeEach(() => {

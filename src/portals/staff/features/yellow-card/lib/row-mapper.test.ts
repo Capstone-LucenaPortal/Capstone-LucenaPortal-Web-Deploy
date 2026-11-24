@@ -26,6 +26,7 @@ function queueRow(
     due_at: "2026-06-30T16:23:45.547482+00:00",
     document_count: 0,
     deadline_state: "at_risk",
+    is_correction: false,
     ...overrides,
   };
 }
@@ -45,7 +46,16 @@ describe("toQueueItem", () => {
       due_at: "2026-06-30T16:23:45.547482+00:00",
       document_count: 0,
       deadline_state: "at_risk",
+      is_correction: false,
     });
+  });
+
+  it("marks a Correction, which the queue badges", () => {
+    expect(toQueueItem(queueRow({ is_correction: true })).is_correction).toBe(true);
+  });
+
+  it("reads a missing is_correction as a first application", () => {
+    expect(toQueueItem(queueRow({ is_correction: null })).is_correction).toBe(false);
   });
 
   it("keeps a null deadline_state, which means the clock is not running", () => {

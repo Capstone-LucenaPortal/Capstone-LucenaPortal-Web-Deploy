@@ -1,11 +1,12 @@
 /**
- * Reviewing a Yellow Card application: the decision write, and the count of
- * applications still waiting for one.
+ * Reviewing a Yellow Card application: the decision write, the count of
+ * applications still waiting for one, and the Revocation of a card a decision
+ * issued.
  *
- * This is everything behind the module's two server actions that has a rule in
+ * This is everything behind the module's server actions that has a rule in
  * it.
  *
- * Both take the client rather than constructing it, which is what lets a test
+ * All three take the client rather than constructing it, which is what lets a test
  * observe the request they build. They live here rather than in ./actions.ts
  * because that module is `"use server"`: every export there is a
  * network-reachable endpoint whose arguments are deserialised from the request,
@@ -57,7 +58,7 @@ export async function readAwaitingReviewCount(db: Db): Promise<number | null> {
 type ReviewArgs =
   Database["public"]["Functions"]["review_yellow_card_application"]["Args"];
 
-const MESSAGES: ErrorMessages = {
+const DECISION_MESSAGES: ErrorMessages = {
   forbidden:
     "You do not have permission to review Yellow Card applications. Ask an administrator to check your module assignment.",
   conflict:
@@ -73,7 +74,7 @@ export interface ReviewDecisionInput {
 }
 
 /**
- * The single write in this module.
+ * The decision write.
  *
  * Everything downstream of the status column — pausing and resuming the SLA
  * clock, stamping decided_at, minting the yellow card with its LC- reference
@@ -95,5 +96,42 @@ export async function writeReviewDecision(
 
   const { error } = await db.rpc("review_yellow_card_application", args);
 
-  return error ? toActionFailure(error, MESSAGES) : { ok: true };
+  return error ? toActionFailure(error, DECISION_MESSAGES) : { ok: true };
+}
+
+type RevokeArgs = Database["public"]["Functions"]["revoke_yellow_card"]["Args"];
+
+const REVOCATION_MESSAGES: ErrorMessages = {
+  forbidden:
+    "You do not have permission to revoke Yellow Cards. Ask an administrator to check your module assignment.",
+  conflict:
+    "This card is no longer active — someone may have revoked it already, or a Correction replaced it. The page has been refreshed.",
+  missing: "This card no longer exists. The page has been refreshed.",
+  fallback: "The card could not be revoked. Please try again.",
+};
+
+export interface RevocationInput {
+  cardId: string;
+  reason: string;
+}
+
+/**
+ * Revokes an issued card (Central-System-Documents ADR 0011).
+ *
+ * Like the decision above, one call: revoke_yellow_card (DB l119b) sets the
+ * card's status, stamps the revoker and the time, writes the Audit Entry and
+ * tells the Citizen, together. The application stays `approved`.
+ *
+ * The procedure refuses a blank reason, and a card that is not active, with
+ * 22023 — the second is the stale page the conflict sentence describes.
+ */
+export async function writeRevocation(
+  db: Db,
+  { cardId, reason }: RevocationInput,
+): Promise<ActionResult> {
+  const args: RevokeArgs = { p_card_id: cardId, p_reason: reason.trim() };
+
+  const { error } = await db.rpc("revoke_yellow_card", args);
+
+  return error ? toActionFailure(error, REVOCATION_MESSAGES) : { ok: true };
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { YellowCardFields } from './yellow-card-fields';
+import userEvent from '@testing-library/user-event';
+import { YellowCardFields, PrintedCardQuestion, CorrectionNoteField } from './yellow-card-fields';
 import type { YellowCardFieldValues } from '@/portals/citizen/features/yellow-card/types';
 
 const VALUES: YellowCardFieldValues = {
@@ -40,5 +41,51 @@ describe('YellowCardFields', () => {
     renderFields();
     renderFields();
     expect(screen.getAllByLabelText(/First Name/)).toHaveLength(2);
+  });
+});
+
+// DB l120: every applicant may say they already hold a printed Yellow Card.
+describe('PrintedCardQuestion', () => {
+  it('asks the question, with no number field until it is answered yes', () => {
+    render(<PrintedCardQuestion values={{ holdsPrintedCard: false, printedCardNumber: '' }} onChange={vi.fn()} />);
+
+    expect(screen.getByRole('checkbox', { name: 'I already hold a printed Yellow Card' })).not.toBeChecked();
+    expect(screen.queryByLabelText(/Printed card number/)).not.toBeInTheDocument();
+  });
+
+  it('reports the answer when ticked', async () => {
+    const onChange = vi.fn();
+    render(<PrintedCardQuestion values={{ holdsPrintedCard: false, printedCardNumber: '' }} onChange={onChange} />);
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'I already hold a printed Yellow Card' }));
+    expect(onChange).toHaveBeenCalledWith('holdsPrintedCard', true);
+  });
+
+  it('offers an optional printed card number, capped at the database limit', async () => {
+    const onChange = vi.fn();
+    render(<PrintedCardQuestion values={{ holdsPrintedCard: true, printedCardNumber: '04' }} onChange={onChange} />);
+
+    const number = screen.getByLabelText(/Printed card number \(optional\)/);
+    expect(number).toHaveValue('04');
+    expect(number).toHaveAttribute('maxLength', '64');
+    expect(number).not.toBeRequired();
+
+    await userEvent.type(number, '5');
+    expect(onChange).toHaveBeenCalledWith('printedCardNumber', '045');
+  });
+});
+
+// ADR 0011: a Correction says what needs correcting.
+describe('CorrectionNoteField', () => {
+  it('is a required note, capped at the database limit', async () => {
+    const onChange = vi.fn();
+    render(<CorrectionNoteField value="" onChange={onChange} />);
+
+    const note = screen.getByRole('textbox', { name: /What needs correcting\?/ });
+    expect(note).toBeRequired();
+    expect(note).toHaveAttribute('maxLength', '500');
+
+    await userEvent.type(note, 'N');
+    expect(onChange).toHaveBeenCalledWith('N');
   });
 });
