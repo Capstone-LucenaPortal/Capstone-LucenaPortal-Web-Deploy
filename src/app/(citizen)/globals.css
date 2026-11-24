@@ -151,7 +151,7 @@ img, video, iframe { max-width: 100%; }
   /* ---- Home ---- */
   .home-hero { height: 62vh !important; min-height: 420px; margin-bottom: 24px !important; }
   /* High enough that the button clears the slide dots. */
-  .hero-content { bottom: 100px !important; }
+  .hero-content { bottom: 68px !important; }
   .hero-desc { font-size: 15px !important; margin-bottom: 18px !important; }
   .hero-arrow { width: 36px !important; height: 36px !important; font-size: 16px !important; }
   .hero-arrow-prev { left: 8px !important; }

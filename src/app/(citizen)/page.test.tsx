@@ -237,16 +237,6 @@ describe('Home page carousels: pausing', () => {
     expect(currentDots(TOP_SLIDES)).toEqual(['Go to slide 1 of 3']);
   });
 
-  it('keeps the top carousel moving while the Live ticker under it is in use', async () => {
-    vi.useFakeTimers();
-    await renderHome();
-    const ticker = screen.getByRole('button', { name: /View All/ });
-    fireEvent.pointerEnter(ticker);
-    tabTo(ticker);
-    advance(5000);
-    expect(currentDots(TOP_SLIDES)).toEqual(['Go to slide 2 of 3']);
-  });
-
   it('stays paused by its button after the pointer and focus leave', async () => {
     vi.useFakeTimers();
     await renderHome();

@@ -44,12 +44,6 @@ export default function HomePage() {
     { image: '/lcc-5.jpg', label: 'Event Spaces', caption: 'Versatile venues for any occasion' },
   ];
 
-  const announcements = [
-    { date: 'Apr 20', text: 'Yellow Card renewal period is now open. Visit Municipal Hall or apply online.' },
-    { date: 'Apr 17', text: 'Lucena Convention Center bookings available for May 1–30.' },
-    { date: 'Apr 15', text: 'Business permit renewal deadline extended to April 30.' },
-  ];
-
   const hero = useCarousel(heroSlides.length, 5000);
   const lcc = useCarousel(lccSlides.length, 4000);
 
@@ -74,7 +68,9 @@ export default function HomePage() {
       {/* Hero Carousel */}
       <section className="home-hero" style={{ position: 'relative', height: 'calc(100vh - 88px)', overflow: 'hidden', marginBottom: 40 }}>
         {/* The carousel itself: hovering or focusing anything in here holds it
-            still. The Live ticker sits outside it, in the same spot. */}
+            still. It fills the whole hero; the hardcoded Live ticker that used
+            to sit along its bottom edge is gone, since Announcements is now the
+            Facebook feed and its posts cannot be read from the embed. */}
         <div {...hero.regionProps} style={{ position: 'relative', height: '100%' }}>
           {/* Background image — no color overlay */}
           <div style={{
@@ -95,7 +91,7 @@ export default function HomePage() {
           }} />
 
           {/* Slide Content — bottom left like Valenzuela */}
-          <div className="hero-content" style={{ position: 'absolute', bottom: 80, left: 'clamp(16px, 4vw, 48px)', zIndex: 2, color: 'white', maxWidth: 680 }}>
+          <div className="hero-content" style={{ position: 'absolute', bottom: 48, left: 'clamp(16px, 4vw, 48px)', zIndex: 2, color: 'white', maxWidth: 680 }}>
             <h1 style={{ fontSize: 'clamp(28px, 6vw, 44px)', fontWeight: 700, marginBottom: 14, lineHeight: 1.15, textShadow: '0 2px 8px rgba(0,0,0,0.4)' }}>{heroSlides[hero.slide].title}</h1>
             <p className="hero-desc" style={{ fontSize: 17, marginBottom: 28, color: 'rgba(255,255,255,0.9)', lineHeight: 1.6 }}>{heroSlides[hero.slide].desc}</p>
             <button
@@ -122,7 +118,7 @@ export default function HomePage() {
 
           {/* Slide Indicators, with pause/play hung off their right end so the
               dots stay centred where they were. */}
-          <div style={{ position: 'absolute', bottom: 76, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 8, zIndex: 3 }}>
+          <div style={{ position: 'absolute', bottom: 44, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 8, zIndex: 3 }}>
             {heroSlides.map((_, i) => (
               <button key={i} aria-label={`Go to slide ${i + 1} of ${heroSlides.length}`} aria-current={i === hero.slide ? 'true' : undefined} onClick={() => hero.goTo(i)}
                 style={{ width: i === hero.slide ? 32 : 8, height: 8, background: i === hero.slide ? 'white' : 'rgba(255,255,255,0.5)', border: 'none', borderRadius: 999, cursor: 'pointer', transition: 'all 0.3s' }} />
@@ -132,18 +128,6 @@ export default function HomePage() {
           </div>
 
         </div>
-
-        {/* Live Announcement Ticker */}
-        <button
-          type="button"
-          onClick={() => router.push('/announcements')}
-          style={{ position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 4, background: '#003DA5', color: 'white', padding: '10px clamp(16px, 5vw, 48px)', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', fontSize: 13, width: '100%', border: 'none', textAlign: 'left', font: 'inherit' }}
-        >
-          <span style={{ background: '#F5A623', color: '#000000', fontWeight: 700, fontSize: 10, letterSpacing: '0.05em', textTransform: 'uppercase', borderRadius: 999, padding: '3px 10px', flexShrink: 0 }}>Live</span>
-          <span style={{ fontWeight: 600, flexShrink: 0 }}>{announcements[0].date}</span>
-          <span style={{ opacity: 0.9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{announcements[0].text}</span>
-          <span style={{ marginLeft: 'auto', flexShrink: 0, opacity: 0.85 }}>View All →</span>
-        </button>
       </section>
 
       {/* Mission & Vision */}
