@@ -367,7 +367,9 @@ function YellowCardView({ sla }: { sla: SlaRowFilterState<YellowCardDateBasis> }
       const exportRows = await exportApplications({ status, from, to, dateBasis });
       downloadCsv(
         "yellow-card-applications.csv",
-        ["Reference", "Name", "Barangay", "Email", "Submitted", "Status"],
+        // Type is last so the first six columns stay where readers of older
+        // exports expect them (#177).
+        ["Reference", "Name", "Barangay", "Email", "Submitted", "Status", "Type"],
         exportRows.map((row) => [
           row.reference,
           row.full_name,
@@ -375,6 +377,7 @@ function YellowCardView({ sla }: { sla: SlaRowFilterState<YellowCardDateBasis> }
           row.email,
           row.submitted_on,
           row.status,
+          row.is_correction ? "Correction" : "Application",
         ])
       );
     } catch (err) {
@@ -580,7 +583,18 @@ function YellowCardView({ sla }: { sla: SlaRowFilterState<YellowCardDateBasis> }
         ) : (
           <DataTable
             columns={[
-              { header: "Reference", render: (row: YellowCardRow) => row.reference_number ?? "—" },
+              {
+                header: "Reference",
+                // A Correction is marked next to its reference, where the
+                // Staff queue puts its own marker (#177). It is still an
+                // application: no count or tile filters on is_correction.
+                render: (row: YellowCardRow) => (
+                  <span className="inline-flex flex-wrap items-center gap-2">
+                    {row.reference_number ?? "—"}
+                    {row.is_correction && <Badge status="Correction" variant="info" />}
+                  </span>
+                ),
+              },
               { header: "Barangay", render: (row: YellowCardRow) => row.barangay_name ?? row.barangay_code ?? "—" },
               { header: DATE_COLUMN[dateBasis], render: (row: YellowCardRow) => formatManilaDate(getDate(row)) },
               {

@@ -58,6 +58,7 @@ function buildYellowCardRow(overrides: Partial<YellowCardRow> = {}): YellowCardR
     review_cycles: 0,
     due_at: null,
     deadline_state: null,
+    is_correction: false,
     ...overrides,
   };
 }

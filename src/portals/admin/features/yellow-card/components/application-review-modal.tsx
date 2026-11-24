@@ -16,13 +16,20 @@ function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <p className="text-xs text-blue-900">{label}</p>
-      <p className="text-sm font-medium text-gray-900">{value}</p>
+      <p className="whitespace-pre-line break-words text-sm font-medium text-gray-900">{value}</p>
     </div>
   );
 }
 
 function fullName(pii: YellowCardPii): string {
   return [pii.first_name, pii.middle_name, pii.last_name, pii.suffix].filter(Boolean).join(" ");
+}
+
+// The existing-holder answer: "Yes (number)" when the applicant gave their
+// printed card's number, plain "Yes" when they didn't, "No" otherwise.
+function printedCardAnswer(pii: YellowCardPii): string {
+  if (!pii.holds_printed_card) return "No";
+  return pii.printed_card_number ? `Yes (${pii.printed_card_number})` : "Yes";
 }
 
 export function ApplicationReviewModal({ applicationId, onClose }: ApplicationReviewModalProps) {
@@ -154,6 +161,24 @@ export function ApplicationReviewModal({ applicationId, onClose }: ApplicationRe
                 <Field label="Years of Residency" value={`${data.years_of_residency} years`} />
               </div>
             </div>
+
+            {/* A Correction replaces an active card (#177). It still counts as
+                an application everywhere; this section only says what it
+                replaces and why. Ordinary applications don't get it. */}
+            {data.is_correction && (
+              <div>
+                <h3 className="mb-3 border-b border-gray-100 pb-2 text-sm font-semibold text-gray-900">
+                  Correction
+                </h3>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <Field label="Replaces card" value={data.replaced_card_number ?? "—"} />
+                  <Field label="Holds a printed card" value={printedCardAnswer(data)} />
+                  <div className="sm:col-span-2">
+                    <Field label="What needs correcting" value={data.correction_note ?? "—"} />
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

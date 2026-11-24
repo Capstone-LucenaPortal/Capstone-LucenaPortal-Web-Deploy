@@ -83,6 +83,7 @@ function buildRow(overrides: Partial<YellowCardRow> = {}): YellowCardRow {
     review_cycles: 0,
     due_at: null,
     deadline_state: null,
+    is_correction: false,
     ...overrides,
   };
 }
@@ -111,6 +112,7 @@ function buildExportRow(overrides: Partial<YellowCardExportRow> = {}): YellowCar
     email: "export-only@example.com",
     submitted_on: "2026-05-15",
     status: "approved",
+    is_correction: false,
     ...overrides,
   };
 }
@@ -299,6 +301,34 @@ describe("YellowCardPage", () => {
 
     expect(await screen.findByText("YC-2026-000001")).toBeInTheDocument();
     expect(screen.getByText("YC-2026-000002")).toBeInTheDocument();
+  });
+
+  // A Correction still counts as an application (#177); the table only marks
+  // it, next to its reference, where the Staff queue puts its marker.
+  it("marks a Correction's row and leaves an ordinary row unmarked", async () => {
+    mockListApplications.mockResolvedValue([
+      buildRow({ id: "app-1", reference_number: "YC-2026-000001", is_correction: true }),
+      buildRow({ id: "app-2", reference_number: "YC-2026-000002", is_correction: false }),
+    ]);
+
+    render(<YellowCardPage />);
+
+    const correctionRow = (await screen.findByText("YC-2026-000001")).closest("tr")!;
+    const ordinaryRow = screen.getByText("YC-2026-000002").closest("tr")!;
+    expect(within(correctionRow).getByText("Correction")).toBeInTheDocument();
+    expect(within(ordinaryRow).queryByText("Correction")).not.toBeInTheDocument();
+  });
+
+  it("a Correction counts as an application in the Applications tile", async () => {
+    mockListApplications.mockResolvedValue([
+      buildRow({ id: "app-1", reference_number: "YC-2026-000001", is_correction: true }),
+      buildRow({ id: "app-2", reference_number: "YC-2026-000002", is_correction: false }),
+    ]);
+
+    render(<YellowCardPage />);
+    await screen.findByText("YC-2026-000001");
+
+    expect(within(getKpiTile("Applications")).getByText("2")).toBeInTheDocument();
   });
 
   // This is the privacy regression guard: admin_yellow_card_analytics carries
@@ -883,7 +913,7 @@ describe("YellowCardPage", () => {
     expect(mockDownloadCsv).toHaveBeenCalledTimes(1);
     const [filename, header, rows] = mockDownloadCsv.mock.calls[0];
     expect(filename).toBe("yellow-card-applications.csv");
-    expect(header).toEqual(["Reference", "Name", "Barangay", "Email", "Submitted", "Status"]);
+    expect(header).toEqual(["Reference", "Name", "Barangay", "Email", "Submitted", "Status", "Type"]);
     expect(rows).toEqual([
       [
         "YC-2026-EXPORT-999",
@@ -892,10 +922,34 @@ describe("YellowCardPage", () => {
         "export-only@example.com",
         "2026-05-15",
         "approved",
+        "Application",
       ],
     ]);
     // The list row's reference must never leak into the downloaded content.
     expect(rows.flat()).not.toContain("YC-2026-000001");
+  });
+
+  // #177: the export's last column says whether each row is a Correction,
+  // read from the export row itself; the first six columns don't move.
+  it("the CSV's last column, Type, reads Correction or Application per row", async () => {
+    const user = userEvent.setup();
+    mockListApplications.mockResolvedValue([buildRow()]);
+    mockExportApplications.mockResolvedValue([
+      buildExportRow({ reference: "YC-2026-000010", is_correction: true }),
+      buildExportRow({ reference: "YC-2026-000011", is_correction: false }),
+    ]);
+
+    render(<YellowCardPage />);
+    await screen.findByText("YC-2026-000001");
+
+    await user.click(getApplicationsExportButton());
+
+    const [, header, rows] = mockDownloadCsv.mock.calls[0];
+    expect(header.at(-1)).toBe("Type");
+    expect(rows.map((row: unknown[]) => [row[0], row.at(-1)])).toEqual([
+      ["YC-2026-000010", "Correction"],
+      ["YC-2026-000011", "Application"],
+    ]);
   });
 
   it("a permission failure on export surfaces a message and downloads nothing", async () => {

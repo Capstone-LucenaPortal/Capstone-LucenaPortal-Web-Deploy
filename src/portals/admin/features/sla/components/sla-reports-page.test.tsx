@@ -108,6 +108,7 @@ function buildApplication(overrides: Partial<YellowCardRow> = {}): YellowCardRow
     review_cycles: 1,
     due_at: null,
     deadline_state: null,
+    is_correction: false,
     sla_breached: false,
     sla_elapsed_seconds: 3600,
     sla_target_hours: 24,

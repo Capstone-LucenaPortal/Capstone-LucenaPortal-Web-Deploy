@@ -6,8 +6,21 @@ import type { YellowCardDateBasis } from "@/portals/admin/features/yellow-card/t
 
 export type YellowCardRow =
   Database["public"]["Views"]["admin_yellow_card_analytics"]["Row"];
-export type YellowCardPii =
+type GeneratedYellowCardPii =
   Database["public"]["Functions"]["read_yellow_card_application_pii"]["Returns"][number];
+// The generator types every column a function returns as non-null, but l123's
+// three Correction text columns are null on an ordinary application (the
+// replaced card comes through a LEFT join), and the printed number is null
+// whenever the applicant gave none. Typed as they arrive, so the modal can't
+// render a null as if it were text.
+export type YellowCardPii = Omit<
+  GeneratedYellowCardPii,
+  "replaced_card_number" | "correction_note" | "printed_card_number"
+> & {
+  replaced_card_number: string | null;
+  correction_note: string | null;
+  printed_card_number: string | null;
+};
 export type YellowCardExportRow =
   Database["public"]["Functions"]["export_yellow_card_applications"]["Returns"][number];
 

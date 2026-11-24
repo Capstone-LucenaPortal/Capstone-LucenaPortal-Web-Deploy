@@ -1,6 +1,6 @@
 // src/portals/admin/features/yellow-card/components/application-review-modal.test.tsx
 import { StrictMode } from "react";
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import { ApplicationReviewModal } from "@/portals/admin/features/yellow-card/components/application-review-modal";
 import type { YellowCardPii } from "@/portals/admin/features/yellow-card/lib/yellow-card";
 import { vi } from "vitest";
@@ -35,6 +35,11 @@ function buildPii(overrides: Partial<YellowCardPii> = {}): YellowCardPii {
     voter_id_number: "1234-5678-9012",
     status: "pending",
     submitted_at: "2026-05-01T00:00:00Z",
+    is_correction: false,
+    replaced_card_number: null,
+    correction_note: null,
+    holds_printed_card: false,
+    printed_card_number: null,
     ...overrides,
   };
 }
@@ -163,6 +168,68 @@ describe("ApplicationReviewModal", () => {
     expect(screen.getByText("juan.delacruz@example.com")).toBeInTheDocument();
     expect(screen.getByText("123 Rizal St., Barangay One")).toBeInTheDocument();
     expect(screen.getByText("1234-5678-9012")).toBeInTheDocument();
+  });
+
+  // #177: a Correction's review shows what it replaces and why, and the
+  // existing-holder answer. Still one audited read per open.
+  it("shows a Correction section with the replaced card, the note and the printed-card answer", async () => {
+    mockReadApplicationPii.mockResolvedValue(
+      buildPii({
+        is_correction: true,
+        replaced_card_number: "LC-2026-000123",
+        correction_note: "My middle name is misspelled.",
+        holds_printed_card: true,
+        printed_card_number: "P-55821",
+      })
+    );
+
+    render(<ApplicationReviewModal applicationId="app-1" onClose={() => {}} />);
+
+    const section = (await screen.findByRole("heading", { name: "Correction" })).parentElement!;
+    expect(within(section).getByText("Replaces card")).toBeInTheDocument();
+    expect(within(section).getByText("LC-2026-000123")).toBeInTheDocument();
+    expect(within(section).getByText("What needs correcting")).toBeInTheDocument();
+    expect(within(section).getByText("My middle name is misspelled.")).toBeInTheDocument();
+    expect(within(section).getByText("Holds a printed card")).toBeInTheDocument();
+    expect(within(section).getByText("Yes (P-55821)")).toBeInTheDocument();
+    expect(mockReadApplicationPii).toHaveBeenCalledTimes(1);
+  });
+
+  it("answers No on a Correction whose applicant holds no printed card", async () => {
+    mockReadApplicationPii.mockResolvedValue(
+      buildPii({ is_correction: true, replaced_card_number: "LC-2026-000123", correction_note: "Wrong barangay." })
+    );
+
+    render(<ApplicationReviewModal applicationId="app-1" onClose={() => {}} />);
+
+    const section = (await screen.findByRole("heading", { name: "Correction" })).parentElement!;
+    expect(within(section).getByText("No")).toBeInTheDocument();
+  });
+
+  it("answers Yes without a number when the applicant gave none", async () => {
+    mockReadApplicationPii.mockResolvedValue(
+      buildPii({
+        is_correction: true,
+        replaced_card_number: "LC-2026-000123",
+        correction_note: "Wrong barangay.",
+        holds_printed_card: true,
+      })
+    );
+
+    render(<ApplicationReviewModal applicationId="app-1" onClose={() => {}} />);
+
+    const section = (await screen.findByRole("heading", { name: "Correction" })).parentElement!;
+    expect(within(section).getByText("Yes")).toBeInTheDocument();
+  });
+
+  it("shows no Correction section on an ordinary application", async () => {
+    mockReadApplicationPii.mockResolvedValue(buildPii());
+
+    render(<ApplicationReviewModal applicationId="app-1" onClose={() => {}} />);
+
+    await screen.findByText("juan.delacruz@example.com");
+    expect(screen.queryByRole("heading", { name: "Correction" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Replaces card")).not.toBeInTheDocument();
   });
 
   it("renders a permission message on kind: permission", async () => {

@@ -3810,6 +3810,7 @@ export type Database = {
           decided_at: string | null
           due_at: string | null
           id: string | null
+          is_correction: boolean | null
           reference_number: string | null
           review_cycles: number | null
           sla_breached: boolean | null
@@ -8099,6 +8100,7 @@ export type Database = {
           barangay_label: string
           email: string
           full_name: string
+          is_correction: boolean
           reference: string
           status: string
           submitted_on: string
@@ -8374,13 +8376,18 @@ export type Database = {
           civil_status_code: string
           complete_address: string
           contact_number: string
+          correction_note: string
           date_of_birth: string
           email_address: string
           first_name: string
           gender_code: string
+          holds_printed_card: boolean
+          is_correction: boolean
           last_name: string
           middle_name: string
+          printed_card_number: string
           reference: string
+          replaced_card_number: string
           status: string
           submitted_at: string
           suffix: string
