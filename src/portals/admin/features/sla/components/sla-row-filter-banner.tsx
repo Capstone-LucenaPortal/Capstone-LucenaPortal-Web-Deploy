@@ -9,7 +9,8 @@ const FILTER_TEXT: Record<SlaRowFilter, string> = {
 
 /**
  * Says which SLA Reports filter narrows the table below, and clears it
- * (#127). `noun` is what the table lists: "applications" or "reports".
+ * (#127). `noun` is what the table lists: "applications", "reports" or
+ * "bookings" (#175).
  */
 export function SlaRowFilterBanner({
   filter,

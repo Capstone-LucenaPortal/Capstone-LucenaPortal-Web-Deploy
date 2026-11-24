@@ -74,11 +74,11 @@ export function executiveRangeStats(
 
   // SLA compliance once per service, by the scoring rules SLA Reports uses
   // too (slaCompliance in src/portals/admin/features/sla/lib/sla.ts). Never
-  // pooled: a 3-working-day legal processing time and 4-72-hour voluntary
-  // incident standards are different promises (ADR 0001, #119).
-  const sla = slaCompliance(applications, incidents);
-  const previousSla = slaCompliance(previousApplications, previousIncidents);
-
+  // pooled: a 3-working-day legal processing time, 4-72-hour voluntary
+  // incident standards and a booking's voluntary 3 or 7 working days are
+  // different promises (ADR 0001, #119, SCRUM-131).
+  const sla = slaCompliance(applications, incidents, bookings);
+  const previousSla = slaCompliance(previousApplications, previousIncidents, previousBookings);
 
   return {
     requestsFiled,
@@ -93,6 +93,10 @@ export function executiveRangeStats(
       incidents: {
         ...sla.incidents,
         delta: ratePointsDelta(sla.incidents.compliancePct, previousSla.incidents.compliancePct),
+      },
+      bookings: {
+        ...sla.bookings,
+        delta: ratePointsDelta(sla.bookings.compliancePct, previousSla.bookings.compliancePct),
       },
     },
     // Days with an event reads `allBookingRows` and does its own event_date

@@ -15,14 +15,16 @@ import type { BookingQueueItem, BookingStatus, CalendarBooking } from "../types"
  *
  * Every result is still cast to its row type below. Every list here was
  * verified by live query against the sandbox on 2026-08-11, after l54 and l55.
- * Do not add a column without doing the same.
+ * Do not add a column without doing the same. `confirmation_due_at` and
+ * `deadline_state` (DB l121, SCRUM-131) were checked the same way on
+ * 2026-11-24.
  *
  * Not exported. The detail list that used to be built from this one lives in
  * ./booking-dossier.ts and is written out in full — see ADR-0006 for what that
  * untying gave up, and why exporting this instead was the worse trade. No file
  * outside this one has ever used it.
  */
-const QUEUE_COLUMNS = "id, reference_number, status, cancellation_reason, event_title, event_type_label, venue_code, venue_label, rate_tier, tier_verified, organization_name, contact_person, estimated_headcount, event_date, start_time, duration_hours, total_fee, balance_amount, hold_expires_at, submitted_at, unverified_payment_count, tier_review_since";
+const QUEUE_COLUMNS = "id, reference_number, status, cancellation_reason, event_title, event_type_label, venue_code, venue_label, rate_tier, tier_verified, organization_name, contact_person, estimated_headcount, event_date, start_time, duration_hours, total_fee, balance_amount, hold_expires_at, submitted_at, unverified_payment_count, tier_review_since, confirmation_due_at, deadline_state";
 
 /**
  * The calendar's list: QUEUE_COLUMNS plus the Changeover each Booking recorded
@@ -32,7 +34,7 @@ const QUEUE_COLUMNS = "id, reference_number, status, cancellation_reason, event_
  * out in full for the one-literal rule above; the test pins it to the queue's
  * list plus that one column, so the two cannot drift.
  */
-const CALENDAR_COLUMNS = "id, reference_number, status, cancellation_reason, event_title, event_type_label, venue_code, venue_label, rate_tier, tier_verified, organization_name, contact_person, estimated_headcount, event_date, start_time, duration_hours, total_fee, balance_amount, hold_expires_at, submitted_at, unverified_payment_count, tier_review_since, changeover_hours";
+const CALENDAR_COLUMNS = "id, reference_number, status, cancellation_reason, event_title, event_type_label, venue_code, venue_label, rate_tier, tier_verified, organization_name, contact_person, estimated_headcount, event_date, start_time, duration_hours, total_fee, balance_amount, hold_expires_at, submitted_at, unverified_payment_count, tier_review_since, confirmation_due_at, deadline_state, changeover_hours";
 
 /**
  * The columns the search box looks in — what a clerk might hold about a

@@ -301,6 +301,7 @@ export type Database = {
       }
       booking_config: {
         Row: {
+          at_risk_threshold_pct: number
           balance_due_days_before_event: number
           changeover_hours: number
           closing_hour: number
@@ -309,10 +310,13 @@ export type Database = {
           min_duration_hours: number
           opening_hour: number
           payment_window_hours: number
+          quote_target_days: number
+          rate_card_target_days: number
           updated_at: string
           updated_by: string | null
         }
         Insert: {
+          at_risk_threshold_pct?: number
           balance_due_days_before_event?: number
           changeover_hours?: number
           closing_hour?: number
@@ -321,10 +325,13 @@ export type Database = {
           min_duration_hours?: number
           opening_hour?: number
           payment_window_hours?: number
+          quote_target_days?: number
+          rate_card_target_days?: number
           updated_at?: string
           updated_by?: string | null
         }
         Update: {
+          at_risk_threshold_pct?: number
           balance_due_days_before_event?: number
           changeover_hours?: number
           closing_hour?: number
@@ -333,6 +340,8 @@ export type Database = {
           min_duration_hours?: number
           opening_hour?: number
           payment_window_hours?: number
+          quote_target_days?: number
+          rate_card_target_days?: number
           updated_at?: string
           updated_by?: string | null
         }
@@ -915,6 +924,7 @@ export type Database = {
           citizen_id: string
           classification_code: string
           completed_at: string | null
+          confirmation_due_at: string | null
           confirmed_at: string | null
           contact_number: string
           contact_person: string
@@ -938,6 +948,11 @@ export type Database = {
           rate_tier: Database["public"]["Enums"]["rate_tier"]
           reference_number: string
           rehearsal_rate_type: string | null
+          sla_clock_started_at: string | null
+          sla_elapsed_seconds: number | null
+          sla_scoreable: boolean | null
+          sla_stopped_at: string | null
+          sla_target_hours: number | null
           special_requirements: string | null
           start_time: string
           status: Database["public"]["Enums"]["booking_status"]
@@ -960,6 +975,7 @@ export type Database = {
           citizen_id: string
           classification_code: string
           completed_at?: string | null
+          confirmation_due_at?: string | null
           confirmed_at?: string | null
           contact_number: string
           contact_person: string
@@ -983,6 +999,11 @@ export type Database = {
           rate_tier: Database["public"]["Enums"]["rate_tier"]
           reference_number: string
           rehearsal_rate_type?: string | null
+          sla_clock_started_at?: string | null
+          sla_elapsed_seconds?: number | null
+          sla_scoreable?: boolean | null
+          sla_stopped_at?: string | null
+          sla_target_hours?: number | null
           special_requirements?: string | null
           start_time: string
           status?: Database["public"]["Enums"]["booking_status"]
@@ -1005,6 +1026,7 @@ export type Database = {
           citizen_id?: string
           classification_code?: string
           completed_at?: string | null
+          confirmation_due_at?: string | null
           confirmed_at?: string | null
           contact_number?: string
           contact_person?: string
@@ -1028,6 +1050,11 @@ export type Database = {
           rate_tier?: Database["public"]["Enums"]["rate_tier"]
           reference_number?: string
           rehearsal_rate_type?: string | null
+          sla_clock_started_at?: string | null
+          sla_elapsed_seconds?: number | null
+          sla_scoreable?: boolean | null
+          sla_stopped_at?: string | null
+          sla_target_hours?: number | null
           special_requirements?: string | null
           start_time?: string
           status?: Database["public"]["Enums"]["booking_status"]
@@ -3544,7 +3571,9 @@ export type Database = {
             | null
           classification_code: string | null
           completed_at: string | null
+          confirmation_due_at: string | null
           confirmed_at: string | null
+          deadline_state: string | null
           duration_hours: number | null
           estimated_headcount: number | null
           event_date: string | null
@@ -3558,6 +3587,11 @@ export type Database = {
           quoted_at: string | null
           rate_tier: Database["public"]["Enums"]["rate_tier"] | null
           reference_number: string | null
+          sla_elapsed_seconds: number | null
+          sla_on_time: boolean | null
+          sla_scoreable: boolean | null
+          sla_stopped_at: string | null
+          sla_target_hours: number | null
           start_time: string | null
           status: Database["public"]["Enums"]["booking_status"] | null
           submitted_at: string | null
@@ -3571,7 +3605,9 @@ export type Database = {
             | null
           classification_code?: string | null
           completed_at?: string | null
+          confirmation_due_at?: string | null
           confirmed_at?: string | null
+          deadline_state?: never
           duration_hours?: number | null
           estimated_headcount?: number | null
           event_date?: string | null
@@ -3585,6 +3621,11 @@ export type Database = {
           quoted_at?: string | null
           rate_tier?: Database["public"]["Enums"]["rate_tier"] | null
           reference_number?: string | null
+          sla_elapsed_seconds?: number | null
+          sla_on_time?: never
+          sla_scoreable?: boolean | null
+          sla_stopped_at?: string | null
+          sla_target_hours?: number | null
           start_time?: string | null
           status?: Database["public"]["Enums"]["booking_status"] | null
           submitted_at?: string | null
@@ -3598,7 +3639,9 @@ export type Database = {
             | null
           classification_code?: string | null
           completed_at?: string | null
+          confirmation_due_at?: string | null
           confirmed_at?: string | null
+          deadline_state?: never
           duration_hours?: number | null
           estimated_headcount?: number | null
           event_date?: string | null
@@ -3612,6 +3655,11 @@ export type Database = {
           quoted_at?: string | null
           rate_tier?: Database["public"]["Enums"]["rate_tier"] | null
           reference_number?: string | null
+          sla_elapsed_seconds?: number | null
+          sla_on_time?: never
+          sla_scoreable?: boolean | null
+          sla_stopped_at?: string | null
+          sla_target_hours?: number | null
           start_time?: string | null
           status?: Database["public"]["Enums"]["booking_status"] | null
           submitted_at?: string | null
@@ -5856,9 +5904,11 @@ export type Database = {
           changeover_hours: number | null
           classification_code: string | null
           completed_at: string | null
+          confirmation_due_at: string | null
           confirmed_at: string | null
           contact_number: string | null
           contact_person: string | null
+          deadline_state: string | null
           document_count: number | null
           downpayment_amount: number | null
           downpayment_pct: number | null
@@ -5882,6 +5932,8 @@ export type Database = {
           rate_tier: Database["public"]["Enums"]["rate_tier"] | null
           reference_number: string | null
           rehearsal_rate_type: string | null
+          sla_on_time: boolean | null
+          sla_scoreable: boolean | null
           special_requirements: string | null
           start_time: string | null
           status: Database["public"]["Enums"]["booking_status"] | null
@@ -6760,6 +6812,7 @@ export type Database = {
       }
       super_booking_config: {
         Row: {
+          at_risk_threshold_pct: number | null
           balance_due_days_before_event: number | null
           changeover_hours: number | null
           closing_hour: number | null
@@ -6767,9 +6820,12 @@ export type Database = {
           min_duration_hours: number | null
           opening_hour: number | null
           payment_window_hours: number | null
+          quote_target_days: number | null
+          rate_card_target_days: number | null
           updated_at: string | null
         }
         Insert: {
+          at_risk_threshold_pct?: number | null
           balance_due_days_before_event?: number | null
           changeover_hours?: number | null
           closing_hour?: number | null
@@ -6777,9 +6833,12 @@ export type Database = {
           min_duration_hours?: number | null
           opening_hour?: number | null
           payment_window_hours?: number | null
+          quote_target_days?: number | null
+          rate_card_target_days?: number | null
           updated_at?: string | null
         }
         Update: {
+          at_risk_threshold_pct?: number | null
           balance_due_days_before_event?: number | null
           changeover_hours?: number | null
           closing_hour?: number | null
@@ -6787,6 +6846,8 @@ export type Database = {
           min_duration_hours?: number | null
           opening_hour?: number | null
           payment_window_hours?: number | null
+          quote_target_days?: number | null
+          rate_card_target_days?: number | null
           updated_at?: string | null
         }
         Relationships: []
@@ -7633,6 +7694,16 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      admin_booking_deadline_state: {
+        Args: {
+          p_confirmation_due_at: string
+          p_sla_clock_started_at: string
+          p_sla_elapsed_seconds: number
+          p_sla_target_hours: number
+          p_status: Database["public"]["Enums"]["booking_status"]
+        }
+        Returns: string
+      }
       admin_yc_deadline_state: {
         Args: {
           p_due_at: string
@@ -7666,12 +7737,37 @@ export type Database = {
         }
       }
       anonymise_citizen: { Args: { p_citizen_id: string }; Returns: undefined }
+      booking_deadline_state: {
+        Args: {
+          p_confirmation_due_at: string
+          p_sla_clock_started_at: string
+          p_sla_elapsed_seconds: number
+          p_sla_target_hours: number
+          p_status: Database["public"]["Enums"]["booking_status"]
+        }
+        Returns: string
+      }
+      booking_deadline_state_at: {
+        Args: {
+          p_at: string
+          p_confirmation_due_at: string
+          p_sla_clock_started_at: string
+          p_sla_elapsed_seconds: number
+          p_sla_target_hours: number
+          p_status: Database["public"]["Enums"]["booking_status"]
+        }
+        Returns: string
+      }
       booking_hold_lapsed: {
         Args: {
           p_at: string
           p_hold_expires_at: string
           p_status: Database["public"]["Enums"]["booking_status"]
         }
+        Returns: boolean
+      }
+      booking_is_citys_turn: {
+        Args: { p_status: Database["public"]["Enums"]["booking_status"] }
         Returns: boolean
       }
       booking_money: {
@@ -7716,6 +7812,7 @@ export type Database = {
           citizen_id: string
           classification_code: string
           completed_at: string | null
+          confirmation_due_at: string | null
           confirmed_at: string | null
           contact_number: string
           contact_person: string
@@ -7739,6 +7836,11 @@ export type Database = {
           rate_tier: Database["public"]["Enums"]["rate_tier"]
           reference_number: string
           rehearsal_rate_type: string | null
+          sla_clock_started_at: string | null
+          sla_elapsed_seconds: number | null
+          sla_scoreable: boolean | null
+          sla_stopped_at: string | null
+          sla_target_hours: number | null
           special_requirements: string | null
           start_time: string
           status: Database["public"]["Enums"]["booking_status"]
@@ -7808,6 +7910,7 @@ export type Database = {
           citizen_id: string
           classification_code: string
           completed_at: string | null
+          confirmation_due_at: string | null
           confirmed_at: string | null
           contact_number: string
           contact_person: string
@@ -7831,6 +7934,11 @@ export type Database = {
           rate_tier: Database["public"]["Enums"]["rate_tier"]
           reference_number: string
           rehearsal_rate_type: string | null
+          sla_clock_started_at: string | null
+          sla_elapsed_seconds: number | null
+          sla_scoreable: boolean | null
+          sla_stopped_at: string | null
+          sla_target_hours: number | null
           special_requirements: string | null
           start_time: string
           status: Database["public"]["Enums"]["booking_status"]
@@ -8129,6 +8237,7 @@ export type Database = {
           citizen_id: string
           classification_code: string
           completed_at: string | null
+          confirmation_due_at: string | null
           confirmed_at: string | null
           contact_number: string
           contact_person: string
@@ -8152,6 +8261,11 @@ export type Database = {
           rate_tier: Database["public"]["Enums"]["rate_tier"]
           reference_number: string
           rehearsal_rate_type: string | null
+          sla_clock_started_at: string | null
+          sla_elapsed_seconds: number | null
+          sla_scoreable: boolean | null
+          sla_stopped_at: string | null
+          sla_target_hours: number | null
           special_requirements: string | null
           start_time: string
           status: Database["public"]["Enums"]["booking_status"]
@@ -8281,6 +8395,7 @@ export type Database = {
           citizen_id: string
           classification_code: string
           completed_at: string | null
+          confirmation_due_at: string | null
           confirmed_at: string | null
           contact_number: string
           contact_person: string
@@ -8304,6 +8419,11 @@ export type Database = {
           rate_tier: Database["public"]["Enums"]["rate_tier"]
           reference_number: string
           rehearsal_rate_type: string | null
+          sla_clock_started_at: string | null
+          sla_elapsed_seconds: number | null
+          sla_scoreable: boolean | null
+          sla_stopped_at: string | null
+          sla_target_hours: number | null
           special_requirements: string | null
           start_time: string
           status: Database["public"]["Enums"]["booking_status"]
@@ -8395,6 +8515,7 @@ export type Database = {
           years_of_residency: number
         }[]
       }
+      recompute_booking_deadlines: { Args: never; Returns: number }
       recompute_yellow_card_deadlines: { Args: never; Returns: number }
       record_balance_payment: {
         Args: {
@@ -8526,6 +8647,7 @@ export type Database = {
           citizen_id: string
           classification_code: string
           completed_at: string | null
+          confirmation_due_at: string | null
           confirmed_at: string | null
           contact_number: string
           contact_person: string
@@ -8549,6 +8671,11 @@ export type Database = {
           rate_tier: Database["public"]["Enums"]["rate_tier"]
           reference_number: string
           rehearsal_rate_type: string | null
+          sla_clock_started_at: string | null
+          sla_elapsed_seconds: number | null
+          sla_scoreable: boolean | null
+          sla_stopped_at: string | null
+          sla_target_hours: number | null
           special_requirements: string | null
           start_time: string
           status: Database["public"]["Enums"]["booking_status"]
@@ -8699,6 +8826,7 @@ export type Database = {
           citizen_id: string
           classification_code: string
           completed_at: string | null
+          confirmation_due_at: string | null
           confirmed_at: string | null
           contact_number: string
           contact_person: string
@@ -8722,6 +8850,11 @@ export type Database = {
           rate_tier: Database["public"]["Enums"]["rate_tier"]
           reference_number: string
           rehearsal_rate_type: string | null
+          sla_clock_started_at: string | null
+          sla_elapsed_seconds: number | null
+          sla_scoreable: boolean | null
+          sla_stopped_at: string | null
+          sla_target_hours: number | null
           special_requirements: string | null
           start_time: string
           status: Database["public"]["Enums"]["booking_status"]
@@ -8826,6 +8959,7 @@ export type Database = {
       }
       save_booking_config: {
         Args: {
+          p_at_risk_threshold_pct?: number
           p_balance_due_days_before_event?: number
           p_changeover_hours?: number
           p_closing_hour?: number
@@ -8833,8 +8967,11 @@ export type Database = {
           p_min_duration_hours?: number
           p_opening_hour?: number
           p_payment_window_hours?: number
+          p_quote_target_days?: number
+          p_rate_card_target_days?: number
         }
         Returns: {
+          at_risk_threshold_pct: number
           balance_due_days_before_event: number
           changeover_hours: number
           closing_hour: number
@@ -8843,6 +8980,8 @@ export type Database = {
           min_duration_hours: number
           opening_hour: number
           payment_window_hours: number
+          quote_target_days: number
+          rate_card_target_days: number
           updated_at: string
           updated_by: string | null
         }
@@ -9067,6 +9206,7 @@ export type Database = {
           citizen_id: string
           classification_code: string
           completed_at: string | null
+          confirmation_due_at: string | null
           confirmed_at: string | null
           contact_number: string
           contact_person: string
@@ -9090,6 +9230,11 @@ export type Database = {
           rate_tier: Database["public"]["Enums"]["rate_tier"]
           reference_number: string
           rehearsal_rate_type: string | null
+          sla_clock_started_at: string | null
+          sla_elapsed_seconds: number | null
+          sla_scoreable: boolean | null
+          sla_stopped_at: string | null
+          sla_target_hours: number | null
           special_requirements: string | null
           start_time: string
           status: Database["public"]["Enums"]["booking_status"]

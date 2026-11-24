@@ -23,8 +23,8 @@ export interface SlaRowFilterState<B extends string> {
 }
 
 /**
- * A page with no filter and no link: what Yellow Card and Incident Reports
- * show while a build prerenders them, before there is an address to read
+ * A page with no filter and no link: what Yellow Card, Incident Reports and
+ * the Convention Center show while a build prerenders them, before there is an address to read
  * (#133).
  */
 export const NO_SLA_ROW_FILTER: SlaRowFilterState<never> = {
@@ -35,8 +35,8 @@ export const NO_SLA_ROW_FILTER: SlaRowFilterState<never> = {
 };
 
 /**
- * The filter a Yellow Card or Incident Reports page arrived with from SLA
- * Reports (#127). The address is its only source: the page doesn't remount
+ * The filter a Yellow Card, Incident Reports or Convention Center page
+ * arrived with from SLA Reports (#127, #175). The address is its only source: the page doesn't remount
  * when only the query string changes, so this reads it on every render
  * rather than once (#131).
  */

@@ -7,7 +7,7 @@ import { countAwaitingReview } from "../lib/actions";
 import { getFullName } from "../lib/get-full-name";
 import { buildQueueHref, type StatusFilter } from "../lib/queue-params";
 import { awaitingReviewCount, STATUS_LABELS, STATUS_ORDER } from "../lib/status";
-import { DeadlineBadge } from "./deadline-badge";
+import { DeadlineBadge } from "@/portals/staff/components/deadline-badge";
 import { YellowCardStatusBadge } from "./status-badge";
 import type { YellowCardQueueItem, YellowCardStatus } from "../types";
 

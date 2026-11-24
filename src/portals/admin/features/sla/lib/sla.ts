@@ -1,9 +1,11 @@
 import { MANILA_TIME_ZONE } from "@/shared/dates/manila";
+import type { BookingRow } from "@/portals/admin/features/booking/lib/bookings";
 import type { IncidentRow } from "@/portals/admin/features/incidents/lib/incidents";
 import type { YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yellow-card";
 import type { DepartmentRow } from "@/portals/admin/lib/supabase/catalogs";
 import {
   averageResolutionDays,
+  bookingBacklogDeadlines,
   countDelta,
   incidentBacklogDeadlines,
   percentDelta,
@@ -39,6 +41,11 @@ export type DateRange = { from: string; to: string } | null;
 // under this literal label rather than silently dropped.
 const YELLOW_CARD_DEPARTMENT_LABEL = "Yellow Card";
 
+// Bookings have no department code either: the Convention Center office
+// decides them, so they get one synthetic row under its name, beside Yellow
+// Card's (SCRUM-131).
+const BOOKING_DEPARTMENT_LABEL = "Convention Center";
+
 /**
  * The city's published SLA compliance target — matches the capstone
  * description's stated figure ("SLA Compliance Rate: Maintain ≥ 85%
@@ -71,10 +78,12 @@ const SLA_NEAR_TARGET_PCT = 75;
 export const SLA_NEEDS_ATTENTION_PCT = 65;
 
 // The services with a turnaround clock, in the order every per-service tile
-// and card shows them. Booking has no clock (ADR 0001).
+// and card shows them. Booking joined with its Confirmation Deadline (DB l121,
+// SCRUM-131): a voluntary standard, like the incident targets.
 export const SLA_SERVICES = [
   { name: "Yellow Card", key: "yellowCard" },
   { name: "Incidents", key: "incidents" },
+  { name: "Booking", key: "bookings" },
 ] as const;
 
 export function departmentStatus(compliancePct: number): SlaDepartmentStatus {
@@ -187,6 +196,25 @@ export function applicationMet(row: YellowCardRow): boolean | null {
   return !row.sla_breached;
 }
 
+/**
+ * A booking is scored when the city decided it with a clock on it: staff
+ * accepted the downpayment (confirmed, or fully paid straight from payment
+ * verification) or refused it. Its clock's stop then carries the database's
+ * verdict (DB l121): `sla_scoreable` says whether the stop was the city's
+ * decision, and `sla_on_time` whether the Working Time used stayed within the
+ * target. Both are read as stored; nothing here recomputes Working Time.
+ *
+ * Returns `null` (not scoreable) for an organiser's cancellation, an expiry
+ * (unpaid or unrevised), a booking still running or paused, and a booking
+ * with no clock at all (submitted before l121 and not backfilled, or a seed
+ * row with no history). A refusal on time is on time: the figure measures the
+ * desk's speed, not its answer (Admin glossary, "Decided on time").
+ */
+export function bookingMet(row: BookingRow): boolean | null {
+  if (row.sla_scoreable !== true) return null;
+  return row.sla_on_time === true;
+}
+
 function serviceCompliance<T>(rows: T[], met: (row: T) => boolean | null): ServiceCompliance {
   let scored = 0;
   let onTime = 0;
@@ -210,15 +238,22 @@ function serviceCompliance<T>(rows: T[], met: (row: T) => boolean | null): Servi
  * The scoring rules every Admin page shares, applied to rows the caller has
  * already filtered to its range: each service's scored, on time, finished
  * late, compliance and gap to the 85% project target. A Yellow Card
- * application is scored per applicationMet, an incident per incidentMet.
- * The two services are returned apart and never pooled, because their
- * clocks make different promises (ADR 0001): 3 working days that pause for
- * the applicant, against 4-72 calendar hours that never pause.
+ * application is scored per applicationMet, an incident per incidentMet, a
+ * booking per bookingMet. The three services are returned apart and never
+ * pooled, because their clocks make different promises (ADR 0001): 3 working
+ * days that pause for the applicant and are a legal processing time, 4-72
+ * calendar hours that never pause, and a booking's 3 or 7 working days that
+ * pause for the organiser, both voluntary standards.
  */
-export function slaCompliance(applications: YellowCardRow[], incidents: IncidentRow[]): SlaCompliance {
+export function slaCompliance(
+  applications: YellowCardRow[],
+  incidents: IncidentRow[],
+  bookings: BookingRow[]
+): SlaCompliance {
   return {
     yellowCard: serviceCompliance(applications, applicationMet),
     incidents: serviceCompliance(incidents, incidentMet),
+    bookings: serviceCompliance(bookings, bookingMet),
   };
 }
 
@@ -234,8 +269,8 @@ export function yellowCardDecidedOnTime(
   range: NonNullable<DateRange>,
   getDate: (row: YellowCardRow) => string | null
 ): ServiceCompliance & { delta: Delta } {
-  const current = slaCompliance(filterByDateRange(applications, getDate, range), []).yellowCard;
-  const previous = slaCompliance(filterByDateRange(applications, getDate, previousPeriodRange(range)), []).yellowCard;
+  const current = slaCompliance(filterByDateRange(applications, getDate, range), [], []).yellowCard;
+  const previous = slaCompliance(filterByDateRange(applications, getDate, previousPeriodRange(range)), [], []).yellowCard;
   return { ...current, delta: ratePointsDelta(current.compliancePct, previous.compliancePct) };
 }
 
@@ -251,8 +286,26 @@ export function incidentsResolvedOnTime(
   range: NonNullable<DateRange>,
   getDate: (row: IncidentRow) => string | null
 ): ServiceCompliance & { delta: Delta } {
-  const current = slaCompliance([], filterByDateRange(incidents, getDate, range)).incidents;
-  const previous = slaCompliance([], filterByDateRange(incidents, getDate, previousPeriodRange(range))).incidents;
+  const current = slaCompliance([], filterByDateRange(incidents, getDate, range), []).incidents;
+  const previous = slaCompliance([], filterByDateRange(incidents, getDate, previousPeriodRange(range)), []).incidents;
+  return { ...current, delta: ratePointsDelta(current.compliancePct, previous.compliancePct) };
+}
+
+/**
+ * The Convention Center page's Decided on time (metrics sheet C9, #175): the
+ * booking half of slaCompliance over the bookings whose `getDate` falls in
+ * `range`, and its change since the previous period (higher is better). A
+ * refusal on time is on time. `getDate` is the page's date type, so on the
+ * booking date it is SLA Reports' Booking Compliance for the same range, and
+ * on the decision date it is the same figure under Resolution Date.
+ */
+export function bookingsDecidedOnTime(
+  bookings: BookingRow[],
+  range: NonNullable<DateRange>,
+  getDate: (row: BookingRow) => string | null
+): ServiceCompliance & { delta: Delta } {
+  const current = slaCompliance([], [], filterByDateRange(bookings, getDate, range)).bookings;
+  const previous = slaCompliance([], [], filterByDateRange(bookings, getDate, previousPeriodRange(range))).bookings;
   return { ...current, delta: ratePointsDelta(current.compliancePct, previous.compliancePct) };
 }
 
@@ -288,6 +341,14 @@ function applicationDateAccessor(basis: SlaDateBasis): (row: YellowCardRow) => s
   return basis === "resolution" ? (row) => row.decided_at : (row) => row.submitted_at;
 }
 
+// A booking is "resolved" when its clock stopped (l121's sla_stopped_at): staff
+// confirmed or refused it, or the organiser or the sweep ended it, the same
+// widening decided_at makes for a Yellow Card withdrawal. A booking with no
+// clock has no stop, so it drops out under "resolution".
+function bookingDateAccessor(basis: SlaDateBasis): (row: BookingRow) => string | null {
+  return basis === "resolution" ? (row) => row.sla_stopped_at : (row) => row.submitted_at;
+}
+
 /**
  * SLA compliance grouped by department, for the "By department" table.
  *
@@ -307,8 +368,9 @@ function applicationDateAccessor(basis: SlaDateBasis): (row: YellowCardRow) => s
  * human label via `departments`; a row with no department assigned yet
  * cannot be attributed to any department's figure, so it is excluded from
  * every group rather than invented into an "Unassigned" bucket. Yellow Card
- * applications carry no department code at all, so they are folded in as one
- * additional synthetic "Yellow Card" row.
+ * applications and bookings carry no department code at all, so each is
+ * folded in as one additional synthetic row: "Yellow Card" and "Convention
+ * Center".
  *
  * A department (real or synthetic) with zero rows in range is omitted
  * entirely, not shown at 0% — a department that received no reports this
@@ -330,6 +392,7 @@ function applicationDateAccessor(basis: SlaDateBasis): (row: YellowCardRow) => s
 export function getSlaByDepartment(
   incidents: IncidentRow[],
   applications: YellowCardRow[],
+  bookings: BookingRow[],
   departments: DepartmentRow[],
   range: DateRange,
   dateBasis: SlaDateBasis = "request"
@@ -338,6 +401,7 @@ export function getSlaByDepartment(
 
   const filteredIncidents = filterByDateRange(incidents, incidentDateAccessor(dateBasis), range);
   const filteredApplications = filterByDateRange(applications, applicationDateAccessor(dateBasis), range);
+  const filteredBookings = filterByDateRange(bookings, bookingDateAccessor(dateBasis), range);
 
   const groups = new Map<string, IncidentRow[]>();
   for (const row of filteredIncidents) {
@@ -381,6 +445,19 @@ export function getSlaByDepartment(
       requests: decidedApplications.length,
       compliancePct: round1((met / decidedApplications.length) * 100),
       totalInRange: filteredApplications.length,
+    });
+  }
+
+  // The same for bookings: only those the city decided with a clock on them
+  // (bookingMet) are scored, and the row is omitted when there are none.
+  const scoreableBookings = filteredBookings.filter((row) => bookingMet(row) !== null);
+  if (scoreableBookings.length > 0) {
+    const met = scoreableBookings.filter((row) => bookingMet(row) === true).length;
+    rows.push({
+      department: BOOKING_DEPARTMENT_LABEL,
+      requests: scoreableBookings.length,
+      compliancePct: round1((met / scoreableBookings.length) * 100),
+      totalInRange: filteredBookings.length,
     });
   }
 
@@ -433,10 +510,12 @@ interface TrendBucket {
 
 /**
  * Buckets incidents by Manila-calendar month for `range` under `dateBasis`
- * — **incidents only**. Do not fold Yellow Card applications into this
- * series.
+ * — **incidents only**. Do not fold Yellow Card applications or bookings
+ * into this series. A booking's clock pauses for the organiser the way the
+ * Yellow Card's pauses for the applicant (l121), so the reasoning below
+ * holds for it too.
  *
- * The two SLA clocks are not comparable, by explicit DB design, not
+ * The Yellow Card and incident clocks are not comparable, by explicit DB design, not
  * oversight: `yc_on_status_change()`'s own migration comment (Sandbox
  * zqsqenfoszgcunvpqvvg) says it outright —
  *
@@ -616,15 +695,15 @@ function serviceRangeStats(
 /**
  * KPI-tile figures for the SLA Reports page's hero tiles.
  *
- * `incidents`/`applications` are the caller's already-fetched
- * listIncidents()/listApplications() arrays, the same convention every other
+ * `incidents`/`applications`/`bookings` are the caller's already-fetched
+ * listIncidents()/listApplications()/listBookings() arrays, the same convention every other
  * function in this file follows as of Task 4.2 (see getSlaByDepartment's doc
  * comment) — this does no fetching of its own.
  *
- * `yellowCard`/`incidents` are each service's own figures, scored by
- * slaCompliance, the rules the Dashboard uses too, and never pooled: the two
- * clocks make different promises (ADR 0001, #122). Each compares with the
- * same service in the previous period.
+ * `yellowCard`/`incidents`/`bookings` are each service's own figures, scored
+ * by slaCompliance, the rules the Dashboard uses too, and never pooled: the
+ * three clocks make different promises (ADR 0001, #122). Each compares with
+ * the same service in the previous period.
  *
  * `trend` reuses getSlaTrend(incidents, range, dateBasis) directly rather
  * than re-deriving it, so the CSV export (which reads `stats.trend`) and the
@@ -632,8 +711,9 @@ function serviceRangeStats(
  * SAME fetched `incidents` array) always agree.
  *
  * Each service's `scored` counts SCOREABLE rows only: approved or rejected
- * Yellow Card applications (see applicationMet's doc comment) and RESOLVED,
- * non-excluded incidents (see incidentMet's doc comment) — a withdrawn
+ * Yellow Card applications (see applicationMet's doc comment), RESOLVED,
+ * non-excluded incidents (see incidentMet's doc comment) and bookings the
+ * city confirmed or refused with a clock on them (bookingMet) — a withdrawn
  * application, a pending/resubmitted/revision_requested application, or a
  * still-open/non-scoreable-closure incident, in range is real volume, but
  * its SLA status is genuinely unknown or not applicable, not "met" or "not
@@ -648,6 +728,7 @@ function serviceRangeStats(
 export function getSlaRangeStats(
   incidents: IncidentRow[],
   applications: YellowCardRow[],
+  bookings: BookingRow[],
   range: DateRange,
   dateBasis: SlaDateBasis = "request"
 ): SlaRangeStats {
@@ -659,17 +740,20 @@ export function getSlaRangeStats(
 
   const filteredIncidents = filterByDateRange(incidents, incidentDateAccessor(dateBasis), range);
   const filteredApplications = filterByDateRange(applications, applicationDateAccessor(dateBasis), range);
-  const current = slaCompliance(filteredApplications, filteredIncidents);
+  const filteredBookings = filterByDateRange(bookings, bookingDateAccessor(dateBasis), range);
+  const current = slaCompliance(filteredApplications, filteredIncidents, filteredBookings);
 
   const previousRange = previousPeriodRange(range);
   const previousIncidents = filterByDateRange(incidents, incidentDateAccessor(dateBasis), previousRange);
   const previousApplications = filterByDateRange(applications, applicationDateAccessor(dateBasis), previousRange);
-  const previous = slaCompliance(previousApplications, previousIncidents);
+  const previousBookings = filterByDateRange(bookings, bookingDateAccessor(dateBasis), previousRange);
+  const previous = slaCompliance(previousApplications, previousIncidents, previousBookings);
 
   return {
     rangeLabel: formatManilaRangeLabel(range),
     yellowCard: serviceRangeStats(current.yellowCard, previous.yellowCard, filteredApplications.length),
     incidents: serviceRangeStats(current.incidents, previous.incidents, filteredIncidents.length),
+    bookings: serviceRangeStats(current.bookings, previous.bookings, filteredBookings.length),
     trend,
   };
 }
@@ -682,18 +766,23 @@ export function getSlaRangeStats(
  *
  * The same counting as Pending Review's and Open Backlog's past-due notes
  * (#124), not a second copy: Yellow Card applications pending or
- * resubmitted whose deadline state is overdue, and incident reports open, in
- * pool or in progress whose due time `now` has reached. A report with no due
- * time has no clock yet and never counts. It takes no range: past due
- * describes right now, whatever the page's filter.
+ * resubmitted whose deadline state is overdue, incident reports open, in
+ * pool or in progress whose due time `now` has reached, and bookings in the
+ * Service backlog whose running clock the database reads as overdue. A
+ * request with no clock running never counts: a report not yet routed and
+ * verified, or a booking paused on the organiser or confirmed and waiting on
+ * its balance. It takes no range: past due describes right now, whatever the
+ * page's filter.
  */
 export function getSlaPastDueNow(
   incidents: IncidentRow[],
   applications: YellowCardRow[],
+  bookings: BookingRow[],
   now: Date = new Date()
 ): SlaPastDueNow {
   return {
     yellowCard: yellowCardBacklogDeadlines(applications).pastDue,
     incidents: incidentBacklogDeadlines(incidents, now).pastDue,
+    bookings: bookingBacklogDeadlines(bookings).pastDue,
   };
 }

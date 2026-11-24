@@ -28,6 +28,8 @@ function booking(over: Partial<CalendarBooking> = {}): CalendarBooking {
     submitted_at: "2026-08-01T10:00:00+08:00",
     unverified_payment_count: 0,
     tier_review_since: null,
+    confirmation_due_at: null,
+    deadline_state: null,
     changeover_hours: 1,
     ...over,
   };

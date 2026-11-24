@@ -2,7 +2,8 @@
 
 import type { Delta, EventDays } from "@/portals/admin/lib/aggregate";
 
-export type ConventionDateBasis = "booking" | "event";
+// "decision" reads when the booking's clock stopped (#175).
+export type ConventionDateBasis = "booking" | "event" | "decision";
 
 // No resident/outside share: it needs is_resident, which submit_booking
 // never writes, so the page shows no such figure (#118). If the underlying

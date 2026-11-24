@@ -6,7 +6,7 @@
 import { executiveRangeStats } from "@/portals/admin/features/dashboard/lib/dashboard";
 import type { YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yellow-card";
 import type { IncidentRow } from "@/portals/admin/features/incidents/lib/incidents";
-import type { BookingRow } from "@/portals/admin/features/booking/lib/bookings";
+import { buildBookingRow } from "@/portals/admin/features/booking/lib/fixtures";
 
 function buildYellowCardRow(overrides: Partial<YellowCardRow> = {}): YellowCardRow {
   return {
@@ -50,35 +50,6 @@ function buildIncidentRow(overrides: Partial<IncidentRow> = {}): IncidentRow {
     sla_due_at: null,
     sla_at_risk: null,
     sla_met: null,
-    ...overrides,
-  };
-}
-
-function buildBookingRow(overrides: Partial<BookingRow> = {}): BookingRow {
-  return {
-    id: "booking-1",
-    reference_number: "CC-0001",
-    event_title: "Sample Event",
-    event_type_code: "conference",
-    classification_code: "private",
-    rate_tier: "commercial",
-    venue_code: "ATRIUM",
-    is_resident: null,
-    origin_barangay_code: null,
-    origin_locality: null,
-    estimated_headcount: 100,
-    event_date: "2026-07-15",
-    start_time: "09:00:00",
-    duration_hours: 4,
-    total_fee: 1000,
-    status: "confirmed",
-    submitted_at: "2026-07-15T00:00:00Z",
-    lead_time_days: 17,
-    cancellation_reason: null,
-    completed_at: null,
-    confirmed_at: null,
-    quoted_at: null,
-    tier_verified: null,
     ...overrides,
   };
 }
@@ -160,6 +131,20 @@ describe("executiveRangeStats", () => {
         buildBookingRow({ id: "b-2", status: "awaiting_resubmission" }),
         buildBookingRow({ id: "b-3", status: "pending" }),
       ],
+      RANGE
+    );
+
+    expect(stats.serviceBacklog).toBe(1);
+  });
+
+  // SCRUM-131: the clock changed nothing here. A confirmed booking waiting on
+  // its balance is off the clock (its clock stopped at confirmation) but the
+  // office still records the balance, so it stays in the backlog.
+  it("keeps a confirmed booking waiting on its balance in serviceBacklog, though it is off the clock", () => {
+    const stats = executiveRangeStats(
+      [],
+      [],
+      [buildBookingRow({ status: "confirmed", sla_target_hours: 27, sla_elapsed_seconds: 3600, sla_stopped_at: "2026-07-02T00:00:00Z", sla_scoreable: true, sla_on_time: true })],
       RANGE
     );
 
@@ -255,9 +240,11 @@ describe("executiveRangeStats", () => {
     expect(stats.sla.incidents.compliancePct).toBeNull();
   });
 
-  // Bookings have no SLA clock at all (ADR 0001). 2 unrelated bookings in
-  // range must not drag 1 met incident below 100%.
-  it("never scores bookings", () => {
+  // SCRUM-131 / #174: Booking is the third service (D3), scored by its own
+  // clock and never pooled. 1 met incident stays at 100% whatever the
+  // bookings did; the late booking and the one with no clock stay in Booking.
+  it("scores bookings as a third service, filed in range, never pooled with the other two", () => {
+    const decided = { sla_target_hours: 27, sla_elapsed_seconds: 3600, sla_stopped_at: "2026-07-12T00:00:00Z" };
     const stats = executiveRangeStats(
       [],
       [
@@ -270,14 +257,21 @@ describe("executiveRangeStats", () => {
         }),
       ],
       [
-        buildBookingRow({ id: "b-1", submitted_at: "2026-07-11T00:00:00Z" }),
-        buildBookingRow({ id: "b-2", submitted_at: "2026-07-12T00:00:00Z" }),
+        buildBookingRow({ id: "b-1", submitted_at: "2026-07-11T00:00:00Z", ...decided, sla_scoreable: true, sla_on_time: true }),
+        buildBookingRow({ id: "b-2", submitted_at: "2026-07-12T00:00:00Z", ...decided, sla_scoreable: true, sla_on_time: false }),
+        // No clock: not scored.
+        buildBookingRow({ id: "b-3", submitted_at: "2026-07-13T00:00:00Z" }),
+        // Filed before the range: not this period's figure.
+        buildBookingRow({ id: "b-4", submitted_at: "2026-06-20T00:00:00Z", ...decided, sla_scoreable: true, sla_on_time: true }),
       ],
       RANGE
     );
 
     expect(stats.sla.incidents.compliancePct).toBe(100);
     expect(stats.sla.yellowCard.scored).toBe(0);
+    expect(stats.sla.bookings).toMatchObject({ scored: 2, onTime: 1, finishedLate: 1, compliancePct: 50, gapToTargetPts: -35 });
+    // The previous period scored 1 of 1 on time: 100% down to 50%.
+    expect(stats.sla.bookings.delta).toMatchObject({ movement: "down" });
   });
 
   // Days with an event is the share of calendar days in range with a

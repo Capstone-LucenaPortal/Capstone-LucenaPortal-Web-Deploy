@@ -72,6 +72,8 @@ function item(over: Partial<BookingQueueItem> = {}): BookingQueueItem {
     submitted_at: "2026-08-11T10:00:00+08:00",
     unverified_payment_count: 0,
     tier_review_since: null,
+    confirmation_due_at: null,
+    deadline_state: null,
     ...over,
   };
 }
@@ -177,6 +179,34 @@ describe("BookingQueue", () => {
     expect(within(row).getByText("Waiting on organiser")).toBeInTheDocument();
     // tier_review_since is a stamp, not a state: no age outside Tier Review.
     expect(within(row).queryByText(/^Waiting \d/)).toBeNull();
+  });
+
+  // SCRUM-131: the state is the database's (staff_bookings.deadline_state);
+  // the row only places it. The marker's own cases are in its test.
+  it("marks a Needs Action row At risk against its Confirmation Deadline", () => {
+    renderQueue({
+      filter: NEEDS_ACTION,
+      bookings: [
+        item({
+          status: "awaiting_quote",
+          total_fee: null,
+          deadline_state: "at_risk",
+          confirmation_due_at: "2026-08-13T17:30:00+08:00",
+        }),
+      ],
+    });
+    const row = screen.getByText("BK-2026-000031").closest("tr")!;
+    expect(within(row).getByText("At risk")).toBeInTheDocument();
+    expect(within(row).getByText(/Due August 13, 2026/)).toBeInTheDocument();
+  });
+
+  it("marks a confirmed booking waiting on its balance with nothing", () => {
+    renderQueue({
+      filter: NEEDS_ACTION,
+      bookings: [item({ status: "confirmed", deadline_state: null, confirmation_due_at: null })],
+    });
+    const row = screen.getByText("BK-2026-000031").closest("tr")!;
+    expect(within(row).queryByText(/At risk|Overdue|On track|^Due /)).toBeNull();
   });
 
   it("leads the tabs with Needs action, then All, then all ten statuses", () => {

@@ -8,6 +8,8 @@ import {
   barangayCoverage,
   barangayIncidentRows,
   barangayTotal,
+  bookingBacklogDeadlines,
+  bookingPastDueRows,
   categoryMix,
   conventionRangeStats,
   countDelta,
@@ -33,6 +35,7 @@ import {
 import type { YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yellow-card";
 import type { IncidentRow } from "@/portals/admin/features/incidents/lib/incidents";
 import type { BookingRow } from "@/portals/admin/features/booking/lib/bookings";
+import { buildBookingRow } from "@/portals/admin/features/booking/lib/fixtures";
 import type { VenueRow } from "@/portals/admin/lib/supabase/catalogs";
 import {
   REVIEWABLE_STATUSES,
@@ -85,35 +88,6 @@ function buildIncidentRow(overrides: Partial<IncidentRow> = {}): IncidentRow {
     sla_due_at: null,
     sla_at_risk: null,
     sla_met: null,
-    ...overrides,
-  };
-}
-
-function buildBookingRow(overrides: Partial<BookingRow> = {}): BookingRow {
-  return {
-    id: "booking-1",
-    reference_number: "CC-0001",
-    event_title: "Sample Event",
-    event_type_code: "conference",
-    classification_code: "private",
-    rate_tier: "commercial",
-    venue_code: "ATRIUM",
-    is_resident: null,
-    origin_barangay_code: null,
-    origin_locality: null,
-    estimated_headcount: 100,
-    event_date: "2026-06-01",
-    start_time: "09:00:00",
-    duration_hours: 4,
-    total_fee: 1000,
-    status: "confirmed",
-    submitted_at: "2026-05-15T00:00:00Z",
-    lead_time_days: 17,
-    cancellation_reason: null,
-    completed_at: null,
-    confirmed_at: null,
-    quoted_at: null,
-    tier_verified: null,
     ...overrides,
   };
 }
@@ -293,11 +267,16 @@ describe("date type accessors", () => {
     expect(issueDateAccessor("resolution")(open)).toBeNull();
   });
 
-  it("Convention Center: Booking Date reads submitted_at, Event Date reads event_date", () => {
-    const row = buildBookingRow({ submitted_at: "2026-09-01T04:00:00Z", event_date: "2026-12-05" });
+  // Decision Date is SLA Reports' Resolution Date for a booking (#175): when
+  // its clock stopped. A booking with no clock has none.
+  it("Convention Center: Booking Date reads submitted_at, Event Date event_date, Decision Date when the clock stopped", () => {
+    const row = buildBookingRow({ submitted_at: "2026-09-01T04:00:00Z", event_date: "2026-12-05", sla_stopped_at: "2026-09-03T04:00:00Z" });
+    const noClock = buildBookingRow({ sla_stopped_at: null });
 
     expect(conventionDateAccessor("booking")(row)).toBe("2026-09-01T04:00:00Z");
     expect(conventionDateAccessor("event")(row)).toBe("2026-12-05");
+    expect(conventionDateAccessor("decision")(row)).toBe("2026-09-03T04:00:00Z");
+    expect(conventionDateAccessor("decision")(noClock)).toBeNull();
   });
 
   // The pages memoise on the accessor; a fresh function per call would
@@ -1010,6 +989,29 @@ describe("incidentBacklogDeadlines and incidentPastDueRows", () => {
 
   it("lists exactly the reports the past-due count counts", () => {
     expect(incidentPastDueRows(rows, now).map((row) => row.id)).toEqual(["inc-1", "inc-4"]);
+  });
+});
+
+// SLA Reports' Booking Past due now and the Convention Center's past-due
+// table read the same split, so the two always agree (#175).
+describe("bookingBacklogDeadlines and bookingPastDueRows", () => {
+  const rows = [
+    buildBookingRow({ id: "bk-1", status: "awaiting_tier_review", deadline_state: "overdue" }),
+    buildBookingRow({ id: "bk-2", status: "awaiting_quote", deadline_state: "at_risk" }),
+    buildBookingRow({ id: "bk-3", status: "payment_verification", deadline_state: "overdue" }),
+    buildBookingRow({ id: "bk-4", status: "payment_verification", deadline_state: "on_track" }),
+    // Waiting on the organiser, not the city.
+    buildBookingRow({ id: "bk-5", status: "awaiting_payment", deadline_state: "overdue" }),
+    // Confirmed and waiting on its balance: in the backlog, off the clock.
+    buildBookingRow({ id: "bk-6", status: "confirmed", deadline_state: null }),
+  ];
+
+  it("counts the past-due bookings on the city's clock", () => {
+    expect(bookingBacklogDeadlines(rows)).toEqual({ pastDue: 2, atRisk: 1 });
+  });
+
+  it("lists exactly the bookings the past-due count counts", () => {
+    expect(bookingPastDueRows(rows).map((row) => row.id)).toEqual(["bk-1", "bk-3"]);
   });
 });
 

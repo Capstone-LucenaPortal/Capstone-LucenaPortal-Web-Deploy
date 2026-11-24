@@ -4,7 +4,7 @@ import {
   DEADLINE_STATE_VARIANT,
   formatDeadline,
   type DeadlineState,
-} from "../lib/deadline";
+} from "@/portals/staff/lib/deadline";
 
 /**
  * The state the database computed, with the deadline it is measured against

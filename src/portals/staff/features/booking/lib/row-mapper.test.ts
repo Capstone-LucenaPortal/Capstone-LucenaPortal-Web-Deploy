@@ -34,6 +34,8 @@ function queueRow(over: Partial<StaffBookingQueueRow> = {}): StaffBookingQueueRo
     submitted_at: "2026-08-11T10:00:00+08:00",
     unverified_payment_count: 0,
     tier_review_since: null,
+    confirmation_due_at: null,
+    deadline_state: null,
     ...over,
   };
 }
@@ -97,6 +99,35 @@ describe("toQueueItem", () => {
         .unverified_payment_count,
     ).toBe(0);
   });
+
+  it("carries the database's deadline state and the Confirmation Deadline", () => {
+    const item = toQueueItem(
+      queueRow({
+        status: "awaiting_quote",
+        deadline_state: "at_risk",
+        confirmation_due_at: "2026-11-27T17:30:00+08:00",
+      }),
+    );
+    expect(item.deadline_state).toBe("at_risk");
+    expect(item.confirmation_due_at).toBe("2026-11-27T17:30:00+08:00");
+  });
+
+  it("keeps a booking off the clock as null, not as a state", () => {
+    const item = toQueueItem(queueRow({ status: "confirmed" }));
+    expect(item.deadline_state).toBeNull();
+    expect(item.confirmation_due_at).toBeNull();
+  });
+
+  /**
+   * The database computes the state (l121). A value outside the vocabulary
+   * means the view changed under the portal, and showing "no marker" would
+   * hide the very warning the column exists for.
+   */
+  it("refuses a deadline state the database does not produce", () => {
+    expect(() => toQueueItem(queueRow({ deadline_state: "breached" }))).toThrow(
+      /staff_bookings.*deadline_state/,
+    );
+  });
 });
 
 describe("toBooking", () => {
@@ -124,6 +155,8 @@ describe("toBooking", () => {
       document_count: 0,
       tier_review_look: null,
       tier_revision_reason: null,
+      sla_scoreable: null,
+      sla_on_time: null,
       ...over,
     };
   }
@@ -143,6 +176,16 @@ describe("toBooking", () => {
     const booking = toBooking(detailRow({ payment_count: null, document_count: null }));
     expect(booking?.payment_count).toBe(0);
     expect(booking?.document_count).toBe(0);
+  });
+
+  // A late verdict is false, not missing: "decided late" and "no verdict" are
+  // different sentences on the detail page.
+  it("carries the database's on-time verdict for a decided booking", () => {
+    const booking = toBooking(
+      detailRow({ status: "confirmed", sla_scoreable: true, sla_on_time: false }),
+    );
+    expect(booking?.sla_scoreable).toBe(true);
+    expect(booking?.sla_on_time).toBe(false);
   });
 });
 

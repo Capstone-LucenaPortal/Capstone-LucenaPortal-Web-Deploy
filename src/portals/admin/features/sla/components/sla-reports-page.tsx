@@ -32,10 +32,12 @@ import { PageHero } from "@/portals/admin/components/layout/page-hero";
 import { LoadingStatus, Skeleton } from "@/portals/admin/components/ui/skeleton";
 import { ComplianceTrendCard, TREND_TITLE } from "@/portals/admin/features/sla/components/compliance-trend-card";
 import { downloadCsv } from "@/portals/admin/lib/csv";
+import { listBookings, BookingRow } from "@/portals/admin/features/booking/lib/bookings";
 import { listIncidents, IncidentRow } from "@/portals/admin/features/incidents/lib/incidents";
 import { listApplications, YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yellow-card";
 import { listDepartments, DepartmentRow } from "@/portals/admin/lib/supabase/catalogs";
 import {
+  CONVENTION_CENTER_PATH,
   finishedLateHref,
   INCIDENT_REPORTS_PATH,
   pastDueHref,
@@ -56,8 +58,10 @@ const BASIS_OPTIONS: { value: SlaDateBasis; label: string }[] = [
   { value: "resolution", label: "Resolution Date" },
 ];
 
-// Where each service's Finished late and Past due now link to (#127), what
-// that page lists, and its own name for each of this page's date types.
+// Where each service's Finished late and Past due now link to (#127, #175),
+// what that page lists, and its own name for each of this page's date types.
+// The Convention Center's Decision Date is when a booking's clock stopped,
+// which is what Resolution Date reads for a booking here.
 const SERVICE_PAGES: Record<
   SlaServiceKey,
   { path: string; noun: [string, string]; basis: Record<SlaDateBasis, string> }
@@ -72,14 +76,24 @@ const SERVICE_PAGES: Record<
     noun: ["report", "reports"],
     basis: { request: "report", resolution: "resolution" },
   },
+  bookings: {
+    path: CONVENTION_CENTER_PATH,
+    noun: ["booking", "bookings"],
+    basis: { request: "booking", resolution: "decision" },
+  },
 };
 
 // "See the 8 reports": the link under a count, only once there is something
 // to see. Nothing while loading or after a failed fetch.
-function seeTheRequests(key: SlaServiceKey, count: number, href: string): { href: string; label: string } | undefined {
+function seeTheRequests(
+  key: SlaServiceKey,
+  count: number,
+  buildHref: (path: string, basis: Record<SlaDateBasis, string>) => string
+): { href: string; label: string } | undefined {
+  const page = SERVICE_PAGES[key];
   if (count === 0) return undefined;
-  const [one, many] = SERVICE_PAGES[key].noun;
-  return { href, label: `See the ${count.toLocaleString()} ${count === 1 ? one : many}` };
+  const [one, many] = page.noun;
+  return { href: buildHref(page.path, page.basis), label: `See the ${count.toLocaleString()} ${count === 1 ? one : many}` };
 }
 
 export function SLAReportsPage() {
@@ -94,6 +108,7 @@ export function SLAReportsPage() {
 
   const [incidentRows, setIncidentRows] = useState<IncidentRow[]>([]);
   const [applicationRows, setApplicationRows] = useState<YellowCardRow[]>([]);
+  const [bookingRows, setBookingRows] = useState<BookingRow[]>([]);
   const [departmentCatalog, setDepartmentCatalog] = useState<DepartmentRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<PortalError | null>(null);
@@ -118,20 +133,22 @@ export function SLAReportsPage() {
   // from/to bounds, so this is never silently unfiltered. `dateBasis` (the
   // "Date type" toggle) is passed to all four too: "request" filters every
   // row by submitted_at, "resolution" filters incidents by resolved_at and
-  // Yellow Card applications by decided_at (see src/portals/admin/features/sla/lib/sla.ts's
-  // incidentDateAccessor/applicationDateAccessor). Nothing on this page
-  // pools the two services: the two SLA clocks are not comparable (see
-  // getSlaTrend's doc comment), so getSlaRangeStats gives each its own
-  // figures, getSlaByDepartment gives Yellow Card its own row, and
-  // getSlaTrend and getSlaMonthlyHistory are incidents-only. getSlaPastDueNow
-  // alone takes no range: it describes right now.
+  // Yellow Card applications by decided_at and bookings by when their clock
+  // stopped (see src/portals/admin/features/sla/lib/sla.ts's date
+  // accessors). Nothing on this page pools the three services: their SLA
+  // clocks are not comparable (see getSlaTrend's doc comment), so
+  // getSlaRangeStats gives each its own figures, getSlaByDepartment gives
+  // Yellow Card and the Convention Center their own rows, and getSlaTrend and
+  // getSlaMonthlyHistory are incidents-only. getSlaPastDueNow alone takes no
+  // range: it describes right now.
   const dateRange = useMemo(
     () => (preset === "Custom" ? { from: customStart, to: customEnd } : presetDateRange(preset)),
     [preset, customStart, customEnd]
   );
 
   // A SINGLE fetch effect for every table this page's four SLA computations
-  // read — Incidents, Yellow Card applications, and the department catalog —
+  // read — Incidents, Yellow Card applications, bookings and the department
+  // catalog —
   // each read exactly ONCE per page load (Admin Portal Fix Plan, Task 4.2).
   // Before this fix, getSlaByDepartment/getSlaTrend/getSlaRangeStats/
   // getSlaMonthlyHistory each independently re-fetched listIncidents()/
@@ -157,11 +174,17 @@ export function SLAReportsPage() {
     setIsLoading(true);
     setError(null);
 
-    Promise.all([listIncidents(controller.signal), listApplications(controller.signal), listDepartments()])
-      .then(([incidents, applications, departments]) => {
+    Promise.all([
+      listIncidents(controller.signal),
+      listApplications(controller.signal),
+      listBookings(controller.signal),
+      listDepartments(),
+    ])
+      .then(([incidents, applications, bookings, departments]) => {
         if (controller.signal.aborted) return;
         setIncidentRows(incidents);
         setApplicationRows(applications);
+        setBookingRows(bookings);
         setDepartmentCatalog(departments);
         // Only stamped on an actual successful resolution of the Promise.all
         // above — not in .finally, which also runs on failure/abort — so the
@@ -219,16 +242,16 @@ export function SLAReportsPage() {
   // separate fetches. Recompute on every preset/custom-range/date-basis
   // change with zero additional network requests.
   const departmentRows = useMemo(
-    () => getSlaByDepartment(incidentRows, applicationRows, departmentCatalog, dateRange, dateBasis),
-    [incidentRows, applicationRows, departmentCatalog, dateRange, dateBasis]
+    () => getSlaByDepartment(incidentRows, applicationRows, bookingRows, departmentCatalog, dateRange, dateBasis),
+    [incidentRows, applicationRows, bookingRows, departmentCatalog, dateRange, dateBasis]
   );
   const trendPoints = useMemo(
     () => getSlaTrend(incidentRows, dateRange, dateBasis),
     [incidentRows, dateRange, dateBasis]
   );
   const stats = useMemo(
-    () => getSlaRangeStats(incidentRows, applicationRows, dateRange, dateBasis),
-    [incidentRows, applicationRows, dateRange, dateBasis]
+    () => getSlaRangeStats(incidentRows, applicationRows, bookingRows, dateRange, dateBasis),
+    [incidentRows, applicationRows, bookingRows, dateRange, dateBasis]
   );
   // No dateRange or dateBasis in its deps: past due is right now, whatever
   // the range, so a filter change leaves it alone (#126). "Now" is the
@@ -237,8 +260,8 @@ export function SLAReportsPage() {
   // so the moment doesn't matter.
   const asOf = lastUpdatedAt ?? undefined;
   const pastDueNow = useMemo(
-    () => getSlaPastDueNow(incidentRows, applicationRows, asOf),
-    [incidentRows, applicationRows, asOf]
+    () => getSlaPastDueNow(incidentRows, applicationRows, bookingRows, asOf),
+    [incidentRows, applicationRows, bookingRows, asOf]
   );
   const monthlyHistory = useMemo(
     () => getSlaMonthlyHistory(incidentRows, dateRange, dateBasis),
@@ -327,8 +350,8 @@ export function SLAReportsPage() {
       {isLoading && <LoadingStatus label="Loading SLA data…" />}
 
       {/* Every SLA tile is shown once per service and never pooled: the
-          Yellow Card clock and the incident clocks make different promises
-          (ADR 0001, #122). */}
+          Yellow Card clock, the incident clocks and the booking clock make
+          different promises (ADR 0001, #122, SCRUM-131). */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <SplitKpiTile
           label="Requests scored"
@@ -336,8 +359,8 @@ export function SLAReportsPage() {
             name,
             value: tileValue((service) => service.scored.toLocaleString(), key),
             // What the scored count was out of: this service's requests in
-            // range, before pending, withdrawn, open and invalid ones are
-            // left out of scoring.
+            // range, before pending, withdrawn, open, invalid, cancelled and
+            // expired ones are left out of scoring.
             caption:
               status === "ready" && stats
                 ? `of ${stats[key].inRange.toLocaleString()} ${dateBasis === "request" ? "filed" : "closed"} in range`
@@ -357,10 +380,8 @@ export function SLAReportsPage() {
             // requests counted here.
             link:
               status === "ready" && stats
-                ? seeTheRequests(
-                    key,
-                    stats[key].finishedLate,
-                    finishedLateHref(SERVICE_PAGES[key].path, preset, dateRange, SERVICE_PAGES[key].basis[dateBasis])
+                ? seeTheRequests(key, stats[key].finishedLate, (path, basis) =>
+                    finishedLateHref(path, preset, dateRange, basis[dateBasis])
                   )
                 : undefined,
           }))}
@@ -391,17 +412,13 @@ export function SLAReportsPage() {
                 : status === "loading"
                   ? <Skeleton className="h-6 w-14" />
                   : "—",
-            link: status === "ready" ? seeTheRequests(key, pastDueNow[key], pastDueHref(SERVICE_PAGES[key].path)) : undefined,
+            link: status === "ready" ? seeTheRequests(key, pastDueNow[key], (path) => pastDueHref(path)) : undefined,
           }))}
           footnote="Right now, whatever the date range"
           direction="lower-is-better"
           noteTone="negative"
         />
       </div>
-      {/* The third service's absence is a stated choice, not an oversight:
-          SCRUM-131's booking clock was cut, and the Charter's booking times
-          are voluntary standards (ADR 0001, amendment 2026-10-06). */}
-      <p className="text-xs text-gray-500">Booking has no turnaround clock yet (voluntary standard, ADR 0001)</p>
 
       {isLoading ? (
         <div className="rounded-none border border-gray-200 bg-white px-6 py-8">
@@ -444,8 +461,9 @@ export function SLAReportsPage() {
               disagrees with no explanation why (Admin Portal Fix Plan, Phase
               1 final review, finding 3). */}
           <p className="text-xs text-gray-500">
-            Scored counts decided Yellow Card applications and resolved incidents only — pending reviews,
-            withdrawals, and open, invalid, duplicate or expired reports are not scored (see the &quot;of N
+            Scored counts decided Yellow Card applications, resolved incidents and bookings the city confirmed
+            or refused only — pending reviews, withdrawals, open, invalid, duplicate or expired reports, and
+            bookings still open, cancelled by the organiser or expired are not scored (see the &quot;of N
             total&quot; note under a row&apos;s count).
           </p>
         </div>
@@ -483,9 +501,10 @@ export function SLAReportsPage() {
               columns={[
                 {
                   // Labeled "Service area", not "Department": the synthetic
-                  // Yellow Card row below is staff-module-scoped rather than
-                  // department-routed, and "Department" would wrongly imply
-                  // it's a peer of engineering/water/electrical/waste/etc.
+                  // Yellow Card and Convention Center rows are
+                  // staff-module-scoped rather than department-routed, and
+                  // "Department" would wrongly imply they're peers of
+                  // engineering/water/electrical/waste/etc.
                   header: "Service area",
                   render: (row: SlaDepartmentRow) => row.department,
                 },

@@ -31,11 +31,19 @@ import { listBookings, BookingRow } from "@/portals/admin/features/booking/lib/b
 import {
   formatTargetGap,
   getSlaByDepartment,
+  getSlaPastDueNow,
   getSlaTrend,
   SLA_NEEDS_ATTENTION_PCT,
   SLA_SERVICES,
   SLA_TARGET_PCT,
 } from "@/portals/admin/features/sla/lib/sla";
+import {
+  CONVENTION_CENTER_PATH,
+  INCIDENT_REPORTS_PATH,
+  pastDueHref,
+  YELLOW_CARD_PATH,
+} from "@/portals/admin/features/sla/lib/sla-links";
+import type { SlaPastDueNow } from "@/portals/admin/features/sla/types";
 import type { PortalError } from "@/portals/admin/lib/supabase/errors";
 import { filterByDateRange, formatManilaTimestamp, presetDateRange } from "@/portals/admin/lib/dates";
 import { AttentionItem } from "@/portals/admin/features/dashboard/types";
@@ -51,6 +59,37 @@ const RANGE_PHRASE: Record<DateRangeKey, string> = {
 
 function rangeCaption(noun: string, range: DateRangeKey): string {
   return `${noun} ${RANGE_PHRASE[range]}`;
+}
+
+// Needs attention's past-due items (D6): what each one counts, what its
+// promise was, and where its requests are listed: each opens its page's
+// table narrowed to them (#127, #175).
+const PAST_DUE_ITEMS: { key: keyof SlaPastDueNow; noun: [string, string]; promise: string; href: string }[] = [
+  {
+    key: "yellowCard",
+    noun: ["Yellow Card application", "Yellow Card applications"],
+    promise: "Past the 3-working-day target",
+    href: pastDueHref(YELLOW_CARD_PATH),
+  },
+  {
+    key: "incidents",
+    noun: ["incident report", "incident reports"],
+    promise: "Past their level's target",
+    href: pastDueHref(INCIDENT_REPORTS_PATH),
+  },
+  {
+    key: "bookings",
+    noun: ["booking", "bookings"],
+    promise: "Past their Confirmation Deadline",
+    href: pastDueHref(CONVENTION_CENTER_PATH),
+  },
+];
+
+// The Convention Center card's lead figure: Booking's SLA compliance, the
+// SLA compliance tile's own figure. null when nothing in range was decided
+// with a clock on it.
+function decidedOnTimePhrase(compliancePct: number | null): string {
+  return compliancePct === null ? "Nothing decided in range" : `${formatRate(compliancePct)} decided on time`;
 }
 
 // The incident card's resolution rate. It is null when every report in range
@@ -291,8 +330,15 @@ export function DashboardPage({ displayName }: { displayName: string }) {
   // second fetch. Recomputes on every `range` change (a preset click) with
   // zero additional network requests.
   const departmentRows = useMemo(
-    () => getSlaByDepartment(incidentRows, yellowCardRows, departmentCatalog, dateRange),
-    [incidentRows, yellowCardRows, departmentCatalog, dateRange]
+    () => getSlaByDepartment(incidentRows, yellowCardRows, bookingRows, departmentCatalog, dateRange),
+    [incidentRows, yellowCardRows, bookingRows, departmentCatalog, dateRange]
+  );
+  // Right now, whatever the range, counted against the fetch's moment, as
+  // SLA Reports' Past due now is (#126, #131).
+  const asOf = lastUpdatedAt ?? undefined;
+  const pastDueNow = useMemo(
+    () => getSlaPastDueNow(incidentRows, yellowCardRows, bookingRows, asOf),
+    [incidentRows, yellowCardRows, bookingRows, asOf]
   );
   const trendPoints = useMemo(() => getSlaTrend(incidentRows, dateRange), [incidentRows, dateRange]);
 
@@ -394,17 +440,25 @@ export function DashboardPage({ displayName }: { displayName: string }) {
       });
     }
 
-    // Yellow Card and incident past-SLA items used to live here. They were
-    // removed because nothing honest could trigger them: a pending
-    // application's sla_breached reads false however overdue it is, and the
-    // incident figure counted unverified, never-armed reports as late. Since
-    // l112 the views carry each request's due time and state, and the Yellow
-    // Card and Incident Reports pages count past due from them (#124).
-    // Bringing these alerts back is a separate call; until then the
-    // Dashboard raises none.
+    // What is late right now, one item per service with any (D6, SCRUM-131):
+    // the counts behind SLA Reports' Past due now, from each request's own
+    // due time and deadline state (l112, l121). The old past-SLA items were
+    // removed because they read sla_breached, which never fires for a
+    // pending application, and counted never-armed reports as late.
+    for (const { key, noun, promise, href } of PAST_DUE_ITEMS) {
+      const count = pastDueNow[key];
+      if (count === 0) continue;
+      items.push({
+        icon: "clock",
+        tone: "red",
+        title: `${count.toLocaleString()} ${count === 1 ? noun[0] : noun[1]} past due`,
+        detail: `${promise} · right now, whatever the date range`,
+        href,
+      });
+    }
 
     return items;
-  }, [departmentRows, status]);
+  }, [departmentRows, pastDueNow, status]);
 
   return (
     <div className="space-y-4">
@@ -530,8 +584,9 @@ export function DashboardPage({ displayName }: { displayName: string }) {
           noteTone="negative"
           surface="raised"
         />
-        {/* Once per service, never pooled: the Yellow Card clock and the
-            incident clocks make different promises (ADR 0001, #119). */}
+        {/* Once per service, never pooled: the Yellow Card clock, the
+            incident clocks and the booking clock make different promises
+            (ADR 0001, #119, SCRUM-131). */}
         <SplitKpiTile
           label="SLA compliance"
           parts={SLA_SERVICES.map(({ name, key }) => ({
@@ -651,17 +706,14 @@ export function DashboardPage({ displayName }: { displayName: string }) {
                 : status === "error"
                   ? "Unable to load data"
                   : topEventType
-                    ? `Top event type: ${eventTypeLabel(topEventType.type)} (${topEventType.count})`
+                    ? `${decidedOnTimePhrase(stats.sla.bookings.compliancePct)} · top: ${eventTypeLabel(topEventType.type)} (${topEventType.count})`
                     : "No bookings in range"
             }
           >
+            {/* Booking's SLA compliance, the figure the footnote leads with
+                and the SLA compliance tile shows (D5, SCRUM-131). */}
             <div className="h-1.5 w-full bg-gray-100">
-              <div
-                className="h-1.5 bg-blue-800"
-                style={{
-                  width: `${topEventType && conventionStats.bookings > 0 ? Math.round((topEventType.count / conventionStats.bookings) * 100) : 0}%`,
-                }}
-              />
+              <div className="h-1.5 bg-blue-800" style={{ width: `${stats.sla.bookings.compliancePct ?? 0}%` }} />
             </div>
           </ModuleCard>
 
@@ -674,7 +726,7 @@ export function DashboardPage({ displayName }: { displayName: string }) {
                 <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             }
-            // The same two figures as the SLA compliance tile, and nothing
+            // The same three figures as the SLA compliance tile, and nothing
             // else: no trend average or best month beside them, so the
             // Dashboard never shows two different compliance numbers (#119).
             value={
@@ -745,9 +797,10 @@ export function DashboardPage({ displayName }: { displayName: string }) {
           </h2>
           <span className="text-xs text-gray-500">Ranked by impact</span>
         </div>
-        {/* needsAttention's only signal today (worst-compliance departments)
-            comes from departmentRows, derived from the same single fetch as
-            everything else on this page, so this section's own load/error
+        {/* needsAttention's signals (worst-compliance departments and past
+            due now) come from departmentRows and pastDueNow, derived from the
+            same single fetch as everything else on this page, so this
+            section's own load/error
             state mirrors `status` too — without it, a failed fetch would
             fall through to the empty-state message below and read as the
             reassuring "nothing needs attention" rather than "we don't know,"

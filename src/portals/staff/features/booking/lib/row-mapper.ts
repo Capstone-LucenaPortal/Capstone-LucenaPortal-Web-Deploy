@@ -1,3 +1,4 @@
+import { parseDeadlineState } from "@/portals/staff/lib/deadline";
 import { STATUS_ORDER } from "./status";
 import type {
   Booking,
@@ -47,6 +48,9 @@ export type StaffBookingQueueRow = {
   submitted_at: string | null;
   unverified_payment_count: number | null;
   tier_review_since: string | null;
+  confirmation_due_at: string | null;
+  /** `text` in the generated types; parsed against the shared vocabulary. */
+  deadline_state: string | null;
 };
 
 /** The calendar's read: the queue's columns plus the recorded Changeover (DB l117). */
@@ -76,6 +80,8 @@ export type StaffBookingRow = StaffBookingQueueRow & {
   document_count: number | null;
   tier_review_look: number | null;
   tier_revision_reason: string | null;
+  sla_scoreable: boolean | null;
+  sla_on_time: boolean | null;
 };
 
 export type StaffBookingPaymentRow = {
@@ -159,6 +165,8 @@ export function toQueueItem(row: StaffBookingQueueRow): BookingQueueItem {
     submitted_at: row.submitted_at ?? "",
     unverified_payment_count: row.unverified_payment_count ?? 0,
     tier_review_since: row.tier_review_since,
+    confirmation_due_at: row.confirmation_due_at,
+    deadline_state: parseDeadlineState(row.deadline_state, "staff_bookings"),
   };
 }
 
@@ -201,6 +209,8 @@ export function toBooking(row: StaffBookingRow | null): Booking | null {
     document_count: row.document_count ?? 0,
     tier_review_look: row.tier_review_look,
     tier_revision_reason: row.tier_revision_reason,
+    sla_scoreable: row.sla_scoreable,
+    sla_on_time: row.sla_on_time,
   };
 }
 

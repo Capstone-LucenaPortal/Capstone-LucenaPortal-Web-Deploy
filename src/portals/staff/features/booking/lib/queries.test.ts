@@ -56,6 +56,8 @@ const CANNED_QUEUE_ROW: StaffBookingQueueRow = {
   submitted_at: "2026-08-11T10:00:00+08:00",
   unverified_payment_count: 0,
   tier_review_since: null,
+  confirmation_due_at: null,
+  deadline_state: null,
 };
 
 describe("getBookingQueue", () => {
@@ -104,6 +106,8 @@ describe("getBookingQueue", () => {
       "submitted_at",
       "unverified_payment_count",
       "tier_review_since",
+      "confirmation_due_at",
+      "deadline_state",
     ]);
   });
 

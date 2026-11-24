@@ -2,14 +2,24 @@
 "use client";
 
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import {
+  bookingPastDueRows,
   conventionDateAccessor,
   conventionRangeStats,
   eventTypeMix,
+  formatRate,
   recentMonthlyCounts,
   bookingRequestsPerVenue,
 } from "@/portals/admin/lib/aggregate";
+import { bookingMet, bookingsDecidedOnTime, formatTargetGap } from "@/portals/admin/features/sla/lib/sla";
+import { CONVENTION_CENTER_PATH } from "@/portals/admin/features/sla/lib/sla-links";
+import {
+  NO_SLA_ROW_FILTER,
+  useSlaRowFilter,
+  type SlaRowFilterState,
+} from "@/portals/admin/features/sla/hooks/use-sla-row-filter";
+import { SlaRowFilterBanner } from "@/portals/admin/features/sla/components/sla-row-filter-banner";
 import { ConventionDateBasis } from "@/portals/admin/features/booking/types";
 import {
   filterByDateRange,
@@ -47,17 +57,23 @@ import {
 } from "@/portals/admin/lib/status-labels";
 import { downloadCsv } from "@/portals/admin/lib/csv";
 
+// Decision Date reads when the booking's clock stopped: SLA Reports'
+// Resolution Date for a booking, so a Finished late link opened under it keeps
+// its date type here (#175).
 const BASIS_OPTIONS: { value: ConventionDateBasis; label: string }[] = [
   { value: "booking", label: "Booking Date" },
   { value: "event", label: "Event Date" },
+  { value: "decision", label: "Decision Date" },
 ];
+const BASIS_VALUES = BASIS_OPTIONS.map((option) => option.value);
 
 // The monthly chart's subtitle names the date the picked date type reads. The
 // default (submitted) date type keeps the subtitle as it always was. The
-// table's "Event date" column stays under both date types.
+// table's "Event date" column stays under every date type.
 const MONTHLY_SUBTITLE: Record<ConventionDateBasis, string> = {
   booking: "Last 6 months",
   event: "By event date · Last 6 months",
+  decision: "By decision date · Last 6 months",
 };
 
 // The real booking_status enum, in display order, each with its human label
@@ -93,13 +109,33 @@ function filterRows(rows: BookingRow[], tab: (typeof STATUS_TABS)[number]["value
 }
 
 export function ConventionCenterPage() {
-  const [preset, setPreset] = useState<DateFilterPreset>("Month");
+  // Only the part that reads the address waits for it, as on the Yellow Card
+  // page (#133): a prerender sends the page unfiltered, and the browser then
+  // renders it from the address.
+  return (
+    <Suspense fallback={<ConventionCenterView sla={NO_SLA_ROW_FILTER} />}>
+      <ConventionCenterAtAddress />
+    </Suspense>
+  );
+}
+
+function ConventionCenterAtAddress() {
+  // Arriving from SLA Reports' Booking Finished late or Past due now (#175):
+  // the link seeds the range and date type, and narrows the Recent bookings
+  // table. The body starts afresh on each address it lands on (#131).
+  const sla = useSlaRowFilter(CONVENTION_CENTER_PATH, BASIS_VALUES);
+  return <ConventionCenterView key={sla.arrival} sla={sla} />;
+}
+
+function ConventionCenterView({ sla }: { sla: SlaRowFilterState<ConventionDateBasis> }) {
+  const { link, filter: slaFilter, clear: clearSlaFilter } = sla;
+  const [preset, setPreset] = useState<DateFilterPreset>(link?.preset ?? "Month");
   // Seeded from the current Manila month rather than from literals written
   // the day this page was authored — see the yellow-card page for the same
   // note. Lazy initialisers, so presetDateRange runs once on mount.
-  const [customStart, setCustomStart] = useState(() => presetDateRange("Month").from);
-  const [customEnd, setCustomEnd] = useState(() => presetDateRange("Month").to);
-  const [dateBasis, setDateBasis] = useState<ConventionDateBasis>("booking");
+  const [customStart, setCustomStart] = useState(() => link?.from ?? presetDateRange("Month").from);
+  const [customEnd, setCustomEnd] = useState(() => link?.to ?? presetDateRange("Month").to);
+  const [dateBasis, setDateBasis] = useState<ConventionDateBasis>(link?.basis ?? "booking");
   const [compare, setCompare] = useState(true);
   const [activeTab, setActiveTab] = useState<(typeof STATUS_TABS)[number]["value"]>("all");
   const [reviewingId, setReviewingId] = useState<string | null>(null);
@@ -237,10 +273,23 @@ export function ConventionCenterPage() {
     () => conventionRangeStats(rows, dateRange, getDate),
     [rows, dateRange, getDate]
   );
+  // Scored by the rules every page shares (slaCompliance), on the page's
+  // date type, so on the booking date it is SLA Reports' Booking Compliance
+  // for the same range (metrics sheet C9, #175).
+  const decidedOnTime = useMemo(() => bookingsDecidedOnTime(rows, dateRange, getDate), [rows, dateRange, getDate]);
   const filtered = useMemo(
     () => filterByDateRange(filterRows(rows, activeTab), getDate, dateRange),
     [rows, activeTab, getDate, dateRange]
   );
+  // The table alone narrows to SLA Reports' filter; the tiles and panels
+  // still describe the range. Finished late is the bookings in range scored
+  // late by the rule SLA Reports counts with (bookingMet). Past due now is
+  // the bookings on the city's clock past due, whatever the range.
+  const tableRows = useMemo(() => {
+    if (slaFilter === "past-due") return filterRows(bookingPastDueRows(rows), activeTab);
+    if (slaFilter === "late") return filtered.filter((row) => bookingMet(row) === false);
+    return filtered;
+  }, [slaFilter, rows, activeTab, filtered]);
 
   // eventTypeMix reads `filtered`, not raw `rows`, so this panel agrees with
   // the status tab and date preset the table/CSV export below already
@@ -273,16 +322,18 @@ export function ConventionCenterPage() {
   const canExport = !isLoading && !error;
 
   // The CSV carries no organiser PII — every column here also appears in the
-  // visible table — so it reads the already-filtered `rows` state directly
-  // rather than going through the audited readBookingPii RPC (contrast with
-  // Yellow Card's exportApplications, which releases applicant identity and
-  // must be audited).
+  // visible table — so it reads the table's own rows directly rather than
+  // going through the audited readBookingPii RPC (contrast with Yellow Card's
+  // exportApplications, which releases applicant identity and must be
+  // audited). Being built from the table, it narrows with SLA Reports'
+  // filter too, so unlike the Yellow Card's it stays on while one is set
+  // (#175).
   function handleExportBookings() {
     if (!canExport) return;
     downloadCsv(
       "convention-center-bookings.csv",
       ["Reference", "Event", "Venue", "Event date", "Status", "Cancellation Reason"],
-      filtered.map((row) => [
+      tableRows.map((row) => [
         row.reference_number ?? "—",
         row.event_title ?? "—",
         venueLabel(row.venue_code),
@@ -328,7 +379,7 @@ export function ConventionCenterPage() {
           and finish loading together. */}
       {isLoading && <LoadingStatus label="Loading bookings…" />}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {/* Booking requests: demand, whatever became of each request. The
             caption says how many were confirmed, fully paid or completed,
             which answers "how many events took place?" (#118, metrics
@@ -353,6 +404,25 @@ export function ConventionCenterPage() {
           caption={isLoading || error ? undefined : stats.eventDays.note}
           note={isLoading ? <Skeleton className="h-3 w-24" /> : undefined}
           noteTone="neutral"
+        />
+        {/* Whether the office answers organisers on time (#175, metrics
+            sheet C9): bookings confirmed or refused within their target, 3
+            working days or 7 with a Quote. A refusal on time is on time; an
+            organiser's cancellation or an expiry is not scored. The caption
+            says "within target" because the target differs per booking. */}
+        <KpiTile
+          label="Decided on time"
+          value={isLoading ? <Skeleton className="h-7 w-16" /> : error ? "—" : formatRate(decidedOnTime.compliancePct)}
+          caption={
+            isLoading || error
+              ? undefined
+              : decidedOnTime.scored === 0
+                ? "Nothing decided in range"
+                : `${decidedOnTime.onTime.toLocaleString()} of ${decidedOnTime.scored.toLocaleString()} within target · ${formatTargetGap(decidedOnTime.gapToTargetPts)}`
+          }
+          note={isLoading ? <Skeleton className="h-3 w-24" /> : error || !compare ? undefined : decidedOnTime.delta}
+          direction="higher-is-better"
+          noteTone="negative"
         />
       </div>
 
@@ -402,6 +472,7 @@ export function ConventionCenterPage() {
             }}
           />
         </div>
+        {slaFilter && <SlaRowFilterBanner filter={slaFilter} noun="bookings" onClear={clearSlaFilter} />}
 
         {isLoading ? (
           <div className="space-y-2 px-6 py-8">
@@ -420,7 +491,7 @@ export function ConventionCenterPage() {
               Retry
             </Button>
           </div>
-        ) : filtered.length === 0 ? (
+        ) : tableRows.length === 0 ? (
           <p className="px-6 py-8 text-center text-sm text-gray-500">No bookings match this filter.</p>
         ) : (
           <DataTable
@@ -448,7 +519,7 @@ export function ConventionCenterPage() {
                 ),
               },
             ]}
-            rows={filtered}
+            rows={tableRows}
             rowKey={(row) => row.id ?? row.reference_number ?? ""}
           />
         )}

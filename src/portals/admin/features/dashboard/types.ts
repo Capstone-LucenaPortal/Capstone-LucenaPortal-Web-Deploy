@@ -14,9 +14,9 @@ export interface ExecutiveRangeStats {
   requestsFiledDelta: Delta;
   serviceBacklog: number;
   backlogDelta: Delta;
-  // SLA compliance once per service, never pooled: the two clocks make
+  // SLA compliance once per service, never pooled: the three clocks make
   // different promises (ADR 0001).
-  sla: { yellowCard: ServiceSla; incidents: ServiceSla };
+  sla: { yellowCard: ServiceSla; incidents: ServiceSla; bookings: ServiceSla };
   // Days with an event: the same figure as the Convention Center's Event
   // days tile (#117).
   eventDays: EventDays;

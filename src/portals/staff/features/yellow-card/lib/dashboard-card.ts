@@ -1,5 +1,5 @@
 import { createClient, type Db } from "@/shared/supabase/server";
-import { parseDeadlineState, type DeadlineState } from "./deadline";
+import { parseDeadlineState, type DeadlineState } from "@/portals/staff/lib/deadline";
 import { getFullName } from "./get-full-name";
 import { REVIEWABLE_STATUSES } from "./status";
 import type { YellowCardCardData } from "@/portals/staff/features/dashboard/types";
@@ -58,7 +58,7 @@ export function buildYellowCardCard({
     atRisk,
     overdue,
     preview: rows.slice(0, PREVIEW_LIMIT).map((row) => {
-      const state = parseDeadlineState(row.deadline_state);
+      const state = parseDeadlineState(row.deadline_state, "staff_yellow_card_queue");
       return {
         id: row.id,
         label: getFullName(row),

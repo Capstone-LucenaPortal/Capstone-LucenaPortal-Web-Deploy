@@ -12,6 +12,7 @@ import { formatCurrency } from "../lib/money";
 import { getOrganizer } from "../lib/get-organizer";
 import { describeWait, getEndTime } from "../lib/schedule";
 import { BookingStatusBadge } from "./booking-status-badge";
+import { BookingDeadlineMarker } from "./deadline-marker";
 import { RateTierBadge } from "./rate-tier-badge";
 import type { BookingQueueItem, BookingStatus } from "../types";
 
@@ -190,6 +191,14 @@ export function BookingQueue({
                     cancellationReason={booking.cancellation_reason}
                   />
                   <WhoseTurn booking={booking} now={now} />
+                  {/* Under the status rather than in a column of its own: most
+                      rows are off the clock or on track, and say nothing. */}
+                  <div className="mt-1.5 empty:hidden">
+                    <BookingDeadlineMarker
+                      state={booking.deadline_state}
+                      dueAt={booking.confirmation_due_at}
+                    />
+                  </div>
                 </td>
                 <td className="px-4 py-3">
                   <Link

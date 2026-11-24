@@ -1,6 +1,8 @@
 import {
+  bookingsDecidedOnTime,
   getSlaByDepartment,
   getSlaMonthlyHistory,
+  getSlaPastDueNow,
   getSlaRangeStats,
   getSlaTrend,
   departmentStatus,
@@ -13,6 +15,7 @@ import {
 import { executiveRangeStats } from "@/portals/admin/features/dashboard/lib/dashboard";
 import type { IncidentRow } from "@/portals/admin/features/incidents/lib/incidents";
 import type { YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yellow-card";
+import type { BookingRow } from "@/portals/admin/features/booking/lib/bookings";
 import type { DepartmentRow } from "@/portals/admin/lib/supabase/catalogs";
 
 // As of Admin Portal Fix Plan Task 4.2, getSlaByDepartment/getSlaTrend/
@@ -72,6 +75,61 @@ function buildApplication(overrides: Partial<YellowCardRow> = {}): YellowCardRow
   };
 }
 
+// A booking the city confirmed within its 3-working-day clock (l121): the
+// clock stopped when staff accepted the downpayment, scoreable and on time.
+// The view's verdict columns are what scoring reads; nothing here recomputes
+// Working Time.
+function buildBooking(overrides: Partial<BookingRow> = {}): BookingRow {
+  return {
+    id: "booking-1",
+    reference_number: "BK-2026-000001",
+    event_title: "Sample Event",
+    event_type_code: "conference",
+    classification_code: "private",
+    rate_tier: "commercial",
+    venue_code: "ATRIUM",
+    is_resident: null,
+    origin_barangay_code: null,
+    origin_locality: null,
+    estimated_headcount: 100,
+    event_date: "2026-08-15",
+    start_time: "09:00:00",
+    duration_hours: 4,
+    total_fee: 1000,
+    status: "confirmed",
+    cancellation_reason: null,
+    submitted_at: "2026-07-10T04:00:00Z",
+    lead_time_days: 36,
+    completed_at: null,
+    confirmed_at: "2026-07-11T04:00:00Z",
+    quoted_at: null,
+    tier_verified: null,
+    sla_target_hours: 27,
+    sla_elapsed_seconds: 8 * 3600,
+    sla_stopped_at: "2026-07-11T04:00:00Z",
+    confirmation_due_at: null,
+    deadline_state: null,
+    sla_scoreable: true,
+    sla_on_time: true,
+    ...overrides,
+  };
+}
+
+// A booking submitted before l121 and never backfilled: no clock at all.
+const NO_CLOCK: Partial<BookingRow> = {
+  sla_target_hours: null,
+  sla_elapsed_seconds: null,
+  sla_stopped_at: null,
+  sla_scoreable: null,
+  sla_on_time: null,
+};
+
+// A booking whose clock stopped when the organiser or the sweep ended it:
+// the stop is recorded, but it is not scoreable, so the view gives no verdict.
+function unscoredStop(reason: NonNullable<BookingRow["cancellation_reason"]>): Partial<BookingRow> {
+  return { status: "cancelled", cancellation_reason: reason, confirmed_at: null, sla_scoreable: false, sla_on_time: null };
+}
+
 function buildDepartment(overrides: Partial<DepartmentRow> = {}): DepartmentRow {
   return {
     code: "engineering",
@@ -94,7 +152,7 @@ describe("getSlaByDepartment", () => {
       buildIncident({ id: "inc-4", sla_met: false }),
     ];
 
-    const rows = getSlaByDepartment(incidents, [], defaultDepartments, null);
+    const rows = getSlaByDepartment(incidents, [], [], defaultDepartments, null);
 
     expect(rows).toEqual([{ department: "Engineering", requests: 4, compliancePct: 75, totalInRange: 4 }]);
   });
@@ -112,7 +170,7 @@ describe("getSlaByDepartment", () => {
       buildIncident({ id: "inc-2", sla_met: false, resolved_at: null, status: "open" }),
     ];
 
-    const rows = getSlaByDepartment(incidents, [], defaultDepartments, null);
+    const rows = getSlaByDepartment(incidents, [], [], defaultDepartments, null);
 
     expect(rows).toEqual([
       { department: "Engineering", requests: 1, compliancePct: 100, totalInRange: 2 },
@@ -139,7 +197,7 @@ describe("getSlaByDepartment", () => {
       buildIncident({ id: "inc-2", status: "in_progress", resolved_at: null, sla_met: false }),
     ];
 
-    const rows = getSlaByDepartment(incidents, [], defaultDepartments, null);
+    const rows = getSlaByDepartment(incidents, [], [], defaultDepartments, null);
 
     expect(rows).toEqual([]);
   });
@@ -182,7 +240,7 @@ describe("getSlaByDepartment", () => {
       }),
     ];
 
-    const rows = getSlaByDepartment(incidents, [], defaultDepartments, null);
+    const rows = getSlaByDepartment(incidents, [], [], defaultDepartments, null);
 
     expect(rows).toEqual([
       { department: "Engineering", requests: 1, compliancePct: 100, totalInRange: 4 },
@@ -204,7 +262,7 @@ describe("getSlaByDepartment", () => {
       }),
     ];
 
-    const rows = getSlaByDepartment(incidents, [], defaultDepartments, null);
+    const rows = getSlaByDepartment(incidents, [], [], defaultDepartments, null);
 
     expect(rows).toEqual([
       { department: "Engineering", requests: 1, compliancePct: 0, totalInRange: 1 },
@@ -218,7 +276,7 @@ describe("getSlaByDepartment", () => {
     ];
     const incidents = [buildIncident({ assigned_department_code: "engineering" })];
 
-    const rows = getSlaByDepartment(incidents, [], departments, null);
+    const rows = getSlaByDepartment(incidents, [], [], departments, null);
 
     expect(rows).toHaveLength(1);
     expect(rows.map((row) => row.department)).not.toContain("Electrical");
@@ -227,7 +285,7 @@ describe("getSlaByDepartment", () => {
   it("incidents with no assigned department are excluded from every group", () => {
     const incidents = [buildIncident({ id: "inc-1", assigned_department_code: null, sla_met: false })];
 
-    const rows = getSlaByDepartment(incidents, [], defaultDepartments, null);
+    const rows = getSlaByDepartment(incidents, [], [], defaultDepartments, null);
 
     expect(rows).toEqual([]);
   });
@@ -236,7 +294,7 @@ describe("getSlaByDepartment", () => {
     const departments = [buildDepartment({ code: "waste", label: "Waste Management" })];
     const incidents = [buildIncident({ assigned_department_code: "waste", sla_met: true })];
 
-    const rows = getSlaByDepartment(incidents, [], departments, null);
+    const rows = getSlaByDepartment(incidents, [], [], departments, null);
 
     expect(rows[0].department).toBe("Waste Management");
   });
@@ -245,7 +303,7 @@ describe("getSlaByDepartment", () => {
     const departments = [buildDepartment({ code: "engineering", label: "Engineering" })];
     const incidents = [buildIncident({ assigned_department_code: "unknown-dept", sla_met: true })];
 
-    const rows = getSlaByDepartment(incidents, [], departments, null);
+    const rows = getSlaByDepartment(incidents, [], [], departments, null);
 
     expect(rows[0].department).toBe("unknown-dept");
   });
@@ -258,7 +316,7 @@ describe("getSlaByDepartment", () => {
       buildApplication({ id: "app-4", sla_breached: true }),
     ];
 
-    const rows = getSlaByDepartment([], applications, defaultDepartments, null);
+    const rows = getSlaByDepartment([], applications, [], defaultDepartments, null);
 
     expect(rows).toEqual([
       { department: "Yellow Card", requests: 4, compliancePct: 50, totalInRange: 4 },
@@ -284,7 +342,7 @@ describe("getSlaByDepartment", () => {
       buildApplication({ id: "app-5", status: "revision_requested", sla_breached: true }),
     ];
 
-    const rows = getSlaByDepartment([], applications, defaultDepartments, null);
+    const rows = getSlaByDepartment([], applications, [], defaultDepartments, null);
 
     expect(rows).toEqual([
       { department: "Yellow Card", requests: 2, compliancePct: 50, totalInRange: 5 },
@@ -294,7 +352,7 @@ describe("getSlaByDepartment", () => {
   it("omits the Yellow Card row entirely when there are no applications in range", () => {
     const incidents = [buildIncident({ sla_met: true })];
 
-    const rows = getSlaByDepartment(incidents, [], defaultDepartments, null);
+    const rows = getSlaByDepartment(incidents, [], [], defaultDepartments, null);
 
     expect(rows.map((row) => row.department)).not.toContain("Yellow Card");
   });
@@ -314,7 +372,7 @@ describe("getSlaByDepartment", () => {
       buildApplication({ id: "app-3", status: "revision_requested", sla_breached: false }),
     ];
 
-    const rows = getSlaByDepartment(incidents, applications, defaultDepartments, null);
+    const rows = getSlaByDepartment(incidents, applications, [], defaultDepartments, null);
 
     expect(rows.map((row) => row.department)).not.toContain("Yellow Card");
   });
@@ -329,7 +387,7 @@ describe("getSlaByDepartment", () => {
       buildIncident({ id: "inc-2", assigned_department_code: "waste", sla_met: true }),
     ];
 
-    const rows = getSlaByDepartment(incidents, [], departments, null);
+    const rows = getSlaByDepartment(incidents, [], [], departments, null);
 
     expect(rows.map((row) => row.department)).toEqual(["Waste Management", "Engineering"]);
   });
@@ -340,7 +398,7 @@ describe("getSlaByDepartment", () => {
       buildIncident({ id: "inc-2", submitted_at: "2026-06-10T04:00:00Z", sla_met: false }),
     ];
 
-    const rows = getSlaByDepartment(incidents, [], defaultDepartments, {
+    const rows = getSlaByDepartment(incidents, [], [], defaultDepartments, {
       from: "2026-07-01",
       to: "2026-07-31",
     });
@@ -356,7 +414,7 @@ describe("getSlaByDepartment", () => {
       buildIncident({ id: "inc-2", submitted_at: "2020-01-01T04:00:00Z", sla_met: true }),
     ];
 
-    const rows = getSlaByDepartment(incidents, [], defaultDepartments, null);
+    const rows = getSlaByDepartment(incidents, [], [], defaultDepartments, null);
 
     expect(rows[0].requests).toBe(2);
   });
@@ -384,12 +442,12 @@ describe("getSlaByDepartment", () => {
     ];
     const range = { from: "2026-07-01", to: "2026-07-31" };
 
-    const requestBasis = getSlaByDepartment(incidents, [], defaultDepartments, range, "request");
+    const requestBasis = getSlaByDepartment(incidents, [], [], defaultDepartments, range, "request");
     expect(requestBasis).toEqual([
       { department: "Engineering", requests: 1, compliancePct: 100, totalInRange: 1 },
     ]);
 
-    const resolutionBasis = getSlaByDepartment(incidents, [], defaultDepartments, range, "resolution");
+    const resolutionBasis = getSlaByDepartment(incidents, [], [], defaultDepartments, range, "resolution");
     expect(resolutionBasis).toEqual([
       { department: "Engineering", requests: 1, compliancePct: 0, totalInRange: 1 },
     ]);
@@ -406,12 +464,47 @@ describe("getSlaByDepartment", () => {
     ];
     const range = { from: "2026-07-01", to: "2026-07-31" };
 
-    const requestBasis = getSlaByDepartment([], applications, defaultDepartments, range, "request");
+    const requestBasis = getSlaByDepartment([], applications, [], defaultDepartments, range, "request");
     expect(requestBasis.map((row) => row.department)).not.toContain("Yellow Card");
 
-    const resolutionBasis = getSlaByDepartment([], applications, defaultDepartments, range, "resolution");
+    const resolutionBasis = getSlaByDepartment([], applications, [], defaultDepartments, range, "resolution");
     expect(resolutionBasis).toEqual([
       { department: "Yellow Card", requests: 1, compliancePct: 100, totalInRange: 1 },
+    ]);
+  });
+
+  // SCRUM-131 / #174: the Convention Center office gets its own row, like
+  // the Yellow Card desk, scored by bookingMet. "of N total" counts every
+  // booking in range, the unscored ones included.
+  it("folds bookings into one Convention Center row, scoring only the decided ones", () => {
+    const bookings = [
+      buildBooking({ id: "on-time" }),
+      buildBooking({ id: "late", sla_on_time: false }),
+      buildBooking({ id: "refused-on-time", status: "cancelled", cancellation_reason: "rejected_by_staff" }),
+      buildBooking({ id: "cancelled", ...unscoredStop("cancelled_by_citizen") }),
+      buildBooking({ id: "no-clock", ...NO_CLOCK }),
+    ];
+
+    const rows = getSlaByDepartment([], [], bookings, defaultDepartments, null);
+
+    expect(rows).toEqual([{ department: "Convention Center", requests: 3, compliancePct: 66.7, totalInRange: 5 }]);
+  });
+
+  it("omits the Convention Center row when no booking in range was decided", () => {
+    const bookings = [buildBooking({ id: "no-clock", ...NO_CLOCK }), buildBooking({ id: "x", ...unscoredStop("expired_unpaid") })];
+
+    expect(getSlaByDepartment([], [], bookings, defaultDepartments, null)).toEqual([]);
+  });
+
+  // Under "resolution" a booking is placed by when its clock stopped: the
+  // moment staff decided it.
+  it("dateBasis='resolution' places a booking by when its clock stopped", () => {
+    const bookings = [buildBooking({ submitted_at: "2026-06-25T04:00:00Z", sla_stopped_at: "2026-07-02T04:00:00Z" })];
+    const range = { from: "2026-07-01", to: "2026-07-31" };
+
+    expect(getSlaByDepartment([], [], bookings, defaultDepartments, range, "request")).toEqual([]);
+    expect(getSlaByDepartment([], [], bookings, defaultDepartments, range, "resolution")).toEqual([
+      { department: "Convention Center", requests: 1, compliancePct: 100, totalInRange: 1 },
     ]);
   });
 });
@@ -729,7 +822,7 @@ describe("slaCompliance", () => {
       }),
     ];
 
-    const { yellowCard } = slaCompliance(applications, []);
+    const { yellowCard } = slaCompliance(applications, [], []);
 
     expect(yellowCard).toEqual({
       scored: 1,
@@ -749,7 +842,7 @@ describe("slaCompliance", () => {
       buildIncident({ id: "inc-2", routed_at: null, sla_due_at: null, sla_met: false }),
     ];
 
-    const { incidents: scored } = slaCompliance([], incidents);
+    const { incidents: scored } = slaCompliance([], incidents, []);
 
     expect(scored).toEqual({
       scored: 1,
@@ -758,6 +851,75 @@ describe("slaCompliance", () => {
       compliancePct: 100,
       gapToTargetPts: 15,
     });
+  });
+
+  // SCRUM-131 / #174: a booking is scored when the city decided it (confirmed
+  // from payment verification, or refused) with a clock on it, and is on time
+  // by the database's own verdict. A refusal on time is on time: the figure
+  // is the desk's speed, not its answer (Admin glossary, "Decided on time").
+  it("scores bookings the city confirmed or refused, on time or late", () => {
+    const refused = { status: "cancelled" as const, cancellation_reason: "rejected_by_staff" as const, confirmed_at: null };
+    const bookings = [
+      buildBooking({ id: "confirmed-on-time" }),
+      buildBooking({ id: "confirmed-late", sla_elapsed_seconds: 30 * 3600, sla_on_time: false }),
+      buildBooking({ id: "fully-paid-on-time", status: "fully_paid" }),
+      buildBooking({ id: "refused-on-time", ...refused }),
+      buildBooking({ id: "refused-late", ...refused, sla_elapsed_seconds: 40 * 3600, sla_on_time: false }),
+    ];
+
+    const { bookings: scored } = slaCompliance([], [], bookings);
+
+    expect(scored).toEqual({
+      scored: 5,
+      onTime: 3,
+      finishedLate: 2,
+      compliancePct: 60,
+      gapToTargetPts: -25,
+    });
+  });
+
+  // The organiser ended these, or let them lapse, so they are charged to
+  // nobody. A booking with no clock had nothing to miss.
+  it("does not score organiser cancellations, expiries or bookings with no clock", () => {
+    const bookings = [
+      buildBooking({ id: "on-time" }),
+      buildBooking({ id: "cancelled", ...unscoredStop("cancelled_by_citizen"), sla_elapsed_seconds: 40 * 3600 }),
+      buildBooking({ id: "expired-unpaid", ...unscoredStop("expired_unpaid") }),
+      buildBooking({ id: "expired-unrevised", ...unscoredStop("expired_unrevised") }),
+      buildBooking({ id: "no-clock", ...NO_CLOCK }),
+      buildBooking({ id: "no-clock-refused", status: "cancelled", cancellation_reason: "rejected_by_staff", ...NO_CLOCK }),
+    ];
+
+    const { bookings: scored } = slaCompliance([], [], bookings);
+
+    expect(scored).toMatchObject({ scored: 1, onTime: 1, finishedLate: 0, compliancePct: 100 });
+  });
+
+  // An open booking, running or paused, has no verdict yet; an overdue one is
+  // past due (getSlaPastDueNow), not finished late.
+  it("does not score a booking whose clock is still running or paused", () => {
+    const bookings = [
+      buildBooking({
+        id: "running-overdue",
+        status: "awaiting_quote",
+        confirmed_at: null,
+        sla_stopped_at: null,
+        sla_scoreable: null,
+        sla_on_time: null,
+        confirmation_due_at: "2026-07-12T04:00:00Z",
+        deadline_state: "overdue",
+      }),
+      buildBooking({
+        id: "paused",
+        status: "awaiting_payment",
+        confirmed_at: null,
+        sla_stopped_at: null,
+        sla_scoreable: null,
+        sla_on_time: null,
+      }),
+    ];
+
+    expect(slaCompliance([], [], bookings).bookings).toMatchObject({ scored: 0, compliancePct: null });
   });
 });
 
@@ -800,6 +962,56 @@ describe("yellowCardDecidedOnTime", () => {
   });
 });
 
+describe("bookingsDecidedOnTime", () => {
+  const range = { from: "2026-07-01", to: "2026-07-31" };
+  // Confirmed on time, refused on time, confirmed late; an organiser's
+  // cancellation and a booking with no clock are not scored; one filed in
+  // June but decided in July.
+  const bookings = [
+    buildBooking({ id: "bk-1", status: "confirmed", sla_on_time: true }),
+    buildBooking({ id: "bk-2", status: "cancelled", cancellation_reason: "rejected_by_staff", sla_on_time: true }),
+    buildBooking({ id: "bk-3", status: "confirmed", sla_on_time: false }),
+    buildBooking({ id: "bk-4", status: "cancelled", cancellation_reason: "cancelled_by_citizen", sla_scoreable: false, sla_on_time: false }),
+    buildBooking({ id: "bk-5", status: "confirmed", sla_scoreable: null, sla_on_time: null, sla_stopped_at: null }),
+    buildBooking({ id: "bk-6", status: "confirmed", submitted_at: "2026-06-29T04:00:00Z", sla_stopped_at: "2026-07-02T04:00:00Z", sla_on_time: false }),
+  ];
+
+  // #175: a refusal on time is on time, and on the filing date the tile is
+  // SLA Reports' Booking Compliance for the same range.
+  it("equals SLA Reports' Booking compliance on the filing date, a refusal on time counting as on time", () => {
+    const decided = bookingsDecidedOnTime(bookings, range, (row) => row.submitted_at);
+
+    expect(decided).toMatchObject({ scored: 3, onTime: 2, compliancePct: 66.7, gapToTargetPts: -18.3 });
+    expect(decided.compliancePct).toBe(getSlaRangeStats([], [], bookings, range).bookings.compliancePct);
+  });
+
+  it("on the decision date reads when the clock stopped, as SLA Reports' Resolution Date does", () => {
+    const decided = bookingsDecidedOnTime(bookings, range, (row) => row.sla_stopped_at);
+
+    expect(decided).toMatchObject({ scored: 4, onTime: 2, compliancePct: 50 });
+    expect(decided.compliancePct).toBe(getSlaRangeStats([], [], bookings, range, "resolution").bookings.compliancePct);
+  });
+
+  it("scores nothing when nothing was decided in range", () => {
+    const decided = bookingsDecidedOnTime([buildBooking({ sla_scoreable: null, sla_on_time: null })], range, (row) => row.submitted_at);
+
+    expect(decided).toMatchObject({ scored: 0, compliancePct: null, gapToTargetPts: null });
+  });
+
+  it("its delta is higher-is-better against the previous period", () => {
+    const decided = bookingsDecidedOnTime(
+      [
+        buildBooking({ id: "now", submitted_at: "2026-07-10T04:00:00Z", sla_on_time: true }),
+        buildBooking({ id: "before", submitted_at: "2026-06-10T04:00:00Z", sla_on_time: false }),
+      ],
+      range,
+      (row) => row.submitted_at
+    );
+
+    expect(decided.delta).toEqual({ text: "+100 pts vs previous period", movement: "up" });
+  });
+});
+
 describe("getSlaRangeStats", () => {
   const range = { from: "2026-07-01", to: "2026-07-31" };
 
@@ -814,7 +1026,7 @@ describe("getSlaRangeStats", () => {
       buildApplication({ id: "app-1", submitted_at: "2026-07-07T04:00:00Z", sla_breached: false }),
     ];
 
-    const stats = getSlaRangeStats(incidents, applications, range);
+    const stats = getSlaRangeStats(incidents, applications, [], range);
 
     expect(stats.incidents).toMatchObject({ scored: 2, onTime: 1, finishedLate: 1, compliancePct: 50, inRange: 2 });
     expect(stats.yellowCard).toMatchObject({ scored: 1, onTime: 1, finishedLate: 0, compliancePct: 100, inRange: 1 });
@@ -843,7 +1055,7 @@ describe("getSlaRangeStats", () => {
       }),
     ];
 
-    const stats = getSlaRangeStats(incidents, applications, range);
+    const stats = getSlaRangeStats(incidents, applications, [], range);
 
     expect(stats.yellowCard.scored).toBe(1);
     expect(stats.yellowCard.finishedLate).toBe(0);
@@ -859,7 +1071,7 @@ describe("getSlaRangeStats", () => {
   // to fix. Render via formatRate (src/portals/admin/lib/aggregate.ts), which turns this
   // null into "—".
   it("compliancePct is null, not 0, when there are zero SLA-scoreable requests in range", () => {
-    const stats = getSlaRangeStats([], [], range);
+    const stats = getSlaRangeStats([], [], [], range);
 
     expect(stats.yellowCard.scored).toBe(0);
     expect(stats.yellowCard.compliancePct).toBeNull();
@@ -880,7 +1092,7 @@ describe("getSlaRangeStats", () => {
       buildApplication({ id: "app-1", submitted_at: "2026-07-06T04:00:00Z", status: "pending" }),
     ];
 
-    const stats = getSlaRangeStats(incidents, applications, range);
+    const stats = getSlaRangeStats(incidents, applications, [], range);
 
     expect(stats.yellowCard.compliancePct).toBeNull();
     expect(stats.incidents.compliancePct).toBeNull();
@@ -906,7 +1118,7 @@ describe("getSlaRangeStats", () => {
       }),
     ];
 
-    const stats = getSlaRangeStats([], applications, range);
+    const stats = getSlaRangeStats([], applications, [], range);
 
     expect(stats.yellowCard.scoredDelta.text).toBe("+100% vs previous period");
     expect(stats.yellowCard.finishedLateDelta.text).toBe("-1 vs previous period");
@@ -922,7 +1134,7 @@ describe("getSlaRangeStats", () => {
       buildApplication({ id: "app-2", submitted_at: "2026-06-10T04:00:00Z", sla_breached: false }),
     ];
 
-    const stats = getSlaRangeStats(incidents, applications, range);
+    const stats = getSlaRangeStats(incidents, applications, [], range);
 
     expect(stats.incidents.finishedLateDelta).toEqual({
       text: "No comparable data vs previous period",
@@ -934,14 +1146,14 @@ describe("getSlaRangeStats", () => {
   it("trend matches getSlaTrend's own output for the same range", () => {
     const incidents = [buildIncident({ id: "inc-1", submitted_at: "2026-07-05T04:00:00Z", sla_met: true })];
 
-    const stats = getSlaRangeStats(incidents, [], range);
+    const stats = getSlaRangeStats(incidents, [], [], range);
     const trend = getSlaTrend(incidents, range);
 
     expect(stats.trend).toEqual(trend);
   });
 
   it("rejects a null range rather than silently reading every row ever filed", () => {
-    expect(() => getSlaRangeStats([], [], null)).toThrow();
+    expect(() => getSlaRangeStats([], [], [], null)).toThrow();
   });
 
   // Fix round 1, finding 3: dateBasis must reach every filter this function
@@ -958,11 +1170,74 @@ describe("getSlaRangeStats", () => {
       }),
     ];
 
-    const requestBasis = getSlaRangeStats(incidents, [], range, "request");
+    const requestBasis = getSlaRangeStats(incidents, [], [], range, "request");
     expect(requestBasis.incidents.scored).toBe(0);
 
-    const resolutionBasis = getSlaRangeStats(incidents, [], range, "resolution");
+    const resolutionBasis = getSlaRangeStats(incidents, [], [], range, "resolution");
     expect(resolutionBasis.incidents.scored).toBe(1);
+  });
+});
+
+describe("getSlaRangeStats: Booking", () => {
+  const range = { from: "2026-07-01", to: "2026-07-31" };
+
+  // SCRUM-131 / #174: Booking's own Requests scored (out of every booking in
+  // range), Finished late and Compliance, beside the other two and never
+  // added to them.
+  it("gives Booking its own figures, out of every booking filed in range", () => {
+    const incidents = [buildIncident({ id: "inc-1", submitted_at: "2026-07-05T04:00:00Z", sla_met: true })];
+    const bookings = [
+      buildBooking({ id: "on-time", submitted_at: "2026-07-05T04:00:00Z" }),
+      buildBooking({ id: "late", submitted_at: "2026-07-06T04:00:00Z", sla_on_time: false }),
+      buildBooking({ id: "expired", submitted_at: "2026-07-07T04:00:00Z", ...unscoredStop("expired_unrevised") }),
+      // Last period: one on time, none late.
+      buildBooking({ id: "june", submitted_at: "2026-06-20T04:00:00Z" }),
+    ];
+
+    const stats = getSlaRangeStats(incidents, [], bookings, range);
+
+    expect(stats.bookings).toMatchObject({ scored: 2, onTime: 1, finishedLate: 1, compliancePct: 50, inRange: 3 });
+    expect(stats.bookings.scoredDelta.text).toBe("+100% vs previous period");
+    expect(stats.bookings.finishedLateDelta.text).toBe("+1 vs previous period");
+    expect(stats.incidents).toMatchObject({ scored: 1, compliancePct: 100, inRange: 1 });
+  });
+
+  it("dateBasis='resolution' counts bookings by when their clock stopped", () => {
+    const bookings = [buildBooking({ submitted_at: "2026-06-25T04:00:00Z", sla_stopped_at: "2026-07-02T04:00:00Z" })];
+
+    expect(getSlaRangeStats([], [], bookings, range, "request").bookings.scored).toBe(0);
+    expect(getSlaRangeStats([], [], bookings, range, "resolution").bookings).toMatchObject({ scored: 1, inRange: 1 });
+  });
+});
+
+describe("getSlaPastDueNow", () => {
+  // SCRUM-131 / #174: a booking is past due when the database reads its
+  // running clock as overdue. A confirmed booking waiting on its balance is
+  // in the Service backlog but off the clock, so it is never past due; nor
+  // is a paused one, or one with no clock.
+  it("counts only bookings on the clock and overdue", () => {
+    const open = { confirmed_at: null, sla_stopped_at: null, sla_scoreable: null, sla_on_time: null };
+    const bookings = [
+      buildBooking({ id: "overdue-quote", status: "awaiting_quote", ...open, deadline_state: "overdue" }),
+      buildBooking({ id: "overdue-payment", status: "payment_verification", ...open, deadline_state: "overdue" }),
+      buildBooking({ id: "at-risk", status: "awaiting_tier_review", ...open, deadline_state: "at_risk" }),
+      buildBooking({ id: "on-track", status: "awaiting_quote", ...open, deadline_state: "on_track" }),
+      buildBooking({ id: "balance", status: "confirmed", deadline_state: null }),
+      buildBooking({ id: "paused", status: "awaiting_payment", ...open, deadline_state: null }),
+      buildBooking({ id: "no-clock", status: "awaiting_quote", ...open, ...NO_CLOCK, deadline_state: null }),
+    ];
+
+    expect(getSlaPastDueNow([], [], bookings).bookings).toBe(2);
+  });
+
+  it("counts each service apart", () => {
+    const now = new Date("2026-07-20T00:00:00Z");
+    const incidents = [
+      buildIncident({ id: "inc-1", status: "in_progress", resolved_at: null, sla_due_at: "2026-07-19T00:00:00Z" }),
+    ];
+    const applications = [buildApplication({ id: "app-1", status: "pending", decided_at: null, deadline_state: "overdue" })];
+
+    expect(getSlaPastDueNow(incidents, applications, [], now)).toEqual({ yellowCard: 1, incidents: 1, bookings: 0 });
   });
 });
 

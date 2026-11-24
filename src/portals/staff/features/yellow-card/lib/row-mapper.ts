@@ -1,4 +1,4 @@
-import { parseDeadlineState } from "./deadline";
+import { parseDeadlineState } from "@/portals/staff/lib/deadline";
 import { STATUS_ORDER } from "./status";
 import type {
   YellowCardApplication,
@@ -101,7 +101,7 @@ export function toQueueItem(row: StaffYellowCardQueueRow): YellowCardQueueItem {
     document_count: row.document_count ?? 0,
     // Not degraded to null like the cosmetic columns: an unknown value would
     // silently hide the warning this column exists to show.
-    deadline_state: parseDeadlineState(row.deadline_state),
+    deadline_state: parseDeadlineState(row.deadline_state, "staff_yellow_card_queue"),
     is_correction: row.is_correction ?? false,
   };
 }

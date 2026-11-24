@@ -1,14 +1,16 @@
 // src/portals/admin/features/sla/lib/sla-links.ts
 //
 // SLA Reports' Finished late and Past due now link, per service, to the
-// Yellow Card and Incident Reports pages, whose Recent tables then narrow to
-// exactly the requests the tile counted (#127, metrics sheet S2 and S4). The
-// filter travels in the query string, so the link can be reloaded or shared.
+// Yellow Card, Incident Reports and Convention Center pages, whose Recent
+// tables then narrow to exactly the requests the tile counted (#127, #175,
+// metrics sheet S2 and S4). The filter travels in the query string, so the
+// link can be reloaded or shared.
 import type { DateFilterPreset } from "@/portals/admin/components/ui/date-filter-bar";
 import { customRangeError, DATE_RANGE_KEYS } from "@/portals/admin/lib/dates";
 
 export const YELLOW_CARD_PATH = "/admin/yellow-card";
 export const INCIDENT_REPORTS_PATH = "/admin/issue-reports";
+export const CONVENTION_CENTER_PATH = "/admin/convention-center";
 
 /** "late": finished late in the range. "past-due": past due now, whatever the range. */
 export type SlaRowFilter = "late" | "past-due";

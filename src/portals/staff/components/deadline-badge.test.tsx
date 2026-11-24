@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { DeadlineBadge } from "./deadline-badge";
-import type { DeadlineState } from "../lib/deadline";
+import type { DeadlineState } from "@/portals/staff/lib/deadline";
 
 const DUE = "2026-10-13T09:30:00Z"; // 17:30 Manila
 

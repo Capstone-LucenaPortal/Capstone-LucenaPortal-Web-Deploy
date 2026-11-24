@@ -65,6 +65,10 @@ function booking(over: Partial<Booking> = {}): Booking {
     tier_review_look: null,
     tier_review_since: null,
     tier_revision_reason: null,
+    confirmation_due_at: null,
+    deadline_state: null,
+    sla_scoreable: null,
+    sla_on_time: null,
     ...over,
   };
 }
@@ -404,5 +408,80 @@ describe("BookingDetailPage — which controls render", () => {
   it("renders no Actions card at all on a cancelled booking", async () => {
     await render1({ status: "cancelled", cancellation_reason: "expired_unpaid" });
     expect(screen.queryByText("Actions")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * SCRUM-131 (S3-13). Every fact below is the database's: the deadline, the
+ * state and the verdict are read off staff_bookings, never worked out here.
+ * What the route adds is which sentence each clock gets.
+ */
+describe("BookingDetailPage — the Confirmation Deadline", () => {
+  const DUE = "2026-11-27T09:30:00Z"; // 17:30 Manila
+
+  it("shows a running clock's deadline in Manila time, with its state", async () => {
+    await render1({
+      status: "awaiting_quote",
+      total_fee: null,
+      confirmation_due_at: DUE,
+      deadline_state: "overdue",
+    });
+    expect(screen.getByText("Confirmation Deadline")).toBeInTheDocument();
+    expect(screen.getByText("Overdue")).toBeInTheDocument();
+    expect(screen.getByText(/Due November 27, 2026/)).toHaveTextContent(/05:30\s*PM/i);
+  });
+
+  // Unlike the queue, the detail page says On track: it is where staff go to
+  // tell an organiser where the booking stands.
+  it("says On track on the detail page, where the queue says nothing", async () => {
+    await render1({
+      status: "payment_verification",
+      confirmation_due_at: DUE,
+      deadline_state: "on_track",
+    });
+    expect(screen.getByText("On track")).toBeInTheDocument();
+    expect(screen.getByText(/Due November 27, 2026/)).toBeInTheDocument();
+  });
+
+  // A paused booking has no Confirmation Deadline (DB l121, ruled 2026-11-24):
+  // the moment the organiser comes back is not known. So no date, and no claim
+  // about the clock resuming — the view cannot tell a paused clock from a
+  // booking that never had one, and this sentence is true of both.
+  it("says there is no deadline on the organiser's turn, and no date", async () => {
+    await render1({ status: "awaiting_payment" });
+    expect(screen.getByText("Confirmation Deadline")).toBeInTheDocument();
+    expect(screen.getByText("None while it is the organiser's turn.")).toBeInTheDocument();
+    expect(screen.queryByText(/^Due /)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [true, "Decided on time"],
+    [false, "Decided late"],
+  ])("gives a decided booking the database's verdict (on time: %s)", async (onTime, verdict) => {
+    await render1({
+      status: "confirmed",
+      confirmed_at: "2026-11-20T10:00:00+08:00",
+      sla_scoreable: true,
+      sla_on_time: onTime,
+    });
+    expect(screen.getByText(verdict)).toBeInTheDocument();
+  });
+
+  it("says a booking the organiser's side ended is not scored", async () => {
+    await render1({
+      status: "cancelled",
+      cancellation_reason: "expired_unpaid",
+      sla_scoreable: false,
+    });
+    expect(screen.getByText(/not scored/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Decided (on time|late)/)).not.toBeInTheDocument();
+  });
+
+  // Sandbox holds such rows today: bookings in a city's-turn status that the
+  // backfill could not replay. The page renders, and claims no clock.
+  it("shows nothing for a booking with no clock, and still renders", async () => {
+    await render1({ status: "awaiting_quote", total_fee: null });
+    expect(screen.getByText("Dela Cruz Family 50th Wedding Anniversary")).toBeInTheDocument();
+    expect(screen.queryByText("Confirmation Deadline")).not.toBeInTheDocument();
   });
 });

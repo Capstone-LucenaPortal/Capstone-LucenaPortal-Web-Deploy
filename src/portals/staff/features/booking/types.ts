@@ -1,4 +1,5 @@
 import type { Database } from "@/shared/supabase/types";
+import type { DeadlineState } from "@/portals/staff/lib/deadline";
 
 /**
  * Every one of these is a real PostgreSQL enum. Taking them from the generated
@@ -66,6 +67,18 @@ export interface BookingQueueItem {
    * beside the status.
    */
   tier_review_since: string | null;
+  /**
+   * The Confirmation Deadline (DB l121). Non-null exactly while the clock is
+   * RUNNING: a paused Booking has none, because the moment the organiser comes
+   * back is not known, and a stopped one has none either.
+   */
+  confirmation_due_at: string | null;
+  /**
+   * Where a running clock stands, computed by the database in Working Time.
+   * Null whenever the clock is not running — including a `confirmed` booking,
+   * which is in Needs Action but off the clock.
+   */
+  deadline_state: DeadlineState | null;
 }
 
 /**
@@ -107,6 +120,17 @@ export interface Booking extends BookingQueueItem {
   tier_review_look: number | null;
   /** The one Revision Request's reason. Non-null means it was issued. */
   tier_revision_reason: string | null;
+  /**
+   * Set once the clock stops: true when staff decided the booking (confirmed
+   * it or refused it), false when the organiser's side ended it. Null while
+   * the clock is open, and for a booking with no clock.
+   */
+  sla_scoreable: boolean | null;
+  /**
+   * The database's verdict on a scoreable stop — working time used within the
+   * target — and null for every other booking (l121 header §3).
+   */
+  sla_on_time: boolean | null;
 }
 
 /**

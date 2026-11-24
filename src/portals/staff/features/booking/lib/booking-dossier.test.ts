@@ -48,6 +48,8 @@ const CANNED_QUEUE_ROW: StaffBookingQueueRow = {
   submitted_at: "2026-08-09T07:55:20+00:00",
   unverified_payment_count: 0,
   tier_review_since: null,
+  confirmation_due_at: null,
+  deadline_state: null,
 };
 
 const CANNED_BOOKING_ROW: StaffBookingRow = {
@@ -74,6 +76,8 @@ const CANNED_BOOKING_ROW: StaffBookingRow = {
   document_count: 1,
   tier_review_look: null,
   tier_revision_reason: null,
+  sla_scoreable: null,
+  sla_on_time: null,
 };
 
 const CANNED_PAYMENT_ROW: StaffBookingPaymentRow = {
@@ -520,6 +524,10 @@ describe("getBookingDossier — the booking read", () => {
       "tier_review_since",
       "tier_review_look",
       "tier_revision_reason",
+      "confirmation_due_at",
+      "deadline_state",
+      "sla_scoreable",
+      "sla_on_time",
     ]);
   });
 

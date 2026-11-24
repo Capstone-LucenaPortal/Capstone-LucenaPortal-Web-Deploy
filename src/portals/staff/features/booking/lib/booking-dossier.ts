@@ -26,7 +26,8 @@ import type {
  * The compiler cannot see the view's nullability rules, though, so every
  * result is still cast to its row type below. All four were verified
  * by live query against the sandbox on 2026-08-11, after l54 and l55. Do not
- * add a column without doing the same.
+ * add a column without doing the same. The detail list's Confirmation
+ * Deadline columns (DB l121, SCRUM-131) were checked the same way on 2026-11-24.
  *
  * The detail list is a superset of the queue's, and is now written out rather
  * than concatenated onto it: the two reads answer different screens' questions
@@ -37,12 +38,12 @@ import type {
  * That unties a knot. The concatenation guaranteed the detail select was a
  * superset of the queue's, and nothing guarantees it now: a column the view
  * gains for both screens has to be added in both places, and no test notices if
- * it is added to only one. The offset is that all forty columns are asserted
+ * it is added to only one. The offset is that every column is asserted
  * exactly by their own wire test for the first time — this list had no wire
  * test at all while it was derived. See ADR-0004, which made the same trade for
  * Incidents, and ADR-0006.
  */
-const DETAIL_COLUMNS = "id, reference_number, status, cancellation_reason, event_title, event_type_label, venue_code, venue_label, rate_tier, tier_verified, organization_name, contact_person, estimated_headcount, event_date, start_time, duration_hours, total_fee, balance_amount, hold_expires_at, submitted_at, unverified_payment_count, event_type_code, classification_code, special_requirements, contact_number, email_address, is_resident, origin_barangay_code, origin_locality, rehearsal_rate_type, downpayment_pct, downpayment_amount, quoted_by_name, quoted_at, terms_accepted_at, confirmed_at, balance_settled_at, completed_at, payment_count, document_count, tier_review_since, tier_review_look, tier_revision_reason";
+const DETAIL_COLUMNS = "id, reference_number, status, cancellation_reason, event_title, event_type_label, venue_code, venue_label, rate_tier, tier_verified, organization_name, contact_person, estimated_headcount, event_date, start_time, duration_hours, total_fee, balance_amount, hold_expires_at, submitted_at, unverified_payment_count, event_type_code, classification_code, special_requirements, contact_number, email_address, is_resident, origin_barangay_code, origin_locality, rehearsal_rate_type, downpayment_pct, downpayment_amount, quoted_by_name, quoted_at, terms_accepted_at, confirmed_at, balance_settled_at, completed_at, payment_count, document_count, tier_review_since, tier_review_look, tier_revision_reason, confirmation_due_at, deadline_state, sla_scoreable, sla_on_time";
 
 /**
  * Thirteen of the view's eighteen columns. The five deliberately left out are

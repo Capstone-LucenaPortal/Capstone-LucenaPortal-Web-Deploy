@@ -34,7 +34,7 @@ export interface SlaTrendRow extends SlaTrendPoint {
 
 // One service's SLA compliance over the rows it was given: how many
 // scoreable requests were judged against the clock, how many finished on
-// time and how many late. The two services' clocks make different promises
+// time and how many late. The three services' clocks make different promises
 // (ADR 0001), so this is only ever computed per service, never pooled.
 export interface ServiceCompliance {
   scored: number;
@@ -52,6 +52,7 @@ export interface ServiceCompliance {
 export interface SlaCompliance {
   yellowCard: ServiceCompliance;
   incidents: ServiceCompliance;
+  bookings: ServiceCompliance;
 }
 
 // One service's SLA Reports tiles: its compliance, plus what its scored
@@ -60,7 +61,8 @@ export interface SlaCompliance {
 export interface ServiceRangeStats extends ServiceCompliance {
   // Every request of this service in range, BEFORE the scoreable-only
   // filter `scored` applies: still-pending applications, withdrawals, open
-  // reports and those closed as invalid, duplicate or expired included.
+  // reports and those closed as invalid, duplicate or expired, and bookings
+  // open, cancelled by the organiser, expired or with no clock included.
   // Always >= `scored`.
   inRange: number;
   scoredDelta: Delta;
@@ -69,10 +71,11 @@ export interface ServiceRangeStats extends ServiceCompliance {
 
 export interface SlaRangeStats {
   rangeLabel: string;
-  // Each service's own figures in range, never pooled: the two clocks make
-  // different promises (ADR 0001, #122).
+  // Each service's own figures in range, never pooled: the three clocks
+  // make different promises (ADR 0001, #122).
   yellowCard: ServiceRangeStats;
   incidents: ServiceRangeStats;
+  bookings: ServiceRangeStats;
   trend: SlaTrendPoint[];
 }
 
@@ -81,6 +84,7 @@ export interface SlaRangeStats {
 export interface SlaPastDueNow {
   yellowCard: number;
   incidents: number;
+  bookings: number;
 }
 
 // The footer under the Monthly compliance history: on time ÷ scored across

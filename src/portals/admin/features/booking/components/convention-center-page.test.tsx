@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ConventionCenterPage, { metadata } from "@/app/(admin)/admin/(shell)/convention-center/page";
 import type { BookingRow, BookingPii } from "@/portals/admin/features/booking/lib/bookings";
+import { buildBookingRow as buildSharedBookingRow } from "@/portals/admin/features/booking/lib/fixtures";
 import type { VenueRow, BookingEventTypeRow } from "@/portals/admin/lib/supabase/catalogs";
 import { presetDateRange } from "@/portals/admin/lib/dates";
 import { vi } from "vitest";
@@ -26,6 +27,16 @@ vi.mock("../lib/bookings", () => ({
 vi.mock("../../../lib/supabase/catalogs", () => ({
   listVenues: () => mockListVenues(),
   listBookingEventTypes: () => mockListBookingEventTypes(),
+}));
+
+// The page reads SLA Reports' filter from its URL (#175). Each test sets the
+// query string it arrives with; most arrive with none.
+let mockSearchParams = new URLSearchParams();
+const mockReplace = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => mockSearchParams,
+  useRouter: () => ({ replace: mockReplace }),
 }));
 
 vi.mock("../../../lib/csv", () => ({
@@ -68,33 +79,10 @@ function defaultSubmittedAt(): string {
   return new Date().toISOString();
 }
 
+// The shared builder's dates are fixed; this page's rows default to now, for
+// the reason above.
 function buildRow(overrides: Partial<BookingRow> = {}): BookingRow {
-  return {
-    id: "booking-1",
-    reference_number: "CC-2026-000001",
-    event_title: "Annual Business Summit 2026",
-    event_type_code: "conference",
-    classification_code: "private",
-    rate_tier: "commercial",
-    venue_code: "ATRIUM",
-    is_resident: null,
-    origin_barangay_code: null,
-    origin_locality: null,
-    estimated_headcount: 300,
-    event_date: "2026-08-20",
-    start_time: "09:00:00",
-    duration_hours: 4,
-    total_fee: 15000,
-    status: "confirmed",
-    submitted_at: defaultSubmittedAt(),
-    lead_time_days: 17,
-    cancellation_reason: null,
-    completed_at: null,
-    confirmed_at: null,
-    quoted_at: null,
-    tier_verified: null,
-    ...overrides,
-  };
+  return buildSharedBookingRow({ submitted_at: defaultSubmittedAt(), ...overrides });
 }
 
 function buildVenue(overrides: Partial<VenueRow> = {}): VenueRow {
@@ -130,6 +118,8 @@ describe("ConventionCenterPage", () => {
     mockListBookingEventTypes.mockReset();
     mockListBookingEventTypes.mockResolvedValue([]);
     mockDownloadCsv.mockReset();
+    mockSearchParams = new URLSearchParams();
+    mockReplace.mockReset();
   });
 
   // The Custom date inputs used to be seeded with literals written the day
@@ -977,6 +967,214 @@ describe("ConventionCenterPage", () => {
       await screen.findByText("CC-2026-000001");
 
       expect(exportButton()).toBeEnabled();
+    });
+  });
+
+  // #175, metrics sheet C9: of the bookings decided in range, the share the
+  // city confirmed or refused within its target. A refusal on time is on
+  // time; an organiser's cancellation and a booking with no clock are not
+  // scored.
+  describe("Decided on time", () => {
+    function getKpiTile(label: string): HTMLElement {
+      return screen.getByText(label).closest("div")!;
+    }
+
+    it("scores confirmed and refused bookings against their target and leaves an organiser's cancellation out", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-08-15T12:00:00+08:00"));
+      try {
+        mockListBookings.mockResolvedValue([
+          buildRow({ id: "b-1", reference_number: "CC-ON-TIME", status: "confirmed", submitted_at: "2026-08-03T01:00:00Z", sla_stopped_at: "2026-08-04T01:00:00Z", sla_scoreable: true, sla_on_time: true }),
+          buildRow({ id: "b-2", reference_number: "CC-REFUSED", status: "cancelled", cancellation_reason: "rejected_by_staff", submitted_at: "2026-08-03T02:00:00Z", sla_stopped_at: "2026-08-05T02:00:00Z", sla_scoreable: true, sla_on_time: true }),
+          buildRow({ id: "b-3", reference_number: "CC-LATE", status: "confirmed", submitted_at: "2026-08-03T03:00:00Z", sla_stopped_at: "2026-08-12T03:00:00Z", sla_scoreable: true, sla_on_time: false }),
+          buildRow({ id: "b-4", reference_number: "CC-WITHDRAWN", status: "cancelled", cancellation_reason: "cancelled_by_citizen", submitted_at: "2026-08-01T03:00:00Z", sla_stopped_at: "2026-08-14T03:00:00Z", sla_scoreable: false, sla_on_time: false }),
+          buildRow({ id: "b-5", reference_number: "CC-WAITING", status: "awaiting_tier_review", submitted_at: "2026-08-13T03:00:00Z" }),
+        ]);
+
+        render(<ConventionCenterPage />);
+        await screen.findByText("CC-ON-TIME");
+
+        const tile = getKpiTile("Decided on time");
+        expect(within(tile).getByText("66.7%")).toBeInTheDocument();
+        expect(within(tile).getByText("2 of 3 within target · 18.3 pts below 85% project target")).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("follows the page's date type, and Decision Date reads when the clock stopped", async () => {
+      vi.useFakeTimers().setSystemTime(new Date("2026-08-15T04:00:00Z")); // 2026-08-15 12:00 Manila
+      try {
+        const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+        mockListBookings.mockResolvedValue([
+          buildRow({ id: "b-1", reference_number: "CC-AUGUST", status: "confirmed", submitted_at: "2026-08-03T01:00:00Z", sla_stopped_at: "2026-08-04T01:00:00Z", sla_scoreable: true, sla_on_time: true }),
+          // Filed in July, refused late in August.
+          buildRow({ id: "b-2", reference_number: "CC-JULY", status: "cancelled", cancellation_reason: "rejected_by_staff", submitted_at: "2026-07-28T01:00:00Z", sla_stopped_at: "2026-08-06T01:00:00Z", sla_scoreable: true, sla_on_time: false }),
+        ]);
+
+        render(<ConventionCenterPage />);
+        await screen.findByText("CC-AUGUST");
+
+        expect(within(getKpiTile("Decided on time")).getByText("100%")).toBeInTheDocument();
+
+        await user.selectOptions(screen.getByLabelText("Date type"), "decision");
+        expect(within(getKpiTile("Decided on time")).getByText("50%")).toBeInTheDocument();
+        expect(within(getRecentBookingsSection()).getByText("CC-JULY")).toBeInTheDocument();
+        const chart = screen.getByText("Bookings by month").closest("section")!;
+        expect(within(chart).getByText("By decision date · Last 6 months")).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("its delta says better when more were decided on time than in the previous period", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-08-15T12:00:00+08:00"));
+      try {
+        mockListBookings.mockResolvedValue([
+          buildRow({ id: "b-1", reference_number: "CC-AUGUST", status: "confirmed", submitted_at: "2026-08-05T04:00:00Z", sla_scoreable: true, sla_on_time: true }),
+          buildRow({ id: "b-2", reference_number: "CC-JULY", status: "confirmed", submitted_at: "2026-07-20T04:00:00Z", sla_scoreable: true, sla_on_time: false }),
+        ]);
+
+        render(<ConventionCenterPage />);
+        await screen.findByText("CC-AUGUST");
+
+        const note = within(getKpiTile("Decided on time")).getByText("+100 pts vs previous period · better");
+        expect(note).toHaveClass("text-green-700");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("reads a dash and 'Nothing decided in range' when nothing was decided in range", async () => {
+      mockListBookings.mockResolvedValue([buildRow({ status: "awaiting_quote" })]);
+
+      render(<ConventionCenterPage />);
+      await screen.findByText("CC-2026-000001");
+
+      const tile = getKpiTile("Decided on time");
+      expect(within(tile).getByText("—")).toBeInTheDocument();
+      expect(within(tile).getByText("Nothing decided in range")).toBeInTheDocument();
+    });
+  });
+
+  // #175: SLA Reports' Booking Finished late and Past due now open this page
+  // with its Recent table narrowed, as the Yellow Card and incident links do
+  // (#127). The narrowing reads the rules the counts read (bookingMet,
+  // bookingPastDueRows), so the two always agree.
+  describe("Arriving from SLA Reports", () => {
+    function tableReferences(): string[] {
+      return within(getRecentBookingsSection())
+        .queryAllByRole("row")
+        .slice(1)
+        .map((row) => within(row).getAllByRole("cell")[0].textContent ?? "");
+    }
+
+    function juneBookings(): BookingRow[] {
+      return [
+        buildRow({ id: "late-confirmed", reference_number: "CC-LATE-CONFIRMED", status: "confirmed", submitted_at: "2026-06-05T02:00:00Z", sla_stopped_at: "2026-06-12T02:00:00Z", sla_scoreable: true, sla_on_time: false }),
+        buildRow({ id: "late-refused", reference_number: "CC-LATE-REFUSED", status: "cancelled", cancellation_reason: "rejected_by_staff", submitted_at: "2026-06-20T02:00:00Z", sla_stopped_at: "2026-06-29T02:00:00Z", sla_scoreable: true, sla_on_time: false }),
+        buildRow({ id: "on-time", reference_number: "CC-ON-TIME", status: "confirmed", submitted_at: "2026-06-10T02:00:00Z", sla_stopped_at: "2026-06-11T02:00:00Z", sla_scoreable: true, sla_on_time: true }),
+        // The organiser cancelled it: never scored, so never finished late.
+        buildRow({ id: "withdrawn", reference_number: "CC-WITHDRAWN", status: "cancelled", cancellation_reason: "cancelled_by_citizen", submitted_at: "2026-06-10T02:00:00Z", sla_stopped_at: "2026-06-25T02:00:00Z", sla_scoreable: false, sla_on_time: false }),
+        buildRow({ id: "waiting", reference_number: "CC-WAITING", status: "awaiting_quote", submitted_at: "2026-06-15T02:00:00Z" }),
+        // Late, but filed after the range.
+        buildRow({ id: "late-july", reference_number: "CC-LATE-JULY", status: "confirmed", submitted_at: "2026-07-05T02:00:00Z", sla_stopped_at: "2026-07-14T02:00:00Z", sla_scoreable: true, sla_on_time: false }),
+      ];
+    }
+
+    it("Finished late narrows the table to the late bookings of the linked range, and the filter clears", async () => {
+      const user = userEvent.setup();
+      mockSearchParams = new URLSearchParams("sla=late&from=2026-06-01&to=2026-06-30&basis=booking");
+      mockListBookings.mockResolvedValue(juneBookings());
+
+      render(<ConventionCenterPage />);
+
+      await screen.findByText("CC-LATE-CONFIRMED");
+      expect(screen.getByLabelText("Custom range start")).toHaveValue("2026-06-01");
+      expect(screen.getByLabelText("Custom range end")).toHaveValue("2026-06-30");
+      expect(tableReferences()).toEqual(["CC-LATE-CONFIRMED", "CC-LATE-REFUSED"]);
+      expect(screen.getByText("Showing only bookings that finished late in the selected range")).toBeInTheDocument();
+      // Only the table narrows: the tiles still describe every booking in range.
+      const requests = screen.getByText("Booking requests").closest("div") as HTMLElement;
+      expect(within(requests).getByText("5")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Clear filter" }));
+
+      expect(screen.queryByText(/^Showing only bookings/)).not.toBeInTheDocument();
+      expect(tableReferences()).toHaveLength(5);
+      expect(mockReplace).toHaveBeenCalledWith("/admin/convention-center", { scroll: false });
+    });
+
+    it("Finished late on the decision date reads when the clock stopped, as SLA Reports' Resolution Date does", async () => {
+      mockSearchParams = new URLSearchParams("sla=late&from=2026-06-01&to=2026-06-30&basis=decision");
+      mockListBookings.mockResolvedValue([
+        buildRow({ id: "filed-may", reference_number: "CC-FILED-MAY", status: "confirmed", submitted_at: "2026-05-28T02:00:00Z", sla_stopped_at: "2026-06-04T02:00:00Z", sla_scoreable: true, sla_on_time: false }),
+        buildRow({ id: "decided-july", reference_number: "CC-DECIDED-JULY", status: "confirmed", submitted_at: "2026-06-26T02:00:00Z", sla_stopped_at: "2026-07-03T02:00:00Z", sla_scoreable: true, sla_on_time: false }),
+      ]);
+
+      render(<ConventionCenterPage />);
+
+      await screen.findByText("CC-FILED-MAY");
+      expect(tableReferences()).toEqual(["CC-FILED-MAY"]);
+      expect(screen.getByLabelText("Date type")).toHaveValue("decision");
+    });
+
+    it("Past due now lists the past-due bookings on the city's clock, whatever the date range", async () => {
+      const user = userEvent.setup();
+      const longAgo = new Date(Date.now() - 200 * 86_400_000).toISOString();
+      mockSearchParams = new URLSearchParams("sla=past-due");
+      mockListBookings.mockResolvedValue([
+        buildRow({ id: "review-past-due", reference_number: "CC-REVIEW-PAST-DUE", status: "awaiting_tier_review", submitted_at: longAgo, deadline_state: "overdue" }),
+        buildRow({ id: "verify-past-due", reference_number: "CC-VERIFY-PAST-DUE", status: "payment_verification", submitted_at: longAgo, deadline_state: "overdue" }),
+        buildRow({ id: "quote-at-risk", reference_number: "CC-QUOTE-AT-RISK", status: "awaiting_quote", deadline_state: "at_risk" }),
+        // Waiting on the organiser, not the city.
+        buildRow({ id: "payment-past-due", reference_number: "CC-PAYMENT-PAST-DUE", status: "awaiting_payment", deadline_state: "overdue" }),
+        // Confirmed and waiting on its balance: off the clock.
+        buildRow({ id: "confirmed", reference_number: "CC-CONFIRMED", status: "confirmed", sla_scoreable: true, sla_on_time: false }),
+      ]);
+
+      render(<ConventionCenterPage />);
+
+      await screen.findByText("CC-REVIEW-PAST-DUE");
+      expect(tableReferences()).toEqual(["CC-REVIEW-PAST-DUE", "CC-VERIFY-PAST-DUE"]);
+      expect(screen.getByText("Showing only bookings past due now, whatever the date range")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Today" }));
+      expect(tableReferences()).toEqual(["CC-REVIEW-PAST-DUE", "CC-VERIFY-PAST-DUE"]);
+    });
+
+    // Unlike the Yellow Card's audited export RPC, this CSV is built from the
+    // rows on screen, so it narrows with the table and stays on.
+    it("Export downloads exactly the narrowed rows", async () => {
+      const user = userEvent.setup();
+      mockSearchParams = new URLSearchParams("sla=late&from=2026-06-01&to=2026-06-30&basis=booking");
+      mockListBookings.mockResolvedValue(juneBookings());
+
+      render(<ConventionCenterPage />);
+
+      await screen.findByText("CC-LATE-CONFIRMED");
+      await user.click(within(getRecentBookingsSection()).getByRole("button", { name: "↓ Export" }));
+
+      const [, , exported] = mockDownloadCsv.mock.calls[0];
+      expect(exported.map((row: unknown[]) => row[0])).toEqual(["CC-LATE-CONFIRMED", "CC-LATE-REFUSED"]);
+    });
+
+    // #131: the address is the only source of the filter. The page doesn't
+    // remount when only the query string changes, so the test changes the
+    // search params and re-renders.
+    it("the filter goes when the sidebar link opens the plain page", async () => {
+      mockSearchParams = new URLSearchParams("sla=late&from=2026-06-01&to=2026-06-30&basis=booking");
+      mockListBookings.mockResolvedValue(juneBookings());
+
+      const { rerender } = render(<ConventionCenterPage />);
+      await screen.findByText("CC-LATE-CONFIRMED");
+      expect(tableReferences()).toEqual(["CC-LATE-CONFIRMED", "CC-LATE-REFUSED"]);
+
+      mockSearchParams = new URLSearchParams();
+      rerender(<ConventionCenterPage />);
+
+      await waitFor(() => expect(screen.queryByText(/^Showing only bookings/)).not.toBeInTheDocument());
     });
   });
 });

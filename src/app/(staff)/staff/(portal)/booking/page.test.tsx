@@ -36,6 +36,8 @@ const booking: CalendarBooking = {
   submitted_at: "2026-08-09T07:55:20+00:00",
   unverified_payment_count: 0,
   tier_review_since: null,
+  confirmation_due_at: null,
+  deadline_state: null,
   changeover_hours: 1,
 };
 

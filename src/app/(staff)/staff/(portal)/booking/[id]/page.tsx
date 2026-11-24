@@ -26,6 +26,8 @@ import { getCurrentStaffUser } from "@/portals/staff/features/auth/lib/session";
 import { isAssigned } from "@/portals/staff/features/auth/lib/module-gate";
 import { NotYourModule } from "@/portals/staff/features/auth/components/not-your-module";
 import { deskMoves } from "@/portals/staff/features/booking/lib/desk-moves";
+import { readConfirmationClock } from "@/portals/staff/features/booking/lib/confirmation-clock";
+import { ConfirmationDeadline } from "@/portals/staff/features/booking/components/confirmation-deadline";
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
@@ -144,6 +146,9 @@ export default async function BookingDetailPage({
           <p className="mt-1 text-gray-500">
             {booking.reference_number} · Submitted {stamp(booking.submitted_at)}
           </p>
+          {/* SCRUM-131. Read off the row, not measured against `now`: the
+              database computed the state, so this needs no clock of its own. */}
+          <ConfirmationDeadline clock={readConfirmationClock(booking)} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <BookingStatusBadge

@@ -1,5 +1,5 @@
 import type { Database } from "@/shared/supabase/types";
-import type { DeadlineState } from "./lib/deadline";
+import type { DeadlineState } from "@/portals/staff/lib/deadline";
 
 /**
  * The database's own vocabulary, not a hand-written copy of it. Includes

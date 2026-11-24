@@ -1,13 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { formatDeadline, parseDeadlineState } from "./deadline";
 
+const VIEW = "staff_yellow_card_queue";
+
 describe("parseDeadlineState", () => {
   it.each(["on_track", "at_risk", "overdue"] as const)("accepts %s", (state) => {
-    expect(parseDeadlineState(state)).toBe(state);
+    expect(parseDeadlineState(state, VIEW)).toBe(state);
   });
 
   it("keeps null, which means the clock is not running", () => {
-    expect(parseDeadlineState(null)).toBeNull();
+    expect(parseDeadlineState(null, VIEW)).toBeNull();
   });
 
   /**
@@ -16,9 +18,9 @@ describe("parseDeadlineState", () => {
    * would hide exactly the warning this column exists to show.
    */
   it("refuses a value the database does not produce", () => {
-    expect(() => parseDeadlineState("breached")).toThrow(/deadline_state/);
+    expect(() => parseDeadlineState("breached", VIEW)).toThrow(/deadline_state/);
     // an inherited key is not in the vocabulary either
-    expect(() => parseDeadlineState("toString")).toThrow(/deadline_state/);
+    expect(() => parseDeadlineState("toString", VIEW)).toThrow(/deadline_state/);
   });
 });
 

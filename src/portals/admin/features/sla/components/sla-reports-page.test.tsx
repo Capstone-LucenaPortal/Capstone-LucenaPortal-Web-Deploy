@@ -2,6 +2,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import SLAReportsPage, { metadata } from "@/app/(admin)/admin/(shell)/sla-reports/page";
+import type { BookingRow } from "@/portals/admin/features/booking/lib/bookings";
 import type { IncidentRow } from "@/portals/admin/features/incidents/lib/incidents";
 import type { YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yellow-card";
 import type { DepartmentRow } from "@/portals/admin/lib/supabase/catalogs";
@@ -21,6 +22,7 @@ import { vi } from "vitest";
 // implementation runs against those fetched rows.
 const mockListIncidents = vi.fn();
 const mockListApplications = vi.fn();
+const mockListBookings = vi.fn();
 const mockListDepartments = vi.fn();
 const mockDownloadCsv = vi.fn();
 
@@ -35,6 +37,10 @@ vi.mock("../../incidents/lib/incidents", () => ({
 
 vi.mock("../../yellow-card/lib/yellow-card", () => ({
   listApplications: (signal?: unknown) => mockListApplications(signal),
+}));
+
+vi.mock("../../booking/lib/bookings", () => ({
+  listBookings: (signal?: unknown) => mockListBookings(signal),
 }));
 
 vi.mock("../../../lib/supabase/catalogs", () => ({
@@ -116,6 +122,44 @@ function buildApplication(overrides: Partial<YellowCardRow> = {}): YellowCardRow
   };
 }
 
+// A booking staff confirmed within its Confirmation Deadline (DB l121): the
+// view's verdict columns are what the page scores.
+function buildBooking(overrides: Partial<BookingRow> = {}): BookingRow {
+  return {
+    id: "booking-1",
+    reference_number: "BK-2026-000001",
+    event_title: "Sample Event",
+    event_type_code: "conference",
+    classification_code: "private",
+    rate_tier: "commercial",
+    venue_code: "ATRIUM",
+    is_resident: null,
+    origin_barangay_code: null,
+    origin_locality: null,
+    estimated_headcount: 100,
+    event_date: "2026-12-15",
+    start_time: "09:00:00",
+    duration_hours: 4,
+    total_fee: 1000,
+    status: "confirmed",
+    cancellation_reason: null,
+    submitted_at: defaultSubmittedAt(),
+    lead_time_days: 30,
+    completed_at: null,
+    confirmed_at: defaultSubmittedAt(),
+    quoted_at: null,
+    tier_verified: null,
+    sla_target_hours: 27,
+    sla_elapsed_seconds: 3600,
+    sla_stopped_at: defaultSubmittedAt(),
+    confirmation_due_at: null,
+    deadline_state: null,
+    sla_scoreable: true,
+    sla_on_time: true,
+    ...overrides,
+  };
+}
+
 function buildDepartment(overrides: Partial<DepartmentRow> = {}): DepartmentRow {
   return { code: "engineering", label: "Engineering", sort_order: 1, ...overrides };
 }
@@ -143,9 +187,9 @@ function sectionFor(heading: string): HTMLElement {
   return screen.getByText(heading).closest("section") as HTMLElement;
 }
 
-// One service's line on a per-service tile (#122): "Yellow Card" or
-// "Incidents" inside the tile labelled `label`.
-function partFor(label: string, service: "Yellow Card" | "Incidents"): HTMLElement {
+// One service's line on a per-service tile (#122): "Yellow Card",
+// "Incidents" or "Booking" inside the tile labelled `label`.
+function partFor(label: string, service: "Yellow Card" | "Incidents" | "Booking"): HTMLElement {
   return within(tileFor(label)).getByText(service).closest("div") as HTMLElement;
 }
 
@@ -155,10 +199,12 @@ describe("SLAReportsPage", () => {
   beforeEach(() => {
     mockListIncidents.mockReset();
     mockListApplications.mockReset();
+    mockListBookings.mockReset();
     mockListDepartments.mockReset();
     mockDownloadCsv.mockReset();
     mockListIncidents.mockResolvedValue([]);
     mockListApplications.mockResolvedValue([]);
+    mockListBookings.mockResolvedValue([]);
     mockListDepartments.mockResolvedValue([]);
   });
 
@@ -248,12 +294,88 @@ describe("SLAReportsPage", () => {
     expect(screen.queryByText("SLA Violations")).not.toBeInTheDocument();
   });
 
-  it("states that Booking has no turnaround clock", async () => {
-    render(<SLAReportsPage />);
+  // SCRUM-131 / #174: Booking is the third service, with its own figures on
+  // every tile and nothing added to the other two. The S9 line is gone.
+  describe("Booking", () => {
+    function decidedBookings(): BookingRow[] {
+      const refused = { status: "cancelled" as const, cancellation_reason: "rejected_by_staff" as const, confirmed_at: null };
+      return [
+        buildBooking({ id: "on-time" }),
+        buildBooking({ id: "refused-on-time", ...refused }),
+        buildBooking({ id: "late", sla_on_time: false }),
+        // The organiser cancelled it: in range, not scored.
+        buildBooking({ id: "cancelled", status: "cancelled", cancellation_reason: "cancelled_by_citizen", confirmed_at: null, sla_scoreable: false, sla_on_time: null }),
+      ];
+    }
 
-    expect(
-      await screen.findByText("Booking has no turnaround clock yet (voluntary standard, ADR 0001)")
-    ).toBeInTheDocument();
+    it("shows Booking's Requests scored, Finished late and Compliance beside the other two", async () => {
+      mockListIncidents.mockResolvedValue([buildIncident({ id: "inc-1", sla_met: true })]);
+      mockListBookings.mockResolvedValue(decidedBookings());
+
+      render(<SLAReportsPage />);
+
+      expect(await within(partFor("Requests scored", "Booking")).findByText("3")).toBeInTheDocument();
+      expect(within(partFor("Requests scored", "Booking")).getByText("of 4 filed in range")).toBeInTheDocument();
+      expect(within(partFor("Finished late", "Booking")).getByText("1")).toBeInTheDocument();
+      expect(within(partFor("Compliance", "Booking")).getByText("66.7%")).toBeInTheDocument();
+      expect(within(partFor("Compliance", "Booking")).getByText("18.3 pts below 85% project target")).toBeInTheDocument();
+      // Never pooled: the incident stays at 100% and 1 scored.
+      expect(within(partFor("Compliance", "Incidents")).getByText("100%")).toBeInTheDocument();
+      expect(within(partFor("Requests scored", "Incidents")).getByText("1")).toBeInTheDocument();
+      expect(screen.queryByText("Booking has no turnaround clock yet (voluntary standard, ADR 0001)")).not.toBeInTheDocument();
+    });
+
+    it("counts Booking's Past due now from the bookings on the clock and overdue", async () => {
+      const open = { confirmed_at: null, sla_stopped_at: null, sla_scoreable: null, sla_on_time: null, submitted_at: daysAgoIso(200) };
+      mockListBookings.mockResolvedValue([
+        buildBooking({ id: "overdue", status: "awaiting_quote", ...open, deadline_state: "overdue" }),
+        buildBooking({ id: "at-risk", status: "payment_verification", ...open, deadline_state: "at_risk" }),
+        // Waiting on its balance: in the backlog, off the clock.
+        buildBooking({ id: "balance", status: "confirmed", deadline_state: null }),
+      ]);
+
+      render(<SLAReportsPage />);
+
+      expect(await within(partFor("Past due now", "Booking")).findByText("1")).toBeInTheDocument();
+    });
+
+    // #175: the Convention Center page narrows its Recent table to them, on
+    // its own name for each date type: Booking Date, and Decision Date for
+    // Resolution Date.
+    it("links Booking's late and past-due counts to the Convention Center page", async () => {
+      const user = userEvent.setup();
+      mockListBookings.mockResolvedValue([
+        buildBooking({ id: "late", sla_on_time: false }),
+        buildBooking({ id: "overdue", status: "awaiting_quote", confirmed_at: null, sla_stopped_at: null, sla_scoreable: null, sla_on_time: null, deadline_state: "overdue" }),
+      ]);
+
+      render(<SLAReportsPage />);
+
+      expect(
+        await within(partFor("Finished late", "Booking")).findByRole("link", { name: "See the 1 booking" })
+      ).toHaveAttribute("href", "/admin/convention-center?sla=late&range=Month&basis=booking");
+      expect(
+        within(partFor("Past due now", "Booking")).getByRole("link", { name: "See the 1 booking" })
+      ).toHaveAttribute("href", "/admin/convention-center?sla=past-due");
+
+      await user.selectOptions(screen.getByLabelText("Date type"), "resolution");
+
+      expect(
+        within(partFor("Finished late", "Booking")).getByRole("link", { name: "See the 1 booking" })
+      ).toHaveAttribute("href", "/admin/convention-center?sla=late&range=Month&basis=decision");
+    });
+
+    it("gives the Convention Center its own row in By department", async () => {
+      mockListBookings.mockResolvedValue(decidedBookings());
+
+      render(<SLAReportsPage />);
+
+      const row = (await within(sectionFor("By department")).findByText("Convention Center")).closest("tr") as HTMLElement;
+      expect(within(row).getByText("3")).toBeInTheDocument();
+      expect(within(row).getByText("of 4 total")).toBeInTheDocument();
+      expect(within(row).getByText("66.7%")).toBeInTheDocument();
+      expect(within(row).getByText("Below target")).toBeInTheDocument();
+    });
   });
 
   // #126: the waiting work that has already run out of time, per service,
@@ -1243,6 +1365,7 @@ describe("SLAReportsPage", () => {
 
     expect(mockListIncidents).toHaveBeenCalledTimes(1);
     expect(mockListApplications).toHaveBeenCalledTimes(1);
+    expect(mockListBookings).toHaveBeenCalledTimes(1);
 
     for (const label of ["Today", "Week", "Quarter", "Annual", "Month"]) {
       await user.click(screen.getByRole("button", { name: label }));
@@ -1252,6 +1375,7 @@ describe("SLAReportsPage", () => {
 
     expect(mockListIncidents).toHaveBeenCalledTimes(1);
     expect(mockListApplications).toHaveBeenCalledTimes(1);
+    expect(mockListBookings).toHaveBeenCalledTimes(1);
   });
 
   // Admin Portal Fix Plan, Task 4.3: a failed fetch used to be a dead end —

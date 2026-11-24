@@ -6,6 +6,7 @@ import { DashboardPage } from "./dashboard-page";
 import type { YellowCardRow } from "@/portals/admin/features/yellow-card/lib/yellow-card";
 import type { IncidentRow } from "@/portals/admin/features/incidents/lib/incidents";
 import type { BookingRow } from "@/portals/admin/features/booking/lib/bookings";
+import { buildBookingRow as buildSharedBookingRow } from "@/portals/admin/features/booking/lib/fixtures";
 import type { DepartmentRow } from "@/portals/admin/lib/supabase/catalogs";
 import { presetDateRange } from "@/portals/admin/lib/dates";
 import { vi } from "vitest";
@@ -62,6 +63,12 @@ function defaultSubmittedAt(): string {
   return new Date().toISOString();
 }
 
+// The shared builder's dates are fixed; this page's rows default to now, for
+// the reason above.
+function buildBookingRow(overrides: Partial<BookingRow> = {}): BookingRow {
+  return buildSharedBookingRow({ submitted_at: defaultSubmittedAt(), ...overrides });
+}
+
 function buildYellowCardRow(overrides: Partial<YellowCardRow> = {}): YellowCardRow {
   return {
     id: "app-1",
@@ -106,35 +113,6 @@ function buildIncidentRow(overrides: Partial<IncidentRow> = {}): IncidentRow {
     sla_due_at: defaultSubmittedAt(),
     sla_at_risk: null,
     sla_met: true,
-    ...overrides,
-  };
-}
-
-function buildBookingRow(overrides: Partial<BookingRow> = {}): BookingRow {
-  return {
-    id: "booking-1",
-    reference_number: "CC-2026-000001",
-    event_title: "Sample Event",
-    event_type_code: "conference",
-    classification_code: "private",
-    rate_tier: "commercial",
-    venue_code: "ATRIUM",
-    is_resident: null,
-    origin_barangay_code: null,
-    origin_locality: null,
-    estimated_headcount: 100,
-    event_date: new Date().toISOString().slice(0, 10),
-    start_time: "09:00:00",
-    duration_hours: 4,
-    total_fee: 1000,
-    status: "confirmed",
-    submitted_at: defaultSubmittedAt(),
-    lead_time_days: 17,
-    cancellation_reason: null,
-    completed_at: null,
-    confirmed_at: null,
-    quoted_at: null,
-    tier_verified: null,
     ...overrides,
   };
 }
@@ -406,7 +384,7 @@ describe("DashboardPage", () => {
       render(<DashboardPage displayName="Juan Dela Cruz" />);
 
       const card = await screen.findByRole("link", { name: /^Convention Center/ });
-      expect(await within(card).findByText("Top event type: Wedding (2)")).toBeInTheDocument();
+      expect(await within(card).findByText(/· top: Wedding \(2\)$/)).toBeInTheDocument();
     });
 
     it("both cards fall back to the raw code, with no error state, when the catalogs fail to load", async () => {
@@ -420,7 +398,7 @@ describe("DashboardPage", () => {
       const incidentCard = await screen.findByRole("link", { name: /^Incident Reports/ });
       expect(await within(incidentCard).findByText(/resolved · top: infrastructure$/)).toBeInTheDocument();
       const conventionCard = screen.getByRole("link", { name: /^Convention Center/ });
-      expect(within(conventionCard).getByText("Top event type: wedding (1)")).toBeInTheDocument();
+      expect(within(conventionCard).getByText(/· top: wedding \(1\)$/)).toBeInTheDocument();
       expect(screen.queryByText(/Unable to load/)).not.toBeInTheDocument();
       expect(await screen.findByText(/^Updated .*\(Asia\/Manila\)$/)).toBeInTheDocument();
     });
@@ -436,7 +414,41 @@ describe("DashboardPage", () => {
       const incidentCard = await screen.findByRole("link", { name: /^Incident Reports/ });
       expect(await within(incidentCard).findByText(/resolved · top: infrastructure$/)).toBeInTheDocument();
       const conventionCard = screen.getByRole("link", { name: /^Convention Center/ });
-      expect(within(conventionCard).getByText("Top event type: wedding (1)")).toBeInTheDocument();
+      expect(within(conventionCard).getByText(/· top: wedding \(1\)$/)).toBeInTheDocument();
+    });
+  });
+
+  // SCRUM-131 / #174 (D5): the Convention Center card leads with the same
+  // Booking compliance the SLA compliance tile shows, as the Yellow Card and
+  // incident cards lead with their own rates.
+  describe("the Convention Center card's decided on time", () => {
+    it("shows Booking's SLA compliance, the tile's own figure", async () => {
+      mockListBookings.mockResolvedValue([
+        buildBookingRow({ id: "b-1", event_type_code: "wedding", sla_scoreable: true, sla_on_time: true }),
+        buildBookingRow({ id: "b-2", event_type_code: "wedding", sla_scoreable: true, sla_on_time: true }),
+        buildBookingRow({ id: "b-3", event_type_code: "concert", sla_scoreable: true, sla_on_time: false }),
+        // No clock: counted as a booking, not scored.
+        buildBookingRow({ id: "b-4", event_type_code: "wedding" }),
+      ]);
+      mockListBookingEventTypes.mockResolvedValue([{ code: "wedding", label: "Wedding", sort_order: 1 }]);
+
+      render(<DashboardPage displayName="Juan Dela Cruz" />);
+
+      const card = await screen.findByRole("link", { name: /^Convention Center/ });
+      expect(await within(card).findByText("66.7% decided on time · top: Wedding (3)")).toBeInTheDocument();
+      const tile = screen.getByText("SLA compliance").closest("div") as HTMLElement;
+      expect(within(tile).getByText("Booking")).toBeInTheDocument();
+      expect(within(tile).getByText("66.7%")).toBeInTheDocument();
+    });
+
+    it("says nothing was decided, not 0%, when no booking in range was scored", async () => {
+      mockListBookings.mockResolvedValue([buildBookingRow({ event_type_code: "wedding" })]);
+      mockListBookingEventTypes.mockResolvedValue([{ code: "wedding", label: "Wedding", sort_order: 1 }]);
+
+      render(<DashboardPage displayName="Juan Dela Cruz" />);
+
+      const card = await screen.findByRole("link", { name: /^Convention Center/ });
+      expect(await within(card).findByText("Nothing decided in range · top: Wedding (1)")).toBeInTheDocument();
     });
   });
 
@@ -501,30 +513,68 @@ describe("DashboardPage", () => {
     expect(await screen.findByText(/^1 request in range · below the 65% "Needs attention" threshold$/)).toBeInTheDocument();
   });
 
-  // The past-SLA needs-attention items were removed when nothing honest could
-  // trigger them. The views now carry the due time (l112), but bringing the
-  // alerts back is a separate call (#124), so none fires yet.
-  it("does not surface a Yellow Card past-SLA needs-attention item, even for an overdue application", async () => {
-    mockListApplications.mockResolvedValue([buildYellowCardRow({ status: "pending", sla_breached: true, deadline_state: "overdue" })]);
-
-    render(<DashboardPage displayName="Juan Dela Cruz" />);
-    await screen.findByText("Service requests filed");
-
-    expect(screen.queryByText(/Yellow Card application.*past SLA/)).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /Yellow Card application.*past SLA/ })).not.toBeInTheDocument();
-  });
-
-  it("does not surface an incident-backlog-past-SLA needs-attention item, even for a report past its due time", async () => {
-    mockListIncidents.mockResolvedValue([
-      buildIncidentRow({ status: "open", incident_level: "critical", submitted_at: hoursAgo(5), sla_due_at: hoursAgo(1) }),
+  // SCRUM-131 / #174: the Convention Center is a row in By department (S6),
+  // so a booking desk under 65% is flagged like any other service area.
+  it("flags the Convention Center when its booking compliance is below the threshold", async () => {
+    mockListBookings.mockResolvedValue([
+      buildBookingRow({ id: "b-1", sla_scoreable: true, sla_on_time: true }),
+      buildBookingRow({ id: "b-2", sla_scoreable: true, sla_on_time: false }),
+      buildBookingRow({ id: "b-3", sla_scoreable: true, sla_on_time: false }),
     ]);
 
     render(<DashboardPage displayName="Juan Dela Cruz" />);
-    await screen.findByText("Service requests filed");
 
-    expect(screen.queryByText(/incident report.*past its SLA/)).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /incident report.*past its SLA/ })).not.toBeInTheDocument();
-    expect(await screen.findByText("No items currently need attention.")).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /Convention Center SLA at 33.3%/ })).toHaveAttribute(
+      "href",
+      "/admin/sla-reports"
+    );
+  });
+
+  // SCRUM-131 / #174 (D6): what is late right now, per service, counted as
+  // SLA Reports' Past due now counts it, whatever the range. Each item opens
+  // its page's table narrowed to those requests (#127; Booking's since #175).
+  describe("past due now in Needs attention", () => {
+    it("raises one item per service with requests past due, linking to them", async () => {
+      mockListApplications.mockResolvedValue([
+        buildYellowCardRow({ id: "app-1", status: "pending", deadline_state: "overdue" }),
+        buildYellowCardRow({ id: "app-2", status: "resubmitted", deadline_state: "overdue" }),
+        buildYellowCardRow({ id: "app-3", status: "pending", deadline_state: "at_risk" }),
+      ]);
+      mockListIncidents.mockResolvedValue([
+        buildIncidentRow({ status: "open", incident_level: "critical", submitted_at: hoursAgo(5), sla_due_at: hoursAgo(1) }),
+      ]);
+      mockListBookings.mockResolvedValue([
+        buildBookingRow({ id: "b-1", status: "awaiting_quote", deadline_state: "overdue" }),
+        // Confirmed and waiting on its balance: off the clock.
+        buildBookingRow({ id: "b-2", status: "confirmed", deadline_state: null }),
+      ]);
+
+      render(<DashboardPage displayName="Juan Dela Cruz" />);
+
+      expect(await screen.findByRole("link", { name: /2 Yellow Card applications past due/ })).toHaveAttribute(
+        "href",
+        "/admin/yellow-card?sla=past-due"
+      );
+      expect(screen.getByRole("link", { name: /1 incident report past due/ })).toHaveAttribute(
+        "href",
+        "/admin/issue-reports?sla=past-due"
+      );
+      expect(screen.getByRole("link", { name: /1 booking past due/ })).toHaveAttribute(
+        "href",
+        "/admin/convention-center?sla=past-due"
+      );
+      expect(screen.getByText("Needs attention · 3")).toBeInTheDocument();
+    });
+
+    it("raises none for a service with nothing past due", async () => {
+      mockListApplications.mockResolvedValue([buildYellowCardRow({ status: "pending", deadline_state: "on_track" })]);
+      mockListBookings.mockResolvedValue([buildBookingRow({ status: "payment_verification", deadline_state: "at_risk" })]);
+
+      render(<DashboardPage displayName="Juan Dela Cruz" />);
+
+      expect(await screen.findByText("No items currently need attention.")).toBeInTheDocument();
+      expect(screen.queryByText(/past due/)).not.toBeInTheDocument();
+    });
   });
 
   it("renders the SLA module card's trend bars from getSlaTrend's real derived data, not a mock table", async () => {
@@ -675,8 +725,10 @@ describe("DashboardPage", () => {
       render(<DashboardPage displayName="Juan Dela Cruz" />);
 
       const tile = await waitForSlaTile("50%");
-      expect(within(tile).getByText("—")).toBeInTheDocument();
-      expect(within(tile).getByText("Nothing scored in range")).toBeInTheDocument();
+      // Yellow Card scored nothing (and Booking, with no rows, neither).
+      const yellowCard = within(tile).getByText("Yellow Card").closest("div") as HTMLElement;
+      expect(within(yellowCard).getByText("—")).toBeInTheDocument();
+      expect(within(yellowCard).getByText("Nothing scored in range")).toBeInTheDocument();
       expect(within(tile).queryByText("0%")).not.toBeInTheDocument();
     });
 

@@ -102,6 +102,9 @@ const ISSUE_DATE: Record<IssueDateBasis, (row: IncidentRow) => string | null> = 
 const CONVENTION_DATE: Record<ConventionDateBasis, (row: BookingRow) => string | null> = {
   booking: (row) => row.submitted_at,
   event: (row) => row.event_date,
+  // When the booking's clock stopped (l121): SLA Reports' Resolution Date for
+  // a booking, so its Finished late link keeps its date type here (#175).
+  decision: (row) => row.sla_stopped_at,
 };
 
 export function yellowCardDateAccessor(basis: YellowCardDateBasis): (row: YellowCardRow) => string | null {
@@ -616,6 +619,22 @@ function splitIncidentBacklog(rows: IncidentRow[], now: Date): BacklogSplit<Inci
   return { rows: backlog, pastDue, atRisk };
 }
 
+// A booking's deadline_state is the database's (l121), read through the
+// Admin front at fetch time: on_track, at_risk or overdue while its clock
+// runs, null otherwise. So a confirmed booking waiting on its balance is in
+// the backlog but never past due or at risk (its clock stopped at
+// confirmation), and nor is one paused on the organiser or one with no clock.
+function splitBookingBacklog(rows: BookingRow[]): BacklogSplit<BookingRow> {
+  const backlog = inServiceBacklog(rows, "bookings");
+  const pastDue: BookingRow[] = [];
+  let atRisk = 0;
+  for (const row of backlog) {
+    if (row.deadline_state === "overdue") pastDue.push(row);
+    else if (row.deadline_state === "at_risk") atRisk += 1;
+  }
+  return { rows: backlog, pastDue, atRisk };
+}
+
 /**
  * Pending Review's "N past due · M at risk" (metrics sheet Y4), and the
  * Yellow Card half of SLA Reports' Past due now (S4). Reads ALL of `rows`,
@@ -654,6 +673,25 @@ export function incidentBacklogDeadlines(rows: IncidentRow[], now: Date = new Da
  */
 export function incidentPastDueRows(rows: IncidentRow[], now: Date = new Date()): IncidentRow[] {
   return splitIncidentBacklog(rows, now).pastDue;
+}
+
+/**
+ * The booking half of SLA Reports' Past due now (S4) and of the Dashboard's
+ * Needs attention (D6): bookings in the Service backlog whose clock is
+ * running and overdue. Reads ALL of `rows`, whatever the range.
+ */
+export function bookingBacklogDeadlines(rows: BookingRow[]): BacklogDeadlines {
+  const { pastDue, atRisk } = splitBookingBacklog(rows);
+  return { pastDue: pastDue.length, atRisk };
+}
+
+/**
+ * The bookings past due now: the rows behind SLA Reports' Booking Past due
+ * now, which the Convention Center table narrows to when it arrives from
+ * there (#175). Reads ALL of `rows`, whatever the range.
+ */
+export function bookingPastDueRows(rows: BookingRow[]): BookingRow[] {
+  return splitBookingBacklog(rows).pastDue;
 }
 
 /**

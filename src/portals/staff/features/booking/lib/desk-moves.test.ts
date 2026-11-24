@@ -56,6 +56,10 @@ function booking(over: Partial<Booking> = {}): Booking {
     tier_review_look: null,
     tier_review_since: null,
     tier_revision_reason: null,
+    confirmation_due_at: null,
+    deadline_state: null,
+    sla_scoreable: null,
+    sla_on_time: null,
     ...over,
   };
 }
