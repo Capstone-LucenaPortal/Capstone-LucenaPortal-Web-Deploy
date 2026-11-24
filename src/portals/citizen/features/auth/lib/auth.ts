@@ -13,6 +13,59 @@ export class AuthError extends Error {
   }
 }
 
+/** Which Sign Up fields already belong to an account. */
+export interface SignupFieldsInUse {
+  email: boolean;
+  mobile: boolean;
+}
+
+export const EMAIL_IN_USE_MESSAGE = 'This email is already in use.';
+export const MOBILE_IN_USE_MESSAGE = 'This number is already in use.';
+
+/**
+ * Sign Up refused because the email and/or mobile already belong to an
+ * account. The modal reads `inUse` to mark those fields red.
+ *
+ * This deliberately reveals that an address or number has an account. Web#86
+ * ruled the opposite (a neutral "Check Your Email" for every reply); Joaquin
+ * reversed that on 2026-11-24 so a citizen stops waiting for a link that never
+ * comes. Login still never reveals it (see translateAuthError).
+ */
+export class SignupInUseError extends AuthError {
+  readonly inUse: SignupFieldsInUse;
+  constructor(inUse: SignupFieldsInUse) {
+    super(
+      inUse.email && inUse.mobile
+        ? 'This email and this number are already in use.'
+        : inUse.email
+          ? EMAIL_IN_USE_MESSAGE
+          : MOBILE_IN_USE_MESSAGE,
+    );
+    this.name = 'SignupInUseError';
+    this.inUse = inUse;
+  }
+}
+
+/**
+ * Ask the database whether the email or mobile already belong to an account
+ * (DB l118, `check_signup_availability`, callable before any login). Fails
+ * open: if the function is unreachable, Sign Up goes ahead and the email is
+ * still caught from Supabase's own signUp reply (see signup()).
+ */
+async function checkSignupAvailability(
+  client: SupabaseClient,
+  email: string,
+  mobile: string | undefined,
+): Promise<SignupFieldsInUse> {
+  const { data, error } = await client.rpc('check_signup_availability', {
+    p_email: email,
+    p_mobile: mobile ?? null,
+  });
+  if (error || !data || typeof data !== 'object') return { email: false, mobile: false };
+  const row = data as { email_in_use?: unknown; mobile_in_use?: unknown };
+  return { email: row.email_in_use === true, mobile: row.mobile_in_use === true };
+}
+
 /** Raw Supabase auth error text → citizen-facing copy. Login failures are
  * deliberately indistinguishable (wrong email vs wrong password vs unconfirmed)
  * to prevent account enumeration from the login form. */
@@ -258,6 +311,8 @@ export const authService = {
       return { status: 'signed-in', user };
     }
     const params = mapSignupToProfileParams(data); // validate before the network call
+    const inUse = await checkSignupAvailability(client, data.email, data.mobile);
+    if (inUse.email || inUse.mobile) throw new SignupInUseError(inUse);
     const { data: signUp, error } = await client.auth.signUp({
       email: data.email,
       password: data.password,
@@ -267,7 +322,22 @@ export const authService = {
           typeof window !== 'undefined' ? `${window.location.origin}/complete-signup` : undefined,
       },
     });
-    if (error) throw new AuthError(translateAuthError(error.message, 'signup'));
+    if (error) {
+      // Email confirmation off: Supabase says so outright.
+      if (/already registered|already exists/i.test(error.message)) {
+        throw new SignupInUseError({ email: true, mobile: false });
+      }
+      throw new AuthError(translateAuthError(error.message, 'signup'));
+    }
+    // Email confirmation on: an address with a confirmed account comes back as
+    // a user with no identities, and nothing is sent. Normally the check above
+    // has already caught it; this covers it being unreachable. An earlier
+    // UNCONFIRMED sign-up keeps its identity (Supabase re-sends its link), so it
+    // still lands on Check Your Email, as l118 intends.
+    const identities = (signUp.user as { identities?: unknown[] } | null)?.identities;
+    if (Array.isArray(identities) && identities.length === 0) {
+      throw new SignupInUseError({ email: true, mobile: false });
+    }
     // create_citizen_profile needs a session (email in the JWT). signUp returns
     // one only when email confirmation is off. With it on (the Sandbox's
     // setting), there is no session yet. That is a success, not an error (issue

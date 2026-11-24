@@ -7606,6 +7606,10 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      check_signup_availability: {
+        Args: { p_email: string; p_mobile: string }
+        Returns: Json
+      }
       claim_email_batch: {
         Args: { p_limit: number }
         Returns: {
@@ -8067,6 +8071,7 @@ export type Database = {
         }
       }
       next_reference: { Args: { p_prefix: string }; Returns: string }
+      normalise_ph_mobile: { Args: { p_mobile: string }; Returns: string }
       notice_booking_details: {
         Args: { p_booking_id: string; p_event_code: string }
         Returns: Json

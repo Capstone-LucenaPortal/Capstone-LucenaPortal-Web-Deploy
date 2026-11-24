@@ -52,10 +52,16 @@ interface PhoneInputProps {
   className?: string;
   inputStyle?: CSSProperties;
   placeholder?: string;
+  /** Marks the field invalid: a red border round the +63 and the input, and
+   * aria-invalid for assistive tech. */
+  invalid?: boolean;
+  /** id of the element that explains the problem (forwarded as aria-describedby). */
+  describedBy?: string;
 }
 
 export function PhoneInput({
   id, value, onChange, required, autoComplete, className, inputStyle, placeholder = '9XX XXX XXXX',
+  invalid, describedBy,
 }: PhoneInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const localDigits = toLocalDigits(value);
@@ -91,7 +97,10 @@ export function PhoneInput({
 
   return (
     <div className="flex items-stretch">
-      <span className="flex items-center px-3 border border-r-0 border-[#CCCCCC] rounded-l bg-[#F0F0F0] text-sm text-[#666666] select-none whitespace-nowrap">
+      <span
+        className="flex items-center px-3 border border-r-0 border-[#CCCCCC] rounded-l bg-[#F0F0F0] text-sm text-[#666666] select-none whitespace-nowrap"
+        style={invalid ? { borderColor: 'var(--color-lucena-error)' } : undefined}
+      >
         +63
       </span>
       <input
@@ -102,7 +111,9 @@ export function PhoneInput({
         required={required}
         autoComplete={autoComplete}
         className={`${className ?? ''} rounded-l-none`.trim()}
-        style={inputStyle}
+        style={invalid ? { ...inputStyle, borderColor: 'var(--color-lucena-error)' } : inputStyle}
+        aria-invalid={invalid || undefined}
+        aria-describedby={describedBy}
         value={displayValue}
         onChange={handleChange}
         placeholder={placeholder}

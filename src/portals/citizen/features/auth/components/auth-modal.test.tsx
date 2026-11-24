@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AuthModal from '@/portals/citizen/features/auth/components/auth-modal';
-import { AuthError } from '@/portals/citizen/features/auth/lib/auth';
+import { AuthError, SignupInUseError } from '@/portals/citizen/features/auth/lib/auth';
 
 const login = vi.fn();
 const signup = vi.fn();
@@ -231,6 +231,52 @@ describe('AuthModal — sign up submit', { timeout: 20_000 }, () => {
     expect(panel).toHaveTextContent('Already have an account?');
     expect(panel).not.toHaveTextContent(/account was created/i);
     expect(panel).not.toHaveTextContent(/we sent a confirmation link/i);
+  });
+
+  // DB l118: an email or mobile that already belongs to an account turns its
+  // field red with its own message (reverses #86's no-reveal rule).
+  it('marks the email field red when the email is already in use', async () => {
+    signup.mockRejectedValueOnce(new SignupInUseError({ email: true, mobile: false }));
+    await fillAndSubmit();
+    const email = screen.getByLabelText(/^Email Address/);
+    await screen.findByRole('alert');
+    expect(email).toHaveAttribute('aria-invalid', 'true');
+    expect(document.getElementById(email.getAttribute('aria-describedby') ?? ''))
+      .toHaveTextContent('This email is already in use.');
+    expect(email).toHaveFocus();
+    expect(screen.getByLabelText(/^Mobile Number/)).not.toHaveAttribute('aria-invalid');
+    expect(screen.queryByRole('heading', { name: 'Check Your Email' })).not.toBeInTheDocument();
+  });
+
+  it('marks the mobile field red when the number is already in use', async () => {
+    signup.mockRejectedValueOnce(new SignupInUseError({ email: false, mobile: true }));
+    await fillAndSubmit();
+    const mobile = screen.getByLabelText(/^Mobile Number/);
+    await screen.findByRole('alert');
+    expect(mobile).toHaveAttribute('aria-invalid', 'true');
+    expect(document.getElementById(mobile.getAttribute('aria-describedby') ?? ''))
+      .toHaveTextContent('This number is already in use.');
+    expect(mobile).toHaveFocus();
+    expect(screen.getByLabelText(/^Email Address/)).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('marks both fields when both are in use, and clears each once it is edited', async () => {
+    signup.mockRejectedValueOnce(new SignupInUseError({ email: true, mobile: true }));
+    await fillAndSubmit();
+    await screen.findByRole('alert');
+    const email = screen.getByLabelText(/^Email Address/);
+    const mobile = screen.getByLabelText(/^Mobile Number/);
+    expect(email).toHaveAttribute('aria-invalid', 'true');
+    expect(mobile).toHaveAttribute('aria-invalid', 'true');
+
+    fireEvent.change(email, { target: { value: 'other@example.com' } });
+    expect(email).not.toHaveAttribute('aria-invalid');
+    expect(screen.queryByText('This email is already in use.')).not.toBeInTheDocument();
+    expect(mobile).toHaveAttribute('aria-invalid', 'true');
+
+    fireEvent.change(mobile, { target: { value: '9998887777' } });
+    expect(mobile).not.toHaveAttribute('aria-invalid');
+    expect(screen.queryByText('This number is already in use.')).not.toBeInTheDocument();
   });
 
   it('still shows a real sign-up failure in the error line', async () => {

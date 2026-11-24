@@ -27,6 +27,7 @@ import {
   MIN_ACCOUNT_AGE_YEARS, AuthError, authService,
   buildSignupMetadata, tryBuildProfileParamsFromMetadata,
   translateAuthError, RESET_LINK_UNUSABLE_MESSAGE,
+  SignupInUseError,
 } from '@/portals/citizen/features/auth/lib/auth';
 import * as supabaseClientModule from '@/portals/citizen/lib/supabase/client';
 import type { SignupData, CitizenProfileFields } from '@/portals/citizen/features/auth/types';
@@ -218,7 +219,7 @@ describe('signup outcomes (client mode)', () => {
     const { rpc, spy } = signUpReturning(null);
     try {
       await expect(authService.signup(base)).resolves.toEqual({ status: 'confirm-email' });
-      expect(rpc).not.toHaveBeenCalled();
+      expect(rpc).not.toHaveBeenCalledWith('create_citizen_profile', expect.anything());
     } finally {
       spy.mockRestore();
     }
@@ -232,6 +233,99 @@ describe('signup outcomes (client mode)', () => {
         user: { id: 'USER-1', email: 'juan@example.com', name: 'Juan Rizal Dela Cruz' },
       });
       expect(rpc).toHaveBeenCalledWith('create_citizen_profile', expect.objectContaining({ p_first_name: 'Juan' }));
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+// DB l118. An email or mobile that already belongs to an account is refused
+// before auth.signUp, so the citizen is told instead of waiting for a link that
+// never comes. Reverses #86's no-reveal rule (Joaquin, 2026-11-24).
+describe('signup refuses an email or mobile already in use (client mode)', () => {
+  const fakeClient = (opts: {
+    check?: { data: unknown; error: unknown };
+    signUp?: { data: unknown; error: unknown };
+  }) => {
+    const signUp = vi.fn(async () => opts.signUp ?? {
+      data: { user: { id: 'USER-1', email: base.email, identities: [{ id: 'i' }] }, session: null },
+      error: null,
+    });
+    const rpc = vi.fn(async (name: string) =>
+      name === 'check_signup_availability'
+        ? (opts.check ?? { data: { email_in_use: false, mobile_in_use: false }, error: null })
+        : { error: null });
+    const client = { auth: { signUp }, rpc } as unknown as ReturnType<typeof supabaseClientModule.getSupabaseClient>;
+    const spy = vi.spyOn(supabaseClientModule, 'getSupabaseClient').mockReturnValue(client);
+    return { signUp, rpc, spy };
+  };
+
+  const refusal = async (p: Promise<unknown>) => {
+    const err = await p.then(() => null, (e: unknown) => e);
+    expect(err).toBeInstanceOf(SignupInUseError);
+    return err as SignupInUseError;
+  };
+
+  it('asks the database with the email and mobile the citizen typed', async () => {
+    const { rpc, spy } = fakeClient({});
+    try {
+      await authService.signup(base);
+      expect(rpc).toHaveBeenCalledWith('check_signup_availability', {
+        p_email: 'juan@example.com', p_mobile: '09123456789',
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it.each([
+    [{ email_in_use: true, mobile_in_use: false }, { email: true, mobile: false }, 'This email is already in use.'],
+    [{ email_in_use: false, mobile_in_use: true }, { email: false, mobile: true }, 'This number is already in use.'],
+    [{ email_in_use: true, mobile_in_use: true }, { email: true, mobile: true }, 'This email and this number are already in use.'],
+  ])('refuses %j before calling signUp', async (answer, inUse, message) => {
+    const { signUp, spy } = fakeClient({ check: { data: answer, error: null } });
+    try {
+      const err = await refusal(authService.signup(base));
+      expect(err.inUse).toEqual(inUse);
+      expect(err.message).toBe(message);
+      expect(signUp).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('goes ahead when the check itself fails (fails open)', async () => {
+    const { signUp, spy } = fakeClient({ check: { data: null, error: { message: 'Could not find the function' } } });
+    try {
+      await expect(authService.signup(base)).resolves.toEqual({ status: 'confirm-email' });
+      expect(signUp).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  // With email confirmation on, Supabase answers an existing confirmed account
+  // with a user that has no identities. Catches the email if the check above
+  // was unreachable.
+  it('refuses the email when signUp returns a user with no identities', async () => {
+    const { spy } = fakeClient({
+      check: { data: null, error: { message: 'unreachable' } },
+      signUp: { data: { user: { id: 'X', email: base.email, identities: [] }, session: null }, error: null },
+    });
+    try {
+      const err = await refusal(authService.signup(base));
+      expect(err.inUse).toEqual({ email: true, mobile: false });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  // With email confirmation off, Supabase says "User already registered".
+  it('refuses the email when signUp says the user is already registered', async () => {
+    const { spy } = fakeClient({ signUp: { data: { user: null, session: null }, error: { message: 'User already registered' } } });
+    try {
+      const err = await refusal(authService.signup(base));
+      expect(err.inUse).toEqual({ email: true, mobile: false });
     } finally {
       spy.mockRestore();
     }

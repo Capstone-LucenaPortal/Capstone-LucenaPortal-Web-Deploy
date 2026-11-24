@@ -1,13 +1,15 @@
 'use client';
 
-import { useState, useEffect, useId } from 'react';
+import { useState, useEffect, useId, useRef } from 'react';
 import { PasswordVisibilityToggle } from '@/shared/auth/password-visibility-toggle';
 import { useAuth } from '@/portals/citizen/features/auth/hooks/use-auth';
 import { Button } from '@/portals/citizen/components/ui/button';
 import ModalShell, { ModalCloseButton } from '@/portals/citizen/components/ui/modal-shell';
 import { PhoneInput } from '@/portals/citizen/components/ui/phone-input';
 import { catalogService, type CatalogOption } from '@/portals/citizen/lib/supabase/catalogs';
-import { authService, MIN_ACCOUNT_AGE_YEARS } from '@/portals/citizen/features/auth/lib/auth';
+import {
+  authService, MIN_ACCOUNT_AGE_YEARS, SignupInUseError, EMAIL_IN_USE_MESSAGE, MOBILE_IN_USE_MESSAGE,
+} from '@/portals/citizen/features/auth/lib/auth';
 import { validatePassword, PASSWORD_RULES_TEXT } from '@/shared/auth/password-policy';
 import { LIMITS, birthDateError } from '@/portals/citizen/lib/validation';
 import { occupationField } from '@/portals/citizen/features/auth/lib/occupation-field';
@@ -74,6 +76,11 @@ function AuthForm({ barangays }: { barangays: CatalogOption[] }) {
   const [occupation, setOccupation] = useState('');
   const occupationBox = occupationField(worksInLucena, occupation);
   const [agreeTerms, setAgreeTerms] = useState(false);
+  // Set when Create Account comes back "already in use" (SignupInUseError).
+  // The field turns red with its own message, and clears once it is edited.
+  const [emailInUse, setEmailInUse] = useState(false);
+  const [mobileInUse, setMobileInUse] = useState(false);
+  const signupEmailRef = useRef<HTMLInputElement>(null);
 
 
   const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -120,6 +127,16 @@ function AuthForm({ barangays }: { barangays: CatalogOption[] }) {
       }
       setEmail(''); setPassword('');
     } catch (err) {
+      if (err instanceof SignupInUseError) {
+        setEmailInUse(err.inUse.email);
+        setMobileInUse(err.inUse.mobile);
+        // The form is long and Create Account sits at its foot: take the
+        // citizen to the first red field.
+        const target = err.inUse.email
+          ? signupEmailRef.current
+          : document.getElementById(fid('mobile'));
+        target?.focus();
+      }
       setFormError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
     } finally {
       setIsSubmitting(false);
@@ -264,10 +281,11 @@ function AuthForm({ barangays }: { barangays: CatalogOption[] }) {
   // no Create Account button. When it showed as an error under the filled
   // form, citizens submitted again.
   //
-  // Supabase gives the same reply (no session, no error) for a new address, an
-  // earlier unconfirmed sign-up (link re-sent) and an existing account (nothing
-  // sent), to hide which addresses exist. So one wording has to be true of all
-  // three, and it must not be varied by reading the signUp reply (#86).
+  // An address that already has an account no longer reaches this panel: it is
+  // refused as "already in use" (SignupInUseError, DB l118), which reverses
+  // #86's no-reveal rule on Joaquin's say-so (2026-11-24). What lands here is a
+  // new address or an earlier unconfirmed sign-up (Supabase re-sends its link).
+  // The #86 wording is kept: it is still true of both.
   if (signupSubmittedEmail !== null) {
     return (
       <ModalShell labelledBy={headingId} onClose={closeAuthModal} panelClassName={modalClass} panelStyle={{ padding: 40, position: 'relative' }}>
@@ -291,6 +309,8 @@ function AuthForm({ barangays }: { barangays: CatalogOption[] }) {
   const signupInputStyle = { padding: '9px 11px' };
   const signupLabelClass = 'block text-xs font-semibold text-[#444]';
   const signupLabelStyle = { display: 'block' as const, marginBottom: 5 };
+  const inUseBorder = { borderColor: 'var(--color-lucena-error)' };
+  const inUseMessageClass = 'text-[11px] text-lucena-error font-semibold';
 
   return (
     <ModalShell
@@ -382,7 +402,20 @@ function AuthForm({ barangays }: { barangays: CatalogOption[] }) {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 12 }}>
               <div>
                 <label htmlFor={fid('email')} className={signupLabelClass} style={signupLabelStyle}>Email Address <span className="text-lucena-error ml-0.5">*</span></label>
-                <input id={fid('email')} name="email" required aria-required="true" autoComplete="email" className={signupInputClass} style={signupInputStyle} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Enter email address" maxLength={LIMITS.email} />
+                <input
+                  ref={signupEmailRef}
+                  id={fid('email')} name="email" required aria-required="true" autoComplete="email"
+                  className={signupInputClass}
+                  style={emailInUse ? { ...signupInputStyle, ...inUseBorder } : signupInputStyle}
+                  aria-invalid={emailInUse || undefined}
+                  aria-describedby={emailInUse ? fid('email-in-use') : undefined}
+                  type="email" value={email}
+                  onChange={(e) => { setEmail(e.target.value); setEmailInUse(false); }}
+                  placeholder="Enter email address" maxLength={LIMITS.email}
+                />
+                {emailInUse && (
+                  <p id={fid('email-in-use')} className={inUseMessageClass} style={{ marginTop: 4 }}>{EMAIL_IN_USE_MESSAGE}</p>
+                )}
               </div>
               <div>
                 {/* Deliberately autoComplete="off": a password manager filling
@@ -393,7 +426,17 @@ function AuthForm({ barangays }: { barangays: CatalogOption[] }) {
             </div>
             <div>
               <label htmlFor={fid('mobile')} className={signupLabelClass} style={signupLabelStyle}>Mobile Number <span className="text-lucena-error ml-0.5">*</span></label>
-              <PhoneInput id={fid('mobile')} required autoComplete="tel-national" className={signupInputClass} inputStyle={signupInputStyle} value={mobile} onChange={setMobile} />
+              <PhoneInput
+                id={fid('mobile')} required autoComplete="tel-national"
+                className={signupInputClass} inputStyle={signupInputStyle}
+                value={mobile}
+                onChange={(v) => { setMobile(v); setMobileInUse(false); }}
+                invalid={mobileInUse}
+                describedBy={mobileInUse ? fid('mobile-in-use') : undefined}
+              />
+              {mobileInUse && (
+                <p id={fid('mobile-in-use')} className={inUseMessageClass} style={{ marginTop: 4 }}>{MOBILE_IN_USE_MESSAGE}</p>
+              )}
               <p className="text-[11px] text-dark-gray" style={{ marginTop: 4, lineHeight: 1.5 }}>
                 Responders may call this number when handling an incident you report.
               </p>
