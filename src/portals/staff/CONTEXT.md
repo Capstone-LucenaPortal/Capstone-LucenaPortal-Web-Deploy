@@ -31,7 +31,10 @@ _Avoid_: Pending, outstanding, queue depth.
 The Booking module's backlog. Bookings waiting on a person in this building —
 a Tier Claim to review, a quote, a payment to be checked, or a balance to be
 recorded. A Booking waiting on a Resubmission is the Citizen's turn, so it is
-not in the set.
+not in the set. Every Booking in the set except one waiting on its balance is on
+the city's clock, and can be At Risk or Overdue against its Confirmation
+Deadline (both defined in the database's `CONTEXT.md`); the balance is in the
+set but off the clock.
 The queue shows this set twice over: the sentinel tab is its level, and the
 activity badge is its growth since the page loaded — "3 more waiting", never
 "3 new". A booking joins the set when a colleague verifies a payment across the

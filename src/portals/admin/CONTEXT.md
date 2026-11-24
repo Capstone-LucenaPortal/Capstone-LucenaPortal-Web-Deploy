@@ -40,10 +40,19 @@ _Avoid_: breached (a breach is scored once the request is finished), late, overd
 
 **Scoreable request**:
 A service request whose turnaround outcome is known and fairly charged to the city: an approved
-or rejected Yellow Card application, or an incident resolved after its clock started and not
-closed as invalid, duplicate or expired. A withdrawal is not scoreable: the resident ended it,
-not the city; nor is an incident never routed and verified, which had no clock to miss.
+or rejected Yellow Card application, an incident resolved after its clock started and not
+closed as invalid, duplicate or expired, or a booking request the city confirmed or refused
+with a clock on it. A withdrawal is not scoreable: the resident ended it, not the city; nor is
+a booking the organiser cancelled or let expire, nor an incident never routed and verified,
+which had no clock to miss.
 _Avoid_: decided (a withdrawal is decided but not scoreable), response
+
+**Decided on time**:
+The share of a service's decided requests the city decided within their promised time: Yellow
+Card applications approved or rejected within three Working Days, and booking requests
+confirmed or refused by staff before their Confirmation Deadline. A refusal on time counts as
+on time; the figure measures the desk's speed, not its answer.
+_Avoid_: confirmed on time (a refusal is decided too), approval speed
 
 **Time to triage**:
 How long an incident report waited from filing until it was routed to a department. It sits
