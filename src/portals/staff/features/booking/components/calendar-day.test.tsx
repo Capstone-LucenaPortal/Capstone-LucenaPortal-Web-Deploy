@@ -3,7 +3,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { CalendarDay } from "./calendar-day";
 import { buildMonthGrid, toBlocks, type DayHours } from "../lib/calendar";
 import type { DayCell } from "../lib/calendar";
-import type { CalendarBooking } from "../types";
+import type { CalendarBooking, MaintenancePeriod } from "../types";
 
 function booking(over: Partial<CalendarBooking> = {}): CalendarBooking {
   return {
@@ -42,8 +42,12 @@ const DAY_HOURS: DayHours = { openingHour: 6, closingHour: 22, minDurationHours:
 const now = new Date("2026-08-14T12:00:00+08:00");
 
 /** The real grid, so the cell under test is built the way production builds it. */
-function dayFor(date: string, bookings: CalendarBooking[] = []): DayCell {
-  return buildMonthGrid(2026, 8, toBlocks(bookings), now, DAY_HOURS)
+function dayFor(
+  date: string,
+  bookings: CalendarBooking[] = [],
+  maintenancePeriods: MaintenancePeriod[] = [],
+): DayCell {
+  return buildMonthGrid(2026, 8, toBlocks(bookings), now, DAY_HOURS, maintenancePeriods)
     .flat()
     .find((d) => d.date === date)!;
 }
@@ -191,5 +195,69 @@ describe("CalendarDay", () => {
     renderDay(dayFor("2026-08-14", [booking({ venue_code: "atrium" })]));
     expect(screen.getByText("Atrium: part-booked.")).toBeInTheDocument();
     expect(screen.getByText("Sports Arena: free.")).toBeInTheDocument();
+  });
+
+  // SCRUM-263, ADR 0012: Staff see the Space and the reason, so they can tell a
+  // Citizen why a day is closed.
+  describe("a maintenance day", () => {
+    const atriumRepair: MaintenancePeriod = {
+      id: "mp-1",
+      space: "atrium",
+      firstDay: "2026-08-13",
+      lastDay: "2026-08-15",
+      reason: "Aircon repair",
+    };
+
+    it("is marked with the Space, Under maintenance and the reason", () => {
+      renderDay(dayFor("2026-08-14", [], [atriumRepair]));
+      const marker = screen.getByText(/Under maintenance/).closest("[data-maintenance]")!;
+      expect(marker).toHaveTextContent("Atrium · Under maintenance · Aircon repair");
+    });
+
+    it("names the Space as its lane does", () => {
+      // The database labels the Arena "Arena"; inside the "Sports Arena" lane
+      // that would read as a third room.
+      renderDay(dayFor("2026-08-14", [], [{ ...atriumRepair, space: "arena", reason: "Floor refinishing" }]));
+      const marker = screen.getByText(/Under maintenance/).closest("[data-maintenance]")!;
+      expect(marker).toHaveTextContent("Sports Arena · Under maintenance · Floor refinishing");
+    });
+
+    it("tells a screen reader the lane is under maintenance, not fully booked", () => {
+      renderDay(dayFor("2026-08-14", [], [atriumRepair]));
+      expect(screen.getByText("Atrium: under maintenance.")).toBeInTheDocument();
+      expect(screen.queryByText(/fully booked/)).not.toBeInTheDocument();
+    });
+
+    it("has no actions on the marker", () => {
+      renderDay(dayFor("2026-08-14", [], [atriumRepair]));
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    });
+
+    it("still shows and links the other Space's Booking that day", () => {
+      renderDay(
+        dayFor(
+          "2026-08-14",
+          [booking({ venue_code: "sports_arena", venue_label: "Sports Arena" })],
+          [atriumRepair],
+        ),
+      );
+      const arenaLane = screen.getByText("Sports Arena").closest("div")!;
+      expect(within(arenaLane).getByRole("link")).toHaveAttribute("href", "/staff/booking/bk-1");
+      expect(within(arenaLane).queryByText(/Under maintenance/)).not.toBeInTheDocument();
+      const atriumLane = screen.getByText("Atrium").closest("div")!;
+      expect(within(atriumLane).getByText(/Under maintenance/)).toBeInTheDocument();
+    });
+
+    it("shows each reason when two periods overlap", () => {
+      renderDay(
+        dayFor("2026-08-14", [], [
+          atriumRepair,
+          { ...atriumRepair, id: "mp-2", reason: "Repainting" },
+        ]),
+      );
+      expect(screen.getAllByText(/Under maintenance/)).toHaveLength(2);
+      expect(screen.getByText(/Repainting/)).toBeInTheDocument();
+    });
   });
 });

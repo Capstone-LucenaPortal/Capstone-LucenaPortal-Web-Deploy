@@ -3,6 +3,7 @@ import {
   parseDuringRange,
   occupancyHours,
   computeDayStatus,
+  venueDayStatus,
   hasTimeConflict,
   estimateVenueFee,
   nextStageAfterSubmit,
@@ -92,6 +93,61 @@ describe('computeDayStatus', () => {
     const held = [{ startHour: 15, endHour: 23 }];
     expect(computeDayStatus(held, { ...dayHours, minDurationHours: 8, changeoverHours: 1 })).toBe('partial');
     expect(computeDayStatus(held, { ...dayHours, minDurationHours: 8, changeoverHours: 2 })).toBe('fully-booked');
+  });
+});
+
+describe('venueDayStatus', () => {
+  // SCRUM-263 (DB l125): public_venue_availability gains `kind`. A
+  // 'maintenance' row covers the whole Manila day and is listed under every
+  // Venue made of its Space, as Occupancy rows are.
+  const dayHours = { openingHour: 6, closingHour: 22, minDurationHours: 6, changeoverHours: 1 };
+  const WHOLE_DAY = '["2026-11-30 16:00:00+00","2026-12-01 16:00:00+00")';
+  const maintenance = (venue_code: string, event_date = '2026-12-01') => ({
+    venue_code,
+    event_date,
+    kind: 'maintenance' as const,
+    during: WHOLE_DAY,
+    blocked: WHOLE_DAY,
+  });
+  // 08:00–14:00 Manila, blocked to 15:00.
+  const occupancy = (venue_code: string, event_date = '2026-12-01') => ({
+    venue_code,
+    event_date,
+    kind: 'occupancy' as const,
+    during: '["2026-12-01 00:00:00+00","2026-12-01 06:00:00+00")',
+    blocked: '["2026-12-01 00:00:00+00","2026-12-01 07:00:00+00")',
+  });
+
+  it('is under maintenance whatever Occupancies are on the day', () => {
+    const rows = [occupancy('atrium'), maintenance('atrium')];
+    expect(venueDayStatus(rows, 'atrium', '2026-12-01', dayHours)).toBe('under-maintenance');
+  });
+
+  // The view lists Atrium maintenance under the Atrium and Full Facility only.
+  it('closes the Atrium and Full Facility for Atrium maintenance, not the Sports Arena', () => {
+    const rows = [maintenance('atrium'), maintenance('full_facility')];
+    expect(venueDayStatus(rows, 'atrium', '2026-12-01', dayHours)).toBe('under-maintenance');
+    expect(venueDayStatus(rows, 'full_facility', '2026-12-01', dayHours)).toBe('under-maintenance');
+    expect(venueDayStatus(rows, 'sports_arena', '2026-12-01', dayHours)).toBe('available');
+  });
+
+  // Arena rows go under the Arena, Full Facility and rehearsal (which uses the Arena).
+  it('closes the Sports Arena and Full Facility for Arena maintenance, not the Atrium', () => {
+    const rows = [maintenance('sports_arena'), maintenance('full_facility'), maintenance('rehearsal_practice')];
+    expect(venueDayStatus(rows, 'sports_arena', '2026-12-01', dayHours)).toBe('under-maintenance');
+    expect(venueDayStatus(rows, 'full_facility', '2026-12-01', dayHours)).toBe('under-maintenance');
+    expect(venueDayStatus(rows, 'atrium', '2026-12-01', dayHours)).toBe('available');
+  });
+
+  it('leaves the days either side to their Occupancies', () => {
+    const rows = [maintenance('atrium', '2026-12-01'), occupancy('atrium', '2026-12-02')];
+    expect(venueDayStatus(rows, 'atrium', '2026-11-30', dayHours)).toBe('available');
+    expect(venueDayStatus(rows, 'atrium', '2026-12-02', dayHours)).toBe('partial');
+  });
+
+  it('reads a row with no kind, from a database before l125, as an Occupancy', () => {
+    const preL125 = { ...occupancy('atrium'), kind: undefined };
+    expect(venueDayStatus([preL125], 'atrium', '2026-12-01', dayHours)).toBe('partial');
   });
 });
 

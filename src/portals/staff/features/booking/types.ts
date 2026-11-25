@@ -1,5 +1,6 @@
 import type { Database } from "@/shared/supabase/types";
 import type { DeadlineState } from "@/portals/staff/lib/deadline";
+import type { SpaceCode } from "./lib/venue-spaces";
 
 /**
  * Every one of these is a real PostgreSQL enum. Taking them from the generated
@@ -89,6 +90,22 @@ export interface BookingQueueItem {
  */
 export interface CalendarBooking extends BookingQueueItem {
   changeover_hours: number;
+}
+
+/**
+ * An active Maintenance Period, as staff_maintenance_periods gives it (DB
+ * l125, SCRUM-263): whole Manila days on one Space, first to last inclusive,
+ * with the reason the desk can tell a Citizen. Retired periods never reach the
+ * Staff view.
+ */
+export interface MaintenancePeriod {
+  id: string;
+  space: SpaceCode;
+  /** YYYY-MM-DD, Manila-local, inclusive. */
+  firstDay: string;
+  /** YYYY-MM-DD, Manila-local, inclusive. */
+  lastDay: string;
+  reason: string;
 }
 
 /** Everything the detail page adds. */

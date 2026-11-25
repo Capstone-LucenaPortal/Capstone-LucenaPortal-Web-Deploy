@@ -248,6 +248,12 @@ export function translateBookingError(
       return 'That time is no longer available. Please choose another.';
     }
 
+    case 'PT409':
+      // DB l125's bk_refuse_maintenance_overlap: the Space was put under
+      // maintenance after the calendar loaded. Its own code, so it never reads
+      // as "already booked" (23P01). The reason is never shown to Citizens.
+      return 'The venue is under maintenance on that day. Please choose another day.';
+
     case '23503':
       // FK to a catalog row that has since been deactivated.
       return 'That option is no longer available. Please pick another.';

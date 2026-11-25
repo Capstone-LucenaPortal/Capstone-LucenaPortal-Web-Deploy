@@ -9,7 +9,7 @@ import { callRpc } from "@/portals/super-staff/lib/supabase/rpc";
 import { cn } from "@/portals/super-staff/lib/utils";
 import { AddHolidayModal } from "./add-holiday-modal";
 import { DEADLINE_NOTE, HOLIDAY_KINDS } from "./calendar-copy";
-import { CatalogCard, CatalogRow, ReservedBadge, TextCell } from "./catalog-card";
+import { CatalogCard, CatalogRow, ReservedBadge, RetireCell, TextCell } from "./catalog-card";
 import { ConfigTabRail } from "./config-tab-rail";
 import { ImpactNote } from "./impact-note";
 import { useCatalogEditor } from "../hooks/use-catalog-editor";
@@ -108,34 +108,6 @@ function KindCell({
           </option>
         ))}
       </Select>
-    </td>
-  );
-}
-
-/** Retire / reactivate. There is no delete: a retired holiday stays listed. */
-function HolidayActiveCell({
-  rowKey,
-  checked,
-  onChange,
-}: {
-  rowKey: string;
-  checked: boolean;
-  onChange: (isActive: boolean) => void;
-}) {
-  return (
-    <td className="px-4 py-2">
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          aria-label={`${rowKey} active`}
-          checked={checked}
-          onChange={(e) => onChange(e.target.checked)}
-          className="h-4 w-4 accent-lucena-blue"
-        />
-        <ReservedBadge shown={!checked}>
-          <Badge variant="default">Retired</Badge>
-        </ReservedBadge>
-      </label>
     </td>
   );
 }
@@ -263,6 +235,7 @@ export function CalendarView() {
                 saving={holidays.savingKey === h.id}
                 onSave={() => void holidays.save(h.id)}
                 onRevert={() => holidays.revert(h.id)}
+                refusal={holidays.rowRefusals[h.id]}
               >
                 <td className="px-4 py-2 whitespace-nowrap font-mono text-xs">
                   {h.holidayDate}
@@ -286,7 +259,7 @@ export function CalendarView() {
                   errors={holidayErrors(h.id)}
                   onChange={(source) => holidays.update(h.id, { source })}
                 />
-                <HolidayActiveCell
+                <RetireCell
                   rowKey={h.holidayDate}
                   checked={h.isActive}
                   onChange={(isActive) => holidays.update(h.id, { isActive })}
@@ -315,6 +288,7 @@ export function CalendarView() {
                 saving={officeHours.savingKey === key}
                 onSave={() => void officeHours.save(key)}
                 onRevert={() => officeHours.revert(key)}
+                refusal={officeHours.rowRefusals[key]}
               >
                 <td className="px-4 py-2 font-medium">{d.dayName}</td>
                 <td className="px-4 py-2">

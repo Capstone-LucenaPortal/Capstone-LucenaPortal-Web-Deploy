@@ -21,8 +21,13 @@ export interface BookingFormData {
   termsAccepted: boolean;
 }
 
-/** A day's availability in the booking calendar. */
-export type DayStatus = 'available' | 'partial' | 'fully-booked';
+/**
+ * A day's availability in the booking calendar. `under-maintenance` (SCRUM-263)
+ * is the calendar's view of the Space State, not the Space State itself: it
+ * wins over the Occupancy-based three whenever any of the Venue's Spaces is in
+ * a Maintenance Period that day.
+ */
+export type DayStatus = 'available' | 'partial' | 'fully-booked' | 'under-maintenance';
 
 /** Display-only fee estimate produced by `estimateVenueFee`. */
 export interface FeeEstimate {
@@ -136,6 +141,13 @@ export interface VenueAvailability {
   event_date: string;
   /** The Event plus the Changeover its Booking recorded (DB l117). */
   blocked: string;
+  /**
+   * 'occupancy', or 'maintenance' for a day the Space is under maintenance
+   * (DB l125): its `during` and `blocked` are the whole Manila day, and it
+   * carries no reason. Missing on a database l125 hasn't reached, where every
+   * row is an Occupancy.
+   */
+  kind?: 'occupancy' | 'maintenance';
 }
 
 export interface BookingSubmissionFields {

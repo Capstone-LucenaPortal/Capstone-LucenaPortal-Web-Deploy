@@ -262,6 +262,16 @@ describe('translateBookingError', () => {
     );
   });
 
+  // SCRUM-263 (DB l125): a Maintenance Period added while the Citizen filled the form in.
+  // The trigger's refusal has its own code so it never reads as "already booked".
+  it('tells a Citizen the venue is under maintenance on that day', () => {
+    const msg = translateBookingError(
+      'bk_refuse_maintenance_overlap: the Atrium is under maintenance from 2026-12-01 to 2026-12-03; choose another day',
+      'PT409',
+    );
+    expect(msg).toBe('The venue is under maintenance on that day. Please choose another day.');
+  });
+
   it('keeps the overlap wording for a plain clash', () => {
     // With a Changeover of 0, submit_booking words it the old way.
     const msg = translateBookingError('submit_booking: atrium is already booked for that time', '23P01');

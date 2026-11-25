@@ -8,6 +8,8 @@
 // ended, password changed, password recovery requested. Citizens produce none.
 // `yellow_card` (DB l119) holds Yellow Card Revocations, written by
 // `revoke_yellow_card`.
+// `maintenance` (DB l125) holds Maintenance Periods added, edited, retired or
+// reactivated by Super Staff from the Configuration screen.
 export type AuditArea =
   | "accounts"
   | "configuration"
@@ -16,7 +18,8 @@ export type AuditArea =
   | "pii_access"
   | "calendar"
   | "auth"
-  | "yellow_card";
+  | "yellow_card"
+  | "maintenance";
 
 export type AuditEntry = {
   id: string;

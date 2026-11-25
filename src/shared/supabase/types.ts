@@ -633,6 +633,13 @@ export type Database = {
             referencedRelation: "booking_venue_spaces"
             referencedColumns: ["code"]
           },
+          {
+            foreignKeyName: "booking_occupancies_space_code_fkey"
+            columns: ["space_code"]
+            isOneToOne: false
+            referencedRelation: "super_space_states"
+            referencedColumns: ["space_code"]
+          },
         ]
       }
       booking_payments: {
@@ -825,6 +832,13 @@ export type Database = {
             referencedRelation: "super_booking_venues"
             referencedColumns: ["code"]
           },
+          {
+            foreignKeyName: "booking_venue_rates_venue_code_fkey"
+            columns: ["venue_code"]
+            isOneToOne: false
+            referencedRelation: "super_venue_states"
+            referencedColumns: ["venue_code"]
+          },
         ]
       }
       booking_venue_space_map: {
@@ -849,6 +863,13 @@ export type Database = {
             referencedColumns: ["code"]
           },
           {
+            foreignKeyName: "booking_venue_space_map_space_code_fkey"
+            columns: ["space_code"]
+            isOneToOne: false
+            referencedRelation: "super_space_states"
+            referencedColumns: ["space_code"]
+          },
+          {
             foreignKeyName: "booking_venue_space_map_venue_code_fkey"
             columns: ["venue_code"]
             isOneToOne: false
@@ -868,6 +889,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "super_booking_venues"
             referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "booking_venue_space_map_venue_code_fkey"
+            columns: ["venue_code"]
+            isOneToOne: false
+            referencedRelation: "super_venue_states"
+            referencedColumns: ["venue_code"]
           },
         ]
       }
@@ -1193,6 +1221,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "super_booking_venues"
             referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "bookings_venue_code_fkey"
+            columns: ["venue_code"]
+            isOneToOne: false
+            referencedRelation: "super_venue_states"
+            referencedColumns: ["venue_code"]
           },
         ]
       }
@@ -2014,6 +2049,102 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "super_departments"
             referencedColumns: ["code"]
+          },
+        ]
+      }
+      maintenance_periods: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          first_day: string
+          id: string
+          is_active: boolean
+          last_day: string
+          reason: string
+          space_code: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          first_day: string
+          id?: string
+          is_active?: boolean
+          last_day: string
+          reason: string
+          space_code: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          first_day?: string
+          id?: string
+          is_active?: boolean
+          last_day?: string
+          reason?: string
+          space_code?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maintenance_periods_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "my_staff_profile"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_periods_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "staff_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_periods_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "super_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_periods_space_code_fkey"
+            columns: ["space_code"]
+            isOneToOne: false
+            referencedRelation: "booking_venue_spaces"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "maintenance_periods_space_code_fkey"
+            columns: ["space_code"]
+            isOneToOne: false
+            referencedRelation: "super_space_states"
+            referencedColumns: ["space_code"]
+          },
+          {
+            foreignKeyName: "maintenance_periods_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "my_staff_profile"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_periods_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "staff_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_periods_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "super_accounts"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -3745,6 +3876,13 @@ export type Database = {
             referencedRelation: "super_booking_venues"
             referencedColumns: ["code"]
           },
+          {
+            foreignKeyName: "bookings_venue_code_fkey"
+            columns: ["venue_code"]
+            isOneToOne: false
+            referencedRelation: "super_venue_states"
+            referencedColumns: ["venue_code"]
+          },
         ]
       }
       admin_incident_analytics: {
@@ -4157,6 +4295,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "super_booking_venues"
             referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "bookings_venue_code_fkey"
+            columns: ["venue_code"]
+            isOneToOne: false
+            referencedRelation: "super_venue_states"
+            referencedColumns: ["venue_code"]
           },
         ]
       }
@@ -4847,6 +4992,13 @@ export type Database = {
             referencedRelation: "super_booking_venues"
             referencedColumns: ["code"]
           },
+          {
+            foreignKeyName: "booking_venue_rates_venue_code_fkey"
+            columns: ["venue_code"]
+            isOneToOne: false
+            referencedRelation: "super_venue_states"
+            referencedColumns: ["venue_code"]
+          },
         ]
       }
       public_booking_venues: {
@@ -5246,39 +5398,11 @@ export type Database = {
           blocked: unknown
           during: unknown
           event_date: string | null
+          kind: string | null
           space_code: string | null
           venue_code: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "booking_occupancies_space_code_fkey"
-            columns: ["space_code"]
-            isOneToOne: false
-            referencedRelation: "booking_venue_spaces"
-            referencedColumns: ["code"]
-          },
-          {
-            foreignKeyName: "booking_venue_space_map_venue_code_fkey"
-            columns: ["venue_code"]
-            isOneToOne: false
-            referencedRelation: "booking_venues"
-            referencedColumns: ["code"]
-          },
-          {
-            foreignKeyName: "booking_venue_space_map_venue_code_fkey"
-            columns: ["venue_code"]
-            isOneToOne: false
-            referencedRelation: "public_booking_venues"
-            referencedColumns: ["code"]
-          },
-          {
-            foreignKeyName: "booking_venue_space_map_venue_code_fkey"
-            columns: ["venue_code"]
-            isOneToOne: false
-            referencedRelation: "super_booking_venues"
-            referencedColumns: ["code"]
-          },
-        ]
+        Relationships: []
       }
       public_yellow_card_categories: {
         Row: {
@@ -6061,6 +6185,13 @@ export type Database = {
             referencedRelation: "super_booking_venues"
             referencedColumns: ["code"]
           },
+          {
+            foreignKeyName: "bookings_venue_code_fkey"
+            columns: ["venue_code"]
+            isOneToOne: false
+            referencedRelation: "super_venue_states"
+            referencedColumns: ["venue_code"]
+          },
         ]
       }
       staff_incident_config: {
@@ -6390,6 +6521,33 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "super_departments"
             referencedColumns: ["code"]
+          },
+        ]
+      }
+      staff_maintenance_periods: {
+        Row: {
+          first_day: string | null
+          id: string | null
+          last_day: string | null
+          reason: string | null
+          space_code: string | null
+          space_label: string | null
+          venue_codes: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maintenance_periods_space_code_fkey"
+            columns: ["space_code"]
+            isOneToOne: false
+            referencedRelation: "booking_venue_spaces"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "maintenance_periods_space_code_fkey"
+            columns: ["space_code"]
+            isOneToOne: false
+            referencedRelation: "super_space_states"
+            referencedColumns: ["space_code"]
           },
         ]
       }
@@ -7258,6 +7416,79 @@ export type Database = {
           },
         ]
       }
+      super_maintenance_periods: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          first_day: string | null
+          id: string | null
+          is_active: boolean | null
+          last_day: string | null
+          reason: string | null
+          space_code: string | null
+          space_label: string | null
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maintenance_periods_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "my_staff_profile"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_periods_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "staff_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_periods_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "super_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_periods_space_code_fkey"
+            columns: ["space_code"]
+            isOneToOne: false
+            referencedRelation: "booking_venue_spaces"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "maintenance_periods_space_code_fkey"
+            columns: ["space_code"]
+            isOneToOne: false
+            referencedRelation: "super_space_states"
+            referencedColumns: ["space_code"]
+          },
+          {
+            foreignKeyName: "maintenance_periods_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "my_staff_profile"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_periods_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "staff_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_periods_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "super_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       super_metrics: {
         Row: {
           at_risk_now: number | null
@@ -7473,6 +7704,17 @@ export type Database = {
         }
         Relationships: []
       }
+      super_space_states: {
+        Row: {
+          maintenance_last_day: string | null
+          maintenance_period_id: string | null
+          maintenance_reason: string | null
+          space_code: string | null
+          space_label: string | null
+          state: string | null
+        }
+        Relationships: []
+      }
       super_system_health_samples: {
         Row: {
           accounts_status:
@@ -7605,6 +7847,16 @@ export type Database = {
         }
         Relationships: []
       }
+      super_venue_states: {
+        Row: {
+          is_active: boolean | null
+          space_codes: string[] | null
+          state: string | null
+          venue_code: string | null
+          venue_label: string | null
+        }
+        Relationships: []
+      }
       super_yellow_card_config: {
         Row: {
           at_risk_threshold_pct: number | null
@@ -7694,6 +7946,32 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      add_maintenance_period: {
+        Args: {
+          p_first_day: string
+          p_last_day: string
+          p_reason: string
+          p_space_code: string
+        }
+        Returns: {
+          created_at: string
+          created_by: string | null
+          first_day: string
+          id: string
+          is_active: boolean
+          last_day: string
+          reason: string
+          space_code: string
+          updated_at: string
+          updated_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "maintenance_periods"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       admin_booking_deadline_state: {
         Args: {
           p_confirmation_due_at: string
@@ -7737,6 +8015,19 @@ export type Database = {
         }
       }
       anonymise_citizen: { Args: { p_citizen_id: string }; Returns: undefined }
+      backfill_booking_clocks: { Args: never; Returns: number }
+      booking_clock_replay: {
+        Args: { p_booking_id: string }
+        Returns: {
+          replay_due_at: string
+          replay_elapsed_seconds: number
+          replay_refusal: string
+          replay_scoreable: boolean
+          replay_started_at: string
+          replay_stopped_at: string
+          replay_target_hours: number
+        }[]
+      }
       booking_deadline_state: {
         Args: {
           p_confirmation_due_at: string
@@ -7770,6 +8061,10 @@ export type Database = {
         Args: { p_status: Database["public"]["Enums"]["booking_status"] }
         Returns: boolean
       }
+      booking_is_organisers_turn: {
+        Args: { p_status: Database["public"]["Enums"]["booking_status"] }
+        Returns: boolean
+      }
       booking_money: {
         Args: { p_total_fee: number }
         Returns: {
@@ -7789,6 +8084,15 @@ export type Database = {
           requires_quote: boolean
           total_fee: number
         }[]
+      }
+      booking_recomputed_due_at: {
+        Args: {
+          p_sla_clock_started_at: string
+          p_sla_elapsed_seconds: number
+          p_sla_target_hours: number
+          p_status: Database["public"]["Enums"]["booking_status"]
+        }
+        Returns: string
       }
       booking_status_holds_dates: {
         Args: { p_status: Database["public"]["Enums"]["booking_status"] }
@@ -8303,6 +8607,10 @@ export type Database = {
       log_staff_authenticator_reset: {
         Args: { p_id: string }
         Returns: undefined
+      }
+      maintenance_days_range: {
+        Args: { p_first_day: string; p_last_day: string }
+        Returns: unknown
       }
       mark_contact_message_handled: {
         Args: { p_id: string; p_status: string }
@@ -9617,6 +9925,32 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      update_maintenance_period: {
+        Args: {
+          p_id: string
+          p_is_active: boolean
+          p_last_day: string
+          p_reason: string
+        }
+        Returns: {
+          created_at: string
+          created_by: string | null
+          first_day: string
+          id: string
+          is_active: boolean
+          last_day: string
+          reason: string
+          space_code: string
+          updated_at: string
+          updated_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "maintenance_periods"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       update_officer_of_record: {
         Args: {
           p_designation: string
@@ -10017,6 +10351,7 @@ export type Database = {
         | "calendar"
         | "auth"
         | "yellow_card"
+        | "maintenance"
       audit_target_kind:
         | "staff_account"
         | "citizen"
@@ -10031,6 +10366,7 @@ export type Database = {
         | "booking"
         | "calendar_entry"
         | "yellow_card"
+        | "maintenance_period"
       booking_cancellation_reason:
         | "rejected_by_staff"
         | "cancelled_by_citizen"
@@ -10247,6 +10583,7 @@ export const Constants = {
         "calendar",
         "auth",
         "yellow_card",
+        "maintenance",
       ],
       audit_target_kind: [
         "staff_account",
@@ -10262,6 +10599,7 @@ export const Constants = {
         "booking",
         "calendar_entry",
         "yellow_card",
+        "maintenance_period",
       ],
       booking_cancellation_reason: [
         "rejected_by_staff",

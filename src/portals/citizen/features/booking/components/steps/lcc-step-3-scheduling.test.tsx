@@ -197,3 +197,48 @@ describe('LCCStep3Scheduling and the Changeover', () => {
     expect(review()).toBeDisabled();
   });
 });
+
+/** SCRUM-263: a day the Venue's Space is under maintenance. */
+describe('LCCStep3Scheduling and maintenance', () => {
+  /** Tomorrow under maintenance, listed under each of `venueCodes` as the view does. */
+  function maintenanceTomorrow(venueCodes: string[], spaceCode = 'atrium') {
+    const day = tomorrowAt(0).slice(0, 10);
+    return venueCodes.map((venue_code) => ({
+      venue_code,
+      space_code: spaceCode,
+      event_date: day,
+      kind: 'maintenance' as const,
+      during: `["${tomorrowAt(0)}","${day}T24:00:00+08")`,
+      blocked: `["${tomorrowAt(0)}","${day}T24:00:00+08")`,
+    }));
+  }
+
+  const tomorrowLabel = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
+  };
+
+  it('shows the day as Under maintenance, with a legend entry, and offers no start time', async () => {
+    vi.spyOn(bookingService, 'getVenueAvailability').mockResolvedValue(maintenanceTomorrow(['atrium', 'full_facility']));
+    render(<Harness venueCode="full_facility" />);
+
+    expect(await screen.findByText(/under maintenance on this day/i)).toBeInTheDocument();
+    expect(screen.getByText('Under maintenance')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: `${tomorrowLabel()}, under maintenance` })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(screen.queryByLabelText('Start Time')).not.toBeInTheDocument();
+    expect(review()).toBeDisabled();
+  });
+
+  it("leaves the Sports Arena's calendar open for Atrium maintenance", async () => {
+    vi.spyOn(bookingService, 'getVenueAvailability').mockResolvedValue(maintenanceTomorrow(['atrium', 'full_facility']));
+    const start = await renderStep('sports_arena');
+
+    expect(screen.queryByText(/under maintenance on this day/i)).not.toBeInTheDocument();
+    fireEvent.change(start, { target: { value: '08:00' } });
+    expect(review()).toBeEnabled();
+  });
+});

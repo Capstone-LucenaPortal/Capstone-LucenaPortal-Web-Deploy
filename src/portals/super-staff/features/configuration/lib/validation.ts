@@ -1,4 +1,5 @@
 import type { NewHoliday } from "./calendar-types";
+import type { MaintenancePeriod, NewMaintenancePeriod } from "./maintenance-types";
 import type { BookingConfig, IncidentsConfig, YellowCardConfig } from "../types";
 
 export type ConfigErrors = Record<string, string>;
@@ -183,6 +184,35 @@ export function validateHoliday(h: { name: string; source: string }): ConfigErro
 export function validateNewHoliday(h: NewHoliday): ConfigErrors {
   const errors = validateHoliday(h);
   if (!h.holidayDate) errors.holidayDate = "Pick a date.";
+  return errors;
+}
+
+/**
+ * The maintenance writers' checks that need no clock: a reason of 1–500
+ * characters after trimming (JS trim also strips the tabs, CR and LF the l85
+ * rule does), and a last day not before the first. Whether a day is in the
+ * past is left to the RPCs, which read Manila today themselves; a second copy
+ * of that rule here could only disagree with the real one near midnight.
+ */
+export function validateMaintenancePeriod(
+  p: Pick<MaintenancePeriod, "firstDay" | "lastDay" | "reason">,
+): ConfigErrors {
+  const errors: ConfigErrors = {};
+  const reason = p.reason.trim();
+  if (!reason) errors.reason = "Enter a reason.";
+  else if (reason.length > 500) errors.reason = "At most 500 characters.";
+  // ISO dates compare correctly as strings.
+  if (!p.lastDay) errors.lastDay = "Pick the last day.";
+  else if (p.firstDay && p.lastDay < p.firstDay)
+    errors.lastDay = "The last day can't be before the first day.";
+  return errors;
+}
+
+/** An add also carries the Space and the first day — the fields an edit cannot change. */
+export function validateNewMaintenancePeriod(p: NewMaintenancePeriod): ConfigErrors {
+  const errors = validateMaintenancePeriod(p);
+  if (!p.spaceCode) errors.spaceCode = "Pick a Space.";
+  if (!p.firstDay) errors.firstDay = "Pick the first day.";
   return errors;
 }
 

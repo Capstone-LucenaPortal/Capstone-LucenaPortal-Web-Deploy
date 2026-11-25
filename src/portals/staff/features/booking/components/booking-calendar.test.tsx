@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { BookingCalendar } from "./booking-calendar";
 import { buildMonthGrid, toBlocks, type DayHours } from "../lib/calendar";
-import type { CalendarBooking } from "../types";
+import type { CalendarBooking, MaintenancePeriod } from "../types";
 
 function booking(over: Partial<CalendarBooking> = {}): CalendarBooking {
   return {
@@ -40,14 +40,19 @@ const DAY_HOURS: DayHours = { openingHour: 6, closingHour: 22, minDurationHours:
 
 const now = new Date("2026-08-14T12:00:00+08:00");
 
-function renderCalendar(bookings: CalendarBooking[] = [], year = 2026, month = 8) {
+function renderCalendar(
+  bookings: CalendarBooking[] = [],
+  year = 2026,
+  month = 8,
+  maintenancePeriods: MaintenancePeriod[] = [],
+) {
   cleanup();
   const blocks = toBlocks(bookings);
   return render(
     <BookingCalendar
       year={year}
       month={month}
-      grid={buildMonthGrid(year, month, blocks, now, DAY_HOURS)}
+      grid={buildMonthGrid(year, month, blocks, now, DAY_HOURS, maintenancePeriods)}
       unplaced={blocks.filter((b) => b.space === null)}
       todayHref="/staff/booking?view=calendar&month=2026-08"
     />,
@@ -99,6 +104,28 @@ describe("BookingCalendar", () => {
     expect(
       screen.queryByText(/Both spaces are clear all month/),
     ).not.toBeInTheDocument();
+  });
+
+  // SCRUM-263: a month with no Bookings but a closed Space is not clear.
+  it("says nothing is booked, but not that the spaces are clear, when one is under maintenance", () => {
+    renderCalendar([], 2026, 8, [
+      {
+        id: "mp-1",
+        space: "arena",
+        firstDay: "2026-08-10",
+        lastDay: "2026-08-12",
+        reason: "Floor refinishing",
+      },
+    ]);
+    expect(screen.getByText(/Nothing is booked at the Convention Center/)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Both spaces are clear all month/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("names under maintenance as its own lane status in the legend", () => {
+    renderCalendar();
+    expect(screen.getByText(/^under maintenance/)).toBeInTheDocument();
   });
 
   it("explains the both-spaces marker in the legend", () => {

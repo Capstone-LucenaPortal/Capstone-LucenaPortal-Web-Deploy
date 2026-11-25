@@ -5,8 +5,8 @@ import type { BookingFormData, DayStatus } from '@/portals/citizen/features/book
 import {
   toDateStr,
   formatHour,
-  occupancyHours,
-  computeDayStatus,
+  occupiedRangesOn,
+  venueDayStatus,
   hasTimeConflict,
   changeoverClashMessage,
   type HourRange,
@@ -59,25 +59,21 @@ export default function LCCStep3Scheduling({ bookingData, onUpdate, onNext, onBa
   // read and takes the database's default, as the opening window does.
   const changeoverHours = config?.changeover_hours ?? 1;
 
-  // Each row is one Space's Occupancy, listed under every Venue that uses that
-  // Space, so filtering on the Venue brings in the Atrium's and the Arena's for
-  // Full Facility, and the Arena's for rehearsal. Each runs to its blocked end.
   function occupiedRangesFor(date: Date): HourRange[] {
-    const ds = toDateStr(date);
-    return availability
-      .filter((row) => row.venue_code === venueCode && row.event_date === ds)
-      .map(occupancyHours)
-      .filter((r): r is HourRange => r !== null);
+    return occupiedRangesOn(availability, venueCode, toDateStr(date));
   }
 
   function getDayStatus(date: Date): DayStatus {
-    return computeDayStatus(occupiedRangesFor(date), {
+    return venueDayStatus(availability, venueCode, toDateStr(date), {
       openingHour,
       closingHour,
       minDurationHours: minDuration,
       changeoverHours,
     });
   }
+
+  // No start can be picked on a day that is full or under maintenance.
+  const isClosed = (status: DayStatus) => status === 'fully-booked' || status === 'under-maintenance';
 
   function getCalendarDays(): (Date | null)[] {
     const firstDay = new Date(viewYear, viewMonth, 1).getDay();
@@ -108,7 +104,7 @@ export default function LCCStep3Scheduling({ bookingData, onUpdate, onNext, onBa
   function selectDay(day: Date | null) {
     if (!day) return;
     const isPast = day < today;
-    if (isPast || getDayStatus(day) === 'fully-booked') return;
+    if (isPast || isClosed(getDayStatus(day))) return;
     onUpdate({ selectedDate: day, startTime: '', durationHours: minDuration });
   }
 
@@ -125,12 +121,16 @@ export default function LCCStep3Scheduling({ bookingData, onUpdate, onNext, onBa
   const endHour = startHour !== null ? startHour + Number(durationHours) : null;
   const startHourCandidates = Array.from({ length: Math.max(0, closingHour - openingHour) }, (_, i) => i + openingHour);
   const validStartHours = startHourCandidates.filter((h) => h + Number(durationHours) <= closingHour);
+  // A day picked earlier can be closed since: the availability reloads each
+  // time this step mounts, so a Maintenance Period added meanwhile shows here.
+  const selectedUnderMaintenance = !!selectedDate && getDayStatus(selectedDate as Date) === 'under-maintenance';
   const conflict =
     selectedDate && startHour !== null
       ? hasTimeConflict(occupiedRangesFor(selectedDate as Date), startHour, Number(durationHours), changeoverHours)
       : false;
   const canProceed =
     !!selectedDate &&
+    !selectedUnderMaintenance &&
     !!startTime &&
     Number(durationHours) >= minDuration &&
     endHour !== null &&
@@ -173,11 +173,12 @@ export default function LCCStep3Scheduling({ bookingData, onUpdate, onNext, onBa
 
       <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 32 }}>
         <div style={{ maxWidth: 420 }}>
-          <div style={{ display: 'flex', gap: 16, marginBottom: 16, fontSize: 11 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginBottom: 16, fontSize: 11 }}>
             {[
               { color: '#fff', border: '#ddd', label: 'Available' },
               { color: '#fef3c7', border: '#d97706', label: 'Partial' },
               { color: '#fee2e2', border: '#dc2626', label: 'Full' },
+              { color: '#ede9fe', border: '#7c3aed', label: 'Under maintenance' },
             ].map((s) => (
               <span key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <span
@@ -219,6 +220,11 @@ export default function LCCStep3Scheduling({ bookingData, onUpdate, onNext, onBa
                 border = '#dc2626';
                 color = '#9ca3af';
                 cursor = 'not-allowed';
+              } else if (status === 'under-maintenance') {
+                bg = '#ede9fe';
+                border = '#7c3aed';
+                color = '#9ca3af';
+                cursor = 'not-allowed';
               } else if (status === 'partial') {
                 bg = '#fef3c7';
                 border = '#d97706';
@@ -228,12 +234,14 @@ export default function LCCStep3Scheduling({ bookingData, onUpdate, onNext, onBa
                 border = '#003DA5';
                 color = '#fff';
               }
-              const isSelectable = !isPast && status !== 'fully-booked';
+              const isSelectable = !isPast && !isClosed(status);
+              const dateLabel = day.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
               return (
                 <div
                   key={toDateStr(day)}
                   role="button"
-                  aria-label={day.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}
+                  aria-label={!isPast && status === 'under-maintenance' ? `${dateLabel}, under maintenance` : dateLabel}
+                  title={!isPast && status === 'under-maintenance' ? 'Under maintenance' : undefined}
                   aria-disabled={!isSelectable}
                   tabIndex={isSelectable ? 0 : -1}
                   onClick={() => selectDay(day)}
@@ -272,86 +280,94 @@ export default function LCCStep3Scheduling({ bookingData, onUpdate, onNext, onBa
                   year: 'numeric',
                 })}
               </h4>
-              {changeoverHours > 0 && (
-                <p className="text-xs text-[#666666]" style={{ margin: '0 0 16px' }}>
-                  Events need {changeoverHours} hour(s) between them for the venue to be reset.
+              {selectedUnderMaintenance ? (
+                <p style={{ fontSize: 13, color: '#5B21B6', fontWeight: 600, margin: 0 }}>
+                  The venue is under maintenance on this day. Please choose another day.
                 </p>
-              )}
-              <div style={{ marginBottom: 20 }}>
-                <label htmlFor="booking-start-time" className="block text-sm font-semibold text-[#333333]" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
-                  Start Time
-                </label>
-                <select
-                  id="booking-start-time"
-                  className="w-full bg-white border border-[#CCCCCC] rounded text-[15px] text-[#333333] font-sans transition-all focus:outline-none focus:border-[#003DA5]"
-                  style={{ padding: '12px 16px' }}
-                  value={startTime}
-                  onChange={(e) => onUpdate({ startTime: e.target.value })}
-                >
-                  <option value="">Select...</option>
-                  {validStartHours.map((h) => (
-                    <option key={h} value={`${String(h).padStart(2, '0')}:00`}>
-                      {formatHour(h)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div style={{ marginBottom: 20 }}>
-                <label className="block text-sm font-semibold text-[#333333]" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
-                  Duration (min {minDuration}h)
-                </label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <button
-                    type="button"
-                    onClick={() => onUpdate({ durationHours: Math.max(minDuration, Number(durationHours) - 1) })}
-                    disabled={Number(durationHours) <= minDuration}
-                    style={{
-                      width: 36, height: 36, borderRadius: 4, border: '1px solid #CCCCCC',
-                      background: Number(durationHours) <= minDuration ? '#F5F5F5' : 'white',
-                      color: Number(durationHours) <= minDuration ? '#CCCCCC' : '#333333',
-                      cursor: Number(durationHours) <= minDuration ? 'not-allowed' : 'pointer',
-                      fontSize: 20, fontWeight: 700, lineHeight: 1, flexShrink: 0,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}
+              ) : (
+                <>
+                {changeoverHours > 0 && (
+                  <p className="text-xs text-[#666666]" style={{ margin: '0 0 16px' }}>
+                    Events need {changeoverHours} hour(s) between them for the venue to be reset.
+                  </p>
+                )}
+                <div style={{ marginBottom: 20 }}>
+                  <label htmlFor="booking-start-time" className="block text-sm font-semibold text-[#333333]" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+                    Start Time
+                  </label>
+                  <select
+                    id="booking-start-time"
+                    className="w-full bg-white border border-[#CCCCCC] rounded text-[15px] text-[#333333] font-sans transition-all focus:outline-none focus:border-[#003DA5]"
+                    style={{ padding: '12px 16px' }}
+                    value={startTime}
+                    onChange={(e) => onUpdate({ startTime: e.target.value })}
                   >
-                    −
-                  </button>
-                  <span style={{ fontSize: 18, fontWeight: 700, minWidth: 40, textAlign: 'center', color: '#333333' }}>
-                    {durationHours}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={increaseDuration}
-                    disabled={Number(durationHours) >= MAX_DURATION_HOURS}
-                    style={{
-                      width: 36, height: 36, borderRadius: 4, border: '1px solid #CCCCCC',
-                      background: Number(durationHours) >= MAX_DURATION_HOURS ? '#F5F5F5' : 'white',
-                      color: Number(durationHours) >= MAX_DURATION_HOURS ? '#CCCCCC' : '#333333',
-                      cursor: Number(durationHours) >= MAX_DURATION_HOURS ? 'not-allowed' : 'pointer',
-                      fontSize: 20, fontWeight: 700, lineHeight: 1, flexShrink: 0,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}
-                  >
-                    +
-                  </button>
-                  <span style={{ fontSize: 12, color: '#666666', whiteSpace: 'nowrap' }}>hours total</span>
+                    <option value="">Select...</option>
+                    {validStartHours.map((h) => (
+                      <option key={h} value={`${String(h).padStart(2, '0')}:00`}>
+                        {formatHour(h)}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              </div>
-              {startTime && endHour && (
-                <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid #E2E8F0' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 8 }}>
-                    <span style={{ color: '#666666' }}>End Time:</span>
-                    <span style={{ fontWeight: 700 }}>{formatHour(endHour)}</span>
+                <div style={{ marginBottom: 20 }}>
+                  <label className="block text-sm font-semibold text-[#333333]" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+                    Duration (min {minDuration}h)
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <button
+                      type="button"
+                      onClick={() => onUpdate({ durationHours: Math.max(minDuration, Number(durationHours) - 1) })}
+                      disabled={Number(durationHours) <= minDuration}
+                      style={{
+                        width: 36, height: 36, borderRadius: 4, border: '1px solid #CCCCCC',
+                        background: Number(durationHours) <= minDuration ? '#F5F5F5' : 'white',
+                        color: Number(durationHours) <= minDuration ? '#CCCCCC' : '#333333',
+                        cursor: Number(durationHours) <= minDuration ? 'not-allowed' : 'pointer',
+                        fontSize: 20, fontWeight: 700, lineHeight: 1, flexShrink: 0,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      −
+                    </button>
+                    <span style={{ fontSize: 18, fontWeight: 700, minWidth: 40, textAlign: 'center', color: '#333333' }}>
+                      {durationHours}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={increaseDuration}
+                      disabled={Number(durationHours) >= MAX_DURATION_HOURS}
+                      style={{
+                        width: 36, height: 36, borderRadius: 4, border: '1px solid #CCCCCC',
+                        background: Number(durationHours) >= MAX_DURATION_HOURS ? '#F5F5F5' : 'white',
+                        color: Number(durationHours) >= MAX_DURATION_HOURS ? '#CCCCCC' : '#333333',
+                        cursor: Number(durationHours) >= MAX_DURATION_HOURS ? 'not-allowed' : 'pointer',
+                        fontSize: 20, fontWeight: 700, lineHeight: 1, flexShrink: 0,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      +
+                    </button>
+                    <span style={{ fontSize: 12, color: '#666666', whiteSpace: 'nowrap' }}>hours total</span>
                   </div>
-                  {conflict && (
-                    <div style={{ fontSize: 12, color: '#991B1B', fontWeight: 600, marginTop: 8 }}>
-                      ⚠️{' '}
-                      {changeoverHours > 0
-                        ? changeoverClashMessage(changeoverHours)
-                        : 'This time overlaps an existing booking. Please choose a different start time.'}
-                    </div>
-                  )}
                 </div>
+                {startTime && endHour && (
+                  <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid #E2E8F0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 8 }}>
+                      <span style={{ color: '#666666' }}>End Time:</span>
+                      <span style={{ fontWeight: 700 }}>{formatHour(endHour)}</span>
+                    </div>
+                    {conflict && (
+                      <div style={{ fontSize: 12, color: '#991B1B', fontWeight: 600, marginTop: 8 }}>
+                        ⚠️{' '}
+                        {changeoverHours > 0
+                          ? changeoverClashMessage(changeoverHours)
+                          : 'This time overlaps an existing booking. Please choose a different start time.'}
+                      </div>
+                    )}
+                  </div>
+                )}
+                </>
               )}
             </div>
           ) : (

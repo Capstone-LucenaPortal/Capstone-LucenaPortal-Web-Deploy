@@ -9,7 +9,7 @@ import {
   toBlocks,
   type DayHours,
 } from "./calendar";
-import type { CalendarBooking } from "../types";
+import type { CalendarBooking, MaintenancePeriod } from "../types";
 
 /** The stored settings: a 6–22 window, a 6-hour minimum, a 1-hour Changeover. */
 const DAY_HOURS: DayHours = { openingHour: 6, closingHour: 22, minDurationHours: 6, changeoverHours: 1 };
@@ -260,7 +260,7 @@ describe("monthGridBounds", () => {
 
   /** The grid's own first and last day, read off the grid rather than restated. */
   function gridEdges(year: number, month: number) {
-    const grid = buildMonthGrid(year, month, [], now, DAY_HOURS);
+    const grid = buildMonthGrid(year, month, [], now, DAY_HOURS, []);
     return {
       from: grid[0][0].date,
       to: grid[grid.length - 1][6].date,
@@ -294,7 +294,7 @@ describe("monthGridBounds", () => {
    * only then asks whether the range covers it.
    */
   function expectPaddedDayCovered(year: number, month: number, date: string) {
-    const grid = buildMonthGrid(year, month, toBlocks([booking({ event_date: date })]), now, DAY_HOURS);
+    const grid = buildMonthGrid(year, month, toBlocks([booking({ event_date: date })]), now, DAY_HOURS, []);
     const day = grid.flat().find((d) => d.date === date);
 
     expect(day).toBeDefined();
@@ -322,7 +322,7 @@ describe("monthGridBounds", () => {
     // range would break, wherever the padding happens to land.
     for (const [year, month] of MONTHS) {
       const { from, to } = monthGridBounds(year, month);
-      for (const day of buildMonthGrid(year, month, [], now, DAY_HOURS).flat()) {
+      for (const day of buildMonthGrid(year, month, [], now, DAY_HOURS, []).flat()) {
         expect(from <= day.date && day.date <= to).toBe(true);
       }
     }
@@ -366,7 +366,7 @@ describe("buildMonthGrid", () => {
 
   it("returns whole weeks, Sunday-first, padded from adjacent months", () => {
     // ⚠️ 1-indexed month: 8 is August. August 2026 starts on a Saturday.
-    const grid = buildMonthGrid(2026, 8, [], now, DAY_HOURS);
+    const grid = buildMonthGrid(2026, 8, [], now, DAY_HOURS, []);
     expect(grid.every((week) => week.length === 7)).toBe(true);
     expect(grid[0][0].date).toBe("2026-07-26");
     expect(grid[0][6].date).toBe("2026-08-01");
@@ -375,7 +375,7 @@ describe("buildMonthGrid", () => {
   });
 
   it("ends on a padded Saturday", () => {
-    const grid = buildMonthGrid(2026, 8, [], now, DAY_HOURS);
+    const grid = buildMonthGrid(2026, 8, [], now, DAY_HOURS, []);
     const last = grid[grid.length - 1][6];
     expect(last.inMonth).toBe(false);
     expect(last.date).toBe("2026-09-05");
@@ -384,12 +384,12 @@ describe("buildMonthGrid", () => {
   it("marks today, in Manila", () => {
     // A staff member in Lucena at 08:00 on the 12th must not see the 11th
     // highlighted because the server is on UTC.
-    const grid = buildMonthGrid(2026, 8, [], new Date("2026-08-12T00:30:00+08:00"), DAY_HOURS);
+    const grid = buildMonthGrid(2026, 8, [], new Date("2026-08-12T00:30:00+08:00"), DAY_HOURS, []);
     expect(grid.flat().find((d) => d.isToday)?.date).toBe("2026-08-12");
   });
 
   it("marks no day as today when the month is not the current one", () => {
-    const grid = buildMonthGrid(2027, 3, [], now, DAY_HOURS);
+    const grid = buildMonthGrid(2027, 3, [], now, DAY_HOURS, []);
     expect(grid.flat().some((d) => d.isToday)).toBe(false);
   });
 
@@ -400,6 +400,7 @@ describe("buildMonthGrid", () => {
       toBlocks([booking({ event_date: "2026-08-14" })]),
       now,
       DAY_HOURS,
+      [],
     );
     const days = grid.flat().filter((d) => d.blocks.length > 0);
     expect(days).toHaveLength(1);
@@ -413,6 +414,7 @@ describe("buildMonthGrid", () => {
       toBlocks([booking({ venue_code: "full_facility", event_date: "2026-08-14" })]),
       now,
       DAY_HOURS,
+      [],
     );
     const day = grid.flat().find((d) => d.date === "2026-08-14")!;
     expect(day.blocks).toHaveLength(2);
@@ -429,6 +431,7 @@ describe("buildMonthGrid", () => {
       ]),
       now,
       DAY_HOURS,
+      [],
     );
     const day = grid.flat().find((d) => d.date === "2026-08-14")!;
     expect(day.statusBySpace.atrium).toBe("partial");
@@ -440,7 +443,7 @@ describe("buildMonthGrid", () => {
   describe("counting Changeovers in the day status", () => {
     const date = "2026-08-14";
     const statusOf = (bookings: CalendarBooking[], dayHours: Parameters<typeof buildMonthGrid>[4]) =>
-      buildMonthGrid(2026, 8, toBlocks(bookings), now, dayHours)
+      buildMonthGrid(2026, 8, toBlocks(bookings), now, dayHours, [])
         .flat()
         .find((d) => d.date === date)!.statusBySpace;
 
@@ -486,6 +489,7 @@ describe("buildMonthGrid", () => {
       toBlocks([booking({ event_date: "2026-08-14", venue_code: "rooftop_garden" })]),
       now,
       DAY_HOURS,
+      [],
     );
     const day = grid.flat().find((d) => d.date === "2026-08-14")!;
     expect(day.statusBySpace.atrium).toBe("available");
@@ -502,9 +506,104 @@ describe("buildMonthGrid", () => {
       toBlocks([booking({ event_date: "2026-07-28" })]),
       now,
       DAY_HOURS,
+      [],
     );
     const day = grid.flat().find((d) => d.date === "2026-07-28")!;
     expect(day.inMonth).toBe(false);
+    expect(day.blocks).toHaveLength(1);
+  });
+});
+
+// SCRUM-263: a Maintenance Period closes a Space for whole days. The Staff
+// calendar marks those days with the Space and the reason (ADR 0012).
+describe("buildMonthGrid with Maintenance Periods", () => {
+  const now = new Date("2026-08-14T12:00:00+08:00");
+
+  function period(over: Partial<MaintenancePeriod> = {}): MaintenancePeriod {
+    return {
+      id: "mp-1",
+      space: "atrium",
+      firstDay: "2026-08-14",
+      lastDay: "2026-08-14",
+      reason: "Aircon repair",
+      ...over,
+    };
+  }
+
+  const dayOf = (grid: ReturnType<typeof buildMonthGrid>, date: string) =>
+    grid.flat().find((d) => d.date === date)!;
+
+  it("marks only the maintained Space's lane, and leaves the other Space's Bookings on it", () => {
+    const grid = buildMonthGrid(
+      2026,
+      8,
+      toBlocks([booking({ event_date: "2026-08-14", venue_code: "sports_arena", venue_label: "Sports Arena" })]),
+      now,
+      DAY_HOURS,
+      [period()],
+    );
+    const day = dayOf(grid, "2026-08-14");
+
+    expect(day.statusBySpace).toEqual({ atrium: "under-maintenance", arena: "partial" });
+    expect(day.maintenancePeriodsBySpace.atrium.map((p) => p.reason)).toEqual(["Aircon repair"]);
+    expect(day.maintenancePeriodsBySpace.arena).toEqual([]);
+    expect(day.blocks.map((b) => b.space)).toEqual(["arena"]);
+  });
+
+  it("marks every day from the first to the last, both included, and no others", () => {
+    const grid = buildMonthGrid(2026, 8, [], now, DAY_HOURS, [
+      period({ firstDay: "2026-08-10", lastDay: "2026-08-12" }),
+    ]);
+    const closed = grid
+      .flat()
+      .filter((d) => d.statusBySpace.atrium === "under-maintenance")
+      .map((d) => d.date);
+
+    expect(closed).toEqual(["2026-08-10", "2026-08-11", "2026-08-12"]);
+  });
+
+  it("marks a padded day from an adjacent month", () => {
+    // The August grid draws from 2026-07-26. A closed day there is as real as
+    // a Booking there.
+    const grid = buildMonthGrid(2026, 8, [], now, DAY_HOURS, [
+      period({ space: "arena", firstDay: "2026-07-27", lastDay: "2026-07-27" }),
+    ]);
+    const day = dayOf(grid, "2026-07-27");
+
+    expect(day.inMonth).toBe(false);
+    expect(day.statusBySpace.arena).toBe("under-maintenance");
+  });
+
+  it("lists both of two overlapping periods on one Space", () => {
+    // l125 allows them; the desk should see both reasons, not whichever came first.
+    const grid = buildMonthGrid(2026, 8, [], now, DAY_HOURS, [
+      period({ id: "mp-1", firstDay: "2026-08-10", lastDay: "2026-08-14", reason: "Aircon repair" }),
+      period({ id: "mp-2", firstDay: "2026-08-14", lastDay: "2026-08-16", reason: "Repainting" }),
+    ]);
+
+    expect(dayOf(grid, "2026-08-14").maintenancePeriodsBySpace.atrium.map((p) => p.reason)).toEqual([
+      "Aircon repair",
+      "Repainting",
+    ]);
+    expect(dayOf(grid, "2026-08-15").maintenancePeriodsBySpace.atrium.map((p) => p.reason)).toEqual([
+      "Repainting",
+    ]);
+  });
+
+  it("says under maintenance, not fully booked, even if a Booking somehow sits on the day", () => {
+    // The l125 trigger refuses such an Occupancy, so this is a defence: the
+    // Booking stays visible, and the lane still says why the day is closed.
+    const grid = buildMonthGrid(
+      2026,
+      8,
+      toBlocks([booking({ event_date: "2026-08-14", start_time: "06:00:00", duration_hours: 16 })]),
+      now,
+      DAY_HOURS,
+      [period()],
+    );
+    const day = dayOf(grid, "2026-08-14");
+
+    expect(day.statusBySpace.atrium).toBe("under-maintenance");
     expect(day.blocks).toHaveLength(1);
   });
 });

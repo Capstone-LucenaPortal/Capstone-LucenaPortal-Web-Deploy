@@ -12,10 +12,11 @@ import {
   getBookingCalendar,
   getBookingQueue,
   getBookingStatusCounts,
+  getMaintenancePeriods,
   readNeedsActionCount,
 } from "./queries";
 import { NEEDS_ACTION } from "./queue-params";
-import type { StaffBookingQueueRow } from "./row-mapper";
+import type { StaffBookingQueueRow, StaffMaintenancePeriodRow } from "./row-mapper";
 import type { BookingStatus } from "../types";
 
 /**
@@ -727,5 +728,127 @@ describe("getBookingCalendar", () => {
     await expect(
       getBookingCalendar(SEPTEMBER.from, SEPTEMBER.to, createTestClient(fetch)),
     ).rejects.toThrow(/staff_bookings calendar read failed: permission denied/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Maintenance read (SCRUM-263)
+// ---------------------------------------------------------------------------
+
+const CANNED_MAINTENANCE_ROW: StaffMaintenancePeriodRow = {
+  id: "22222222-2222-4222-8222-222222222222",
+  space_code: "atrium",
+  first_day: "2026-08-28",
+  last_day: "2026-09-02",
+  reason: "Aircon repair",
+};
+
+describe("getMaintenancePeriods", () => {
+  it("reads the Staff maintenance view, which carries the reason", async () => {
+    const { fetch, requests } = createRecordingFetch([CANNED_MAINTENANCE_ROW]);
+
+    await getMaintenancePeriods(SEPTEMBER.from, SEPTEMBER.to, createTestClient(fetch));
+
+    expect(requests).toHaveLength(1);
+    expect(parseQueryParams(requests[0].url).table).toBe("staff_maintenance_periods");
+  });
+
+  /**
+   * Exactly these, verified against the Sandbox view on 2026-11-25. Not
+   * space_label: the marker takes the lane's label, because the database calls
+   * the Arena "Arena" and the lane says "Sports Arena".
+   */
+  it("selects the period's Space, days and reason, and nothing else", async () => {
+    const { fetch, requests } = createRecordingFetch([CANNED_MAINTENANCE_ROW]);
+
+    await getMaintenancePeriods(SEPTEMBER.from, SEPTEMBER.to, createTestClient(fetch));
+
+    expect(columnsOf(parseQueryParams(requests[0].url))).toEqual([
+      "id",
+      "space_code",
+      "first_day",
+      "last_day",
+      "reason",
+    ]);
+  });
+
+  it("orders the periods by first day, so overlapping ones list in the order they began", async () => {
+    const { fetch, requests } = createRecordingFetch([CANNED_MAINTENANCE_ROW]);
+
+    await getMaintenancePeriods(SEPTEMBER.from, SEPTEMBER.to, createTestClient(fetch));
+
+    expect(parseQueryParams(requests[0].url).order).toBe("first_day.asc");
+  });
+
+  it("takes no limit", async () => {
+    const { fetch, requests } = createRecordingFetch([CANNED_MAINTENANCE_ROW]);
+
+    await getMaintenancePeriods(SEPTEMBER.from, SEPTEMBER.to, createTestClient(fetch));
+
+    expect(parseQueryParams(requests[0].url).limit).toBeNull();
+  });
+
+  /**
+   * A period is drawn if it touches the window at all: one that began in
+   * August and ends on 2 September closes the first two days of the grid. So
+   * the filter is an overlap, and nothing else: the view already leaves out
+   * retired periods, and a second is_active filter here would be a copy of
+   * the view's rule waiting to drift.
+   */
+  it("reads every period that overlaps the window, and narrows on nothing else", async () => {
+    const { fetch, requests } = createRecordingFetch([CANNED_MAINTENANCE_ROW]);
+
+    await getMaintenancePeriods(SEPTEMBER.from, SEPTEMBER.to, createTestClient(fetch));
+
+    expect(parseQueryParams(requests[0].url).filters).toEqual({
+      first_day: ["lte.2026-09-30"],
+      last_day: ["gte.2026-09-01"],
+    });
+  });
+
+  it("returns each period with its Space, days and reason", async () => {
+    const { fetch } = createRecordingFetch([CANNED_MAINTENANCE_ROW]);
+
+    const periods = await getMaintenancePeriods(SEPTEMBER.from, SEPTEMBER.to, createTestClient(fetch));
+
+    expect(periods).toEqual([
+      {
+        id: "22222222-2222-4222-8222-222222222222",
+        space: "atrium",
+        firstDay: "2026-08-28",
+        lastDay: "2026-09-02",
+        reason: "Aircon repair",
+      },
+    ]);
+  });
+
+  /**
+   * The calendar has a lane for each Space venue-spaces.ts copies, and no
+   * other. A period on a Space it does not know has nowhere to be drawn.
+   */
+  it("leaves out a period on a Space the calendar has no lane for", async () => {
+    const { fetch } = createRecordingFetch([
+      { ...CANNED_MAINTENANCE_ROW, id: "mp-roof", space_code: "rooftop" },
+      CANNED_MAINTENANCE_ROW,
+    ]);
+
+    const periods = await getMaintenancePeriods(SEPTEMBER.from, SEPTEMBER.to, createTestClient(fetch));
+
+    expect(periods.map((p) => p.id)).toEqual(["22222222-2222-4222-8222-222222222222"]);
+  });
+
+  /**
+   * An empty answer would draw every closed day as open, the failure ADR 0012
+   * exists to prevent, so a failed read stops the page instead.
+   */
+  it("raises when the read fails rather than drawing every day open", async () => {
+    const { fetch } = createFailingFetch({
+      status: 500,
+      message: "permission denied for view staff_maintenance_periods",
+    });
+
+    await expect(
+      getMaintenancePeriods(SEPTEMBER.from, SEPTEMBER.to, createTestClient(fetch)),
+    ).rejects.toThrow(/staff_maintenance_periods read failed: permission denied/);
   });
 });

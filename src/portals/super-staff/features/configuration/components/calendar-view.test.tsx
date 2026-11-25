@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ToastProvider } from "@/portals/super-staff/components/providers/toast-provider";
 import { UnsavedChangesProvider } from "@/portals/super-staff/components/providers/unsaved-changes-provider";
@@ -77,6 +77,12 @@ async function renderView() {
   await screen.findByDisplayValue("Christmas Day");
 }
 
+/** The refusal line a CatalogRow puts directly under `row`, if any. */
+const refusalUnder = (row: HTMLElement) => {
+  const next = row.nextElementSibling as HTMLElement | null;
+  return next ? within(next).queryByRole("alert") : null;
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -139,7 +145,7 @@ describe("CalendarView — Holidays", () => {
     const row = screen.getByDisplayValue("Pasko").closest("tr")!;
     await user.click(within(row).getByRole("button", { name: "Save" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/^Not found/);
+    await vi.waitFor(() => expect(refusalUnder(row)).toHaveTextContent(/^Not found/));
   });
 
   it("says Not permitted on a 42501", async () => {
@@ -153,7 +159,34 @@ describe("CalendarView — Holidays", () => {
     const row = screen.getByDisplayValue("Christmas Day").closest("tr")!;
     await user.click(within(row).getByRole("button", { name: "Save" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/^Not permitted/);
+    await vi.waitFor(() => expect(refusalUnder(row)).toHaveTextContent(/^Not permitted/));
+  });
+
+  it("keeps a refused update_holiday under its row until the row is edited", async () => {
+    // The toast's 4-second timer must run too, not just the clock.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2026-09-30T02:00:00Z"));
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    callRpc.mockRejectedValueOnce(
+      toRpcError({ code: "42501", message: "update_holiday: caller is not an active Super Staff" }),
+    );
+    await renderView();
+
+    await user.click(screen.getByRole("checkbox", { name: "2026-12-25 active" }));
+    const row = screen.getByDisplayValue("Christmas Day").closest("tr")!;
+    await user.click(within(row).getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => expect(refusalUnder(row)).toHaveTextContent(/^Not permitted/));
+    // The toast still fires too.
+    expect(screen.getAllByRole("alert")).toHaveLength(2);
+
+    act(() => vi.advanceTimersByTime(4100));
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(refusalUnder(row)).toHaveTextContent(/^Not permitted/);
+    const quezon = screen.getByDisplayValue("Quezon Day").closest("tr")!;
+    expect(refusalUnder(quezon)).toBeNull();
+
+    await user.type(screen.getByRole("textbox", { name: "2026-12-25 name" }), "!");
+    expect(refusalUnder(row)).toBeNull();
   });
 
   it("adds a holiday with every add_holiday argument", async () => {
@@ -252,7 +285,7 @@ describe("CalendarView — Office Hours", () => {
       p_open_time: "08:00",
       p_close_time: "07:00",
     });
-    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+    await vi.waitFor(() => expect(refusalUnder(row)).toHaveTextContent(message));
   });
 });
 

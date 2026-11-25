@@ -10,6 +10,7 @@ export const AUDIT_AREAS: AuditArea[] = [
   "calendar",
   "auth",
   "yellow_card",
+  "maintenance",
 ];
 
 const LABELS: Record<AuditArea, string> = {
@@ -21,6 +22,7 @@ const LABELS: Record<AuditArea, string> = {
   calendar: "Calendar",
   auth: "Authentication",
   yellow_card: "Yellow Card",
+  maintenance: "Maintenance",
 };
 
 /** Display label. An enum member added in a later migration renders as itself

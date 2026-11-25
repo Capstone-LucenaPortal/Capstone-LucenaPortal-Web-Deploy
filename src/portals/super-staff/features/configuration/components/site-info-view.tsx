@@ -66,6 +66,7 @@ function EntriesCard({
           saving={editor.savingKey === row.id}
           onSave={() => void editor.save(row.id)}
           onRevert={() => editor.revert(row.id)}
+          refusal={editor.rowRefusals[row.id]}
         >
           {/* An entry is keyed by id, not by code: two rows share the label
               "Secondary Emergency" and the owner ruled both must stay. */}

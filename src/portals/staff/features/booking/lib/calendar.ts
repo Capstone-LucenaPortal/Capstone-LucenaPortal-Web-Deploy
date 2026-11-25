@@ -1,6 +1,6 @@
 import { MANILA_TIME_ZONE } from "@/shared/dates/manila";
 import { SPACE_ORDER, spacesForVenue, type SpaceCode } from "./venue-spaces";
-import type { BookingStatus, CalendarBooking } from "../types";
+import type { BookingStatus, CalendarBooking, MaintenancePeriod } from "../types";
 
 /**
  * The calendar maths. Every function here is pure and takes its month or its
@@ -78,7 +78,13 @@ export function heldUntilHour(block: CalendarBlock): number {
   return block.endHour + block.changeoverHours;
 }
 
-export type DayStatus = "available" | "partial" | "fully-booked";
+/**
+ * A Space's day: its Space State (Citizen CONTEXT.md) as the desk needs it.
+ * "under-maintenance" wins over any Occupancy, as Space State does, and is its
+ * own value so a closed day never reads as a fully booked one: a Staff member
+ * looking at "fully booked" goes looking for Bookings that are not there.
+ */
+export type DayStatus = "available" | "partial" | "fully-booked" | "under-maintenance";
 
 export interface DayCell {
   date: string;
@@ -86,6 +92,11 @@ export interface DayCell {
   isToday: boolean;
   blocks: CalendarBlock[];
   statusBySpace: Record<SpaceCode, DayStatus>;
+  /**
+   * The active Maintenance Periods covering this day, per Space. A list, not
+   * one, because l125 allows two periods on one Space to overlap.
+   */
+  maintenancePeriodsBySpace: Record<SpaceCode, MaintenancePeriod[]>;
 }
 
 /**
@@ -296,6 +307,9 @@ export function buildMonthGrid(
   // Required, with no default: the live settings come from the route, and a
   // default here would be a second copy of DEFAULT_BOOKING_CONFIG.
   dayHours: DayHours,
+  // Required too: a route that forgot to read them would draw a closed day as
+  // open, the failure ADR 0012 exists to prevent.
+  maintenancePeriods: MaintenancePeriod[],
 ): DayCell[][] {
   const today = todayInManila(now);
 
@@ -321,17 +335,29 @@ export function buildMonthGrid(
     const date = isoDate(cursor);
     const dayBlocks = byDate.get(date) ?? [];
 
+    const maintenancePeriodsBySpace = Object.fromEntries(
+      SPACE_ORDER.map((space) => [
+        space,
+        // ISO dates compare as strings, and both ends are inclusive.
+        maintenancePeriods.filter(
+          (p) => p.space === space && p.firstDay <= date && date <= p.lastDay,
+        ),
+      ]),
+    ) as Record<SpaceCode, MaintenancePeriod[]>;
+
     const statusBySpace = Object.fromEntries(
       SPACE_ORDER.map((space) => [
         space,
-        computeDayStatus(
-          // An unplaced block cannot occupy a lane it is not in. Each block
-          // holds its Space until its own recorded Changeover ends.
-          dayBlocks
-            .filter((b) => b.space === space)
-            .map((b) => ({ startHour: b.startHour, endHour: heldUntilHour(b) })),
-          dayHours,
-        ),
+        maintenancePeriodsBySpace[space].length > 0
+          ? "under-maintenance"
+          : computeDayStatus(
+              // An unplaced block cannot occupy a lane it is not in. Each block
+              // holds its Space until its own recorded Changeover ends.
+              dayBlocks
+                .filter((b) => b.space === space)
+                .map((b) => ({ startHour: b.startHour, endHour: heldUntilHour(b) })),
+              dayHours,
+            ),
       ]),
     ) as Record<SpaceCode, DayStatus>;
 
@@ -341,6 +367,7 @@ export function buildMonthGrid(
       isToday: date === today,
       blocks: dayBlocks,
       statusBySpace,
+      maintenancePeriodsBySpace,
     });
 
     if (week.length === 7) {

@@ -4,18 +4,22 @@ import { cn } from "@/portals/staff/lib/utils";
 import { STATUS_BADGE_VARIANT, STATUS_LABELS } from "../lib/status";
 import { SPACE_LABELS, SPACE_ORDER, type SpaceCode } from "../lib/venue-spaces";
 import { heldUntilHour, type CalendarBlock, type DayCell, type DayStatus } from "../lib/calendar";
+import type { MaintenancePeriod } from "../types";
 
 /** The marker colours for a lane's status. Not the status-badge palette. */
 const DAY_STATUS_DOT: Record<DayStatus, string> = {
   available: "bg-green-400",
   partial: "bg-yellow-400",
   "fully-booked": "bg-red-400",
+  // Its own colour: a closed day must never read as a full one (SCRUM-263).
+  "under-maintenance": "bg-purple-500",
 };
 
 const DAY_STATUS_TEXT: Record<DayStatus, string> = {
   available: "free",
   partial: "part-booked",
   "fully-booked": "fully booked",
+  "under-maintenance": "under maintenance",
 };
 
 /** Reuses the queue's status palette rather than inventing a second one. */
@@ -69,6 +73,7 @@ export function CalendarDay({ day }: { day: DayCell }) {
               key={space}
               space={space}
               status={day.statusBySpace[space]}
+              maintenancePeriods={day.maintenancePeriodsBySpace[space]}
               blocks={day.blocks.filter((b) => b.space === space)}
               interactive={day.inMonth}
             />
@@ -82,11 +87,13 @@ export function CalendarDay({ day }: { day: DayCell }) {
 function Lane({
   space,
   status,
+  maintenancePeriods,
   blocks,
   interactive,
 }: {
   space: SpaceCode;
   status: DayStatus;
+  maintenancePeriods: MaintenancePeriod[];
   blocks: CalendarBlock[];
   interactive: boolean;
 }) {
@@ -102,6 +109,9 @@ function Lane({
         </span>
         <span aria-hidden="true">{SPACE_LABELS[space]}</span>
       </p>
+      {maintenancePeriods.map((period) => (
+        <MaintenanceMarker key={period.id} period={period} dimmed={!interactive} />
+      ))}
       {blocks.map((block) => (
         <Fragment key={`${block.bookingId}-${space}`}>
           <BlockChip block={block} interactive={interactive} />
@@ -159,6 +169,41 @@ function BlockChip({
     >
       {body}
     </Link>
+  );
+}
+
+/**
+ * A Maintenance Period on this lane's Space (SCRUM-263, ADR 0012): the Space
+ * and the reason, so the desk can tell a Citizen why the day is closed.
+ *
+ * Read-only, with no link and no button: setting, changing or retiring a
+ * period is Super Staff's job. Purple, and solid rather than hatched, so it
+ * reads as neither a Booking, a Changeover nor a fully booked lane.
+ *
+ * Labelled with the lane's own SPACE_LABELS, not the view's space_label: the
+ * database calls the Arena "Arena", and "Arena" inside the "Sports Arena" lane
+ * would look like a third room. A reason may run to 500 characters, so the
+ * marker stops at three lines and the title carries the whole of it.
+ */
+function MaintenanceMarker({
+  period,
+  dimmed,
+}: {
+  period: MaintenancePeriod;
+  dimmed: boolean;
+}) {
+  return (
+    <span
+      data-maintenance=""
+      title={`${SPACE_LABELS[period.space]} is closed for maintenance from ${period.firstDay} to ${period.lastDay}: ${period.reason}`}
+      className={cn(
+        "mt-0.5 line-clamp-3 break-words rounded border border-purple-300 bg-purple-50 px-1 py-0.5 text-[11px] leading-tight text-purple-900",
+        dimmed && "opacity-50",
+      )}
+    >
+      {SPACE_LABELS[period.space]} · <span className="font-medium">Under maintenance</span> ·{" "}
+      {period.reason}
+    </span>
   );
 }
 

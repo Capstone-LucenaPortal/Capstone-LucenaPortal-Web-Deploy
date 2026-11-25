@@ -1,10 +1,19 @@
 import { createClient, type Db } from "@/shared/supabase/server";
 import { buildSearchFilter } from "@/portals/staff/lib/supabase/search-filter";
-import { countByStatus, toCalendarBooking, toQueueItem } from "./row-mapper";
+import { countByStatus, toCalendarBooking, toMaintenancePeriod, toQueueItem } from "./row-mapper";
 import { NEEDS_ACTION, statusesFor, type StatusFilter } from "./queue-params";
 import { NEEDS_ACTION_STATUSES } from "./status";
-import type { StaffBookingCalendarRow, StaffBookingQueueRow } from "./row-mapper";
-import type { BookingQueueItem, BookingStatus, CalendarBooking } from "../types";
+import type {
+  StaffBookingCalendarRow,
+  StaffBookingQueueRow,
+  StaffMaintenancePeriodRow,
+} from "./row-mapper";
+import type {
+  BookingQueueItem,
+  BookingStatus,
+  CalendarBooking,
+  MaintenancePeriod,
+} from "../types";
 
 /**
  * Column lists are checked against the generated types: a column
@@ -35,6 +44,15 @@ const QUEUE_COLUMNS = "id, reference_number, status, cancellation_reason, event_
  * list plus that one column, so the two cannot drift.
  */
 const CALENDAR_COLUMNS = "id, reference_number, status, cancellation_reason, event_title, event_type_label, venue_code, venue_label, rate_tier, tier_verified, organization_name, contact_person, estimated_headcount, event_date, start_time, duration_hours, total_fee, balance_amount, hold_expires_at, submitted_at, unverified_payment_count, tier_review_since, confirmation_due_at, deadline_state, changeover_hours";
+
+/**
+ * The calendar's maintenance list (SCRUM-263, DB l125). Verified by live query
+ * against the Sandbox's staff_maintenance_periods on 2026-11-25. `space_label`
+ * is left out on purpose: the database calls the Arena "Arena", and the lane
+ * it is drawn in says "Sports Arena" (SPACE_LABELS), so the marker takes the
+ * lane's label. `venue_codes` is left out too: the calendar draws Spaces.
+ */
+const MAINTENANCE_COLUMNS = "id, space_code, first_day, last_day, reason";
 
 /**
  * The columns the search box looks in — what a clerk might hold about a
@@ -263,4 +281,41 @@ export async function getBookingCalendar(
   }
 
   return ((data as StaffBookingCalendarRow[] | null) ?? []).map(toCalendarBooking);
+}
+
+/**
+ * The active Maintenance Periods that touch a window, for the calendar
+ * (SCRUM-263, DB l125). staff_maintenance_periods is gated like staff_bookings
+ * (staff plus the booking module) and already leaves out retired periods, so
+ * the only filter here is the overlap: a period that began before the window
+ * still closes its first days.
+ *
+ * Ordered by first day, so two overlapping periods on one Space list in the
+ * order they began. No limit, for the calendar read's reason: a truncated
+ * answer draws a closed day as open.
+ *
+ * `db` is ADR-0001's seam, optional and trailing as on the reads above.
+ */
+export async function getMaintenancePeriods(
+  from: string,
+  to: string,
+  db?: Db,
+): Promise<MaintenancePeriod[]> {
+  const supabase = db ?? await createClient();
+
+  const { data, error } = await supabase
+    .from("staff_maintenance_periods")
+    .select(MAINTENANCE_COLUMNS)
+    .lte("first_day", to)
+    .gte("last_day", from)
+    .order("first_day", { ascending: true });
+
+  if (error) {
+    throw new Error(`staff_maintenance_periods read failed: ${error.message}`);
+  }
+
+  return ((data as StaffMaintenancePeriodRow[] | null) ?? []).flatMap((row) => {
+    const period = toMaintenancePeriod(row);
+    return period ? [period] : [];
+  });
 }

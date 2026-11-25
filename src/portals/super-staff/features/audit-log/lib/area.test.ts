@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { AUDIT_AREAS, areaLabel, isAuditArea } from "./area";
 
 describe("audit areas", () => {
-  it("lists the eight database enum values in display order", () => {
+  it("lists the nine database enum values in display order", () => {
     expect(AUDIT_AREAS).toEqual([
       "accounts",
       "configuration",
@@ -12,6 +12,7 @@ describe("audit areas", () => {
       "calendar",
       "auth",
       "yellow_card",
+      "maintenance",
     ]);
   });
 
@@ -24,6 +25,7 @@ describe("audit areas", () => {
     expect(areaLabel("calendar")).toBe("Calendar");
     expect(areaLabel("auth")).toBe("Authentication");
     expect(areaLabel("yellow_card")).toBe("Yellow Card");
+    expect(areaLabel("maintenance")).toBe("Maintenance");
   });
 
   it("degrades gracefully for a value added to the enum later", () => {

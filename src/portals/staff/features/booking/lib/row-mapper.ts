@@ -1,5 +1,6 @@
 import { parseDeadlineState } from "@/portals/staff/lib/deadline";
 import { STATUS_ORDER } from "./status";
+import { SPACE_ORDER } from "./venue-spaces";
 import type {
   Booking,
   BookingCancellationReason,
@@ -10,6 +11,7 @@ import type {
   BookingQueueItem,
   BookingStatus,
   CalendarBooking,
+  MaintenancePeriod,
   PaymentKind,
   PaymentMethod,
   RateTier,
@@ -179,6 +181,34 @@ export function toCalendarBooking(row: StaffBookingCalendarRow): CalendarBooking
   return {
     ...toQueueItem(row),
     changeover_hours: row.changeover_hours ?? 0,
+  };
+}
+
+/** The calendar's maintenance read (DB l125, SCRUM-263). */
+export type StaffMaintenancePeriodRow = {
+  id: string | null;
+  space_code: string | null;
+  first_day: string | null;
+  last_day: string | null;
+  reason: string | null;
+};
+
+/**
+ * Null for a period on a Space the calendar has no lane for. booking_venue_spaces
+ * holds exactly the two Spaces venue-spaces.ts copies (checked on the Sandbox
+ * 2026-11-25); a third would need that file updated before there was a lane
+ * to draw it in, so it is left out rather than guessed at. The other columns
+ * are NOT NULL in maintenance_periods; the fallbacks are only the view's typing.
+ */
+export function toMaintenancePeriod(row: StaffMaintenancePeriodRow): MaintenancePeriod | null {
+  const space = SPACE_ORDER.find((code) => code === row.space_code);
+  if (!space) return null;
+  return {
+    id: row.id ?? "",
+    space,
+    firstDay: row.first_day ?? "",
+    lastDay: row.last_day ?? "",
+    reason: row.reason ?? "",
   };
 }
 

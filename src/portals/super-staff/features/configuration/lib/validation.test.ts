@@ -8,6 +8,8 @@ import {
   validateCatalogRow,
   validateHoliday,
   validateIncidents,
+  validateMaintenancePeriod,
+  validateNewMaintenancePeriod,
   validateNewHoliday,
   validateOfficeHours,
   validatePostCategory,
@@ -384,5 +386,39 @@ describe("validateAgencyIdentity", () => {
   it("requires a seal", () => {
     expect(validateAgencyIdentity({ ...identity, sealPath: "" }).sealPath)
       .toBe("Upload a seal.");
+  });
+});
+
+describe("validateMaintenancePeriod", () => {
+  const period = { firstDay: "2026-12-01", lastDay: "2026-12-03", reason: "Aircon repair" };
+
+  it("accepts a period whose last day is the first day", () => {
+    expect(validateMaintenancePeriod({ ...period, lastDay: "2026-12-01" })).toEqual({});
+  });
+
+  it("refuses a last day before the first day", () => {
+    expect(validateMaintenancePeriod({ ...period, lastDay: "2026-11-30" })).toEqual({
+      lastDay: "The last day can't be before the first day.",
+    });
+  });
+
+  it("refuses a reason that is only whitespace, or over 500 characters", () => {
+    expect(validateMaintenancePeriod({ ...period, reason: " \t\n" }).reason).toBe("Enter a reason.");
+    expect(validateMaintenancePeriod({ ...period, reason: "x".repeat(501) }).reason).toBe(
+      "At most 500 characters.",
+    );
+    expect(validateMaintenancePeriod({ ...period, reason: ` ${"x".repeat(500)} ` })).toEqual({});
+  });
+});
+
+describe("validateNewMaintenancePeriod", () => {
+  it("asks for the Space and both days", () => {
+    expect(
+      validateNewMaintenancePeriod({ spaceCode: "", firstDay: "", lastDay: "", reason: "Repainting" }),
+    ).toEqual({
+      spaceCode: "Pick a Space.",
+      firstDay: "Pick the first day.",
+      lastDay: "Pick the last day.",
+    });
   });
 });

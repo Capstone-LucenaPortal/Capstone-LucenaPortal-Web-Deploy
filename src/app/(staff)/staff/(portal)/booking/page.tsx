@@ -9,6 +9,7 @@ import {
   getBookingCalendar,
   getBookingQueue,
   getBookingStatusCounts,
+  getMaintenancePeriods,
 } from "@/portals/staff/features/booking/lib/queries";
 import { getBookingConfig } from "@/portals/staff/features/booking/lib/config";
 import {
@@ -135,9 +136,12 @@ async function renderCalendar(year: number, month: number, now: Date) {
   // once, above monthGridBounds.
   const { from, to } = monthGridBounds(year, month);
 
-  const [bookings, config] = await Promise.all([
+  // Maintenance Periods over the same padded window (SCRUM-263), so a closed
+  // day on a padded week is drawn closed like a booked one is drawn booked.
+  const [bookings, config, maintenancePeriods] = await Promise.all([
     getBookingCalendar(from, to),
     getBookingConfig(),
+    getMaintenancePeriods(from, to),
   ]);
 
   const blocks = toBlocks(bookings);
@@ -148,7 +152,7 @@ async function renderCalendar(year: number, month: number, now: Date) {
     // Today's setting, for "would one more Event fit". Every Changeover drawn
     // is the Booking's own recorded length (ADR 0010).
     changeoverHours: config.changeover_hours,
-  });
+  }, maintenancePeriods);
 
   const current = parseMonth(undefined, now);
 

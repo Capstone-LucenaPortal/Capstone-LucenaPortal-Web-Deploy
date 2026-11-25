@@ -388,8 +388,9 @@ describe("countAuditAreas", () => {
       calendar: 0,
       auth: 4,
       yellow_card: 0,
+      maintenance: 0,
     });
-    expect(methods).toEqual(Array(9).fill("HEAD"));
+    expect(methods).toEqual(Array(10).fill("HEAD"));
     expect(requests.map((u) => u.searchParams.get("area"))).toEqual([
       null,
       "eq.accounts",
@@ -400,6 +401,7 @@ describe("countAuditAreas", () => {
       "eq.calendar",
       "eq.auth",
       "eq.yellow_card",
+      "eq.maintenance",
     ]);
   });
 

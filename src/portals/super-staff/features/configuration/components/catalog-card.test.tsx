@@ -67,6 +67,46 @@ describe("CatalogRow", () => {
   });
 });
 
+describe("CatalogRow — a refused save", () => {
+  function rowWith(refusal?: string) {
+    return render(
+      <table>
+        <tbody>
+          <CatalogRow dirty saving={false} onSave={() => {}} onRevert={() => {}} refusal={refusal}>
+            <td>space</td>
+            {/* A comment and a skipped conditional cell are not columns. */}
+            {false && <td>never</td>}
+            <td>reason</td>
+          </CatalogRow>
+        </tbody>
+      </table>,
+    );
+  }
+
+  it("adds no line when nothing was refused", () => {
+    const { container } = rowWith();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(container.querySelectorAll("tr")).toHaveLength(1);
+  });
+
+  it("puts the refusal on its own line under the row, across every column", () => {
+    const { container } = rowWith("The Arena is booked during those days: BK-2026-0040.");
+
+    const line = screen.getByRole("alert");
+    expect(line).toHaveTextContent("The Arena is booked during those days: BK-2026-0040.");
+    // Selectable text: never inside a button.
+    expect(line.closest("button")).toBeNull();
+
+    const [row, refusalRow] = container.querySelectorAll("tr");
+    expect(refusalRow.contains(line)).toBe(true);
+    // Two cells plus the action cell.
+    expect(row.querySelectorAll("td")).toHaveLength(3);
+    const cells = refusalRow.querySelectorAll("td");
+    expect(cells).toHaveLength(1);
+    expect(cells[0]).toHaveAttribute("colspan", "3");
+  });
+});
+
 // jsdom loads no Tailwind, so `invisible` does nothing here — aria-hidden is
 // the half of the reservation a test can see.
 const hiddenFromAT = (el: HTMLElement) => el.closest('[aria-hidden="true"]') !== null;

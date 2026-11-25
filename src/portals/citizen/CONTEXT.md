@@ -176,6 +176,22 @@ and follows every Venue, rehearsal access included. Its length is set by the cit
 keeps the length in force when it was submitted — changing it later reaches only new Bookings.
 _Avoid_: Buffer, Turnaround (that is a service-time promise), Clean-up time, Gap
 
+**Maintenance Period**:
+A run of whole days, first to last inclusive, during which a Space is closed for repair and cannot
+be booked. Every Venue made of that Space is closed with it — Atrium maintenance closes the Full
+Facility too. Set by Super-staff, never over days a Booking already holds, and never starting in
+the past. A Maintenance Period set by mistake is retired, not deleted.
+_Avoid_: Closure, Blackout, Downtime, Maintenance (alone, as a noun for the period)
+
+**Space State**:
+Where a Space stands at a given moment, now unless a moment is named: **Under Maintenance** if a
+Maintenance Period covers that day, otherwise **Reserved** if an Occupancy covers that moment,
+otherwise **Available**. A Venue takes the most restrictive state of its Spaces. Space State is
+never set by hand except through a Maintenance Period, and it is a separate thing from whether a
+Venue is **Active** — offered by the city at all — or **Inactive**: an inactive Venue's Spaces
+still have a Space State.
+_Avoid_: Venue status, Availability (alone), Booked, Free
+
 **Classification**:
 What kind of organisation is holding the event, which is what determines whether it is charged
 commercial or discounted rates.

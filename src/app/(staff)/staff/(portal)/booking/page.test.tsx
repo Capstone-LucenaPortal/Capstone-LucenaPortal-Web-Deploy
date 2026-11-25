@@ -60,6 +60,7 @@ function stubQueries() {
   });
   vi.spyOn(queries, "getBalanceOutstanding").mockResolvedValue(69750);
   vi.spyOn(queries, "getBookingCalendar").mockResolvedValue([booking]);
+  vi.spyOn(queries, "getMaintenancePeriods").mockResolvedValue([]);
   vi.spyOn(config, "getBookingConfig").mockResolvedValue({
     ...DEFAULT_BOOKING_CONFIG,
   });
@@ -253,6 +254,11 @@ describe("BookingQueuePage — calendar view", () => {
     expect(queries.getBalanceOutstanding).not.toHaveBeenCalled();
   });
 
+  it("does not read maintenance on the list", async () => {
+    await renderPage({});
+    expect(queries.getMaintenancePeriods).not.toHaveBeenCalled();
+  });
+
   it("reads exactly the range the grid draws, padding included", async () => {
     // A booking on a visible padded day is real occupancy; missing it would
     // draw a free evening that is not free. These are the grid's own bounds,
@@ -261,6 +267,16 @@ describe("BookingQueuePage — calendar view", () => {
     await renderPage({ view: "calendar", month: "2026-08" });
 
     expect(queries.getBookingCalendar).toHaveBeenCalledWith(
+      "2026-07-26",
+      "2026-09-05",
+    );
+  });
+
+  it("reads Maintenance Periods over that same range", async () => {
+    // SCRUM-263: a closed padded day is as real as a booked one.
+    await renderPage({ view: "calendar", month: "2026-08" });
+
+    expect(queries.getMaintenancePeriods).toHaveBeenCalledWith(
       "2026-07-26",
       "2026-09-05",
     );

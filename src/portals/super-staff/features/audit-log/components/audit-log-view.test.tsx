@@ -92,6 +92,7 @@ const counts = (patch: Partial<AreaCounts> = {}): AreaCounts => ({
   calendar: 0,
   auth: 0,
   yellow_card: 0,
+  maintenance: 0,
   ...patch,
 });
 

@@ -1,5 +1,5 @@
 import { MANILA_TIME_ZONE } from '@/shared/dates/manila';
-import type { BookingFormData, DayStatus, FeeEstimate, PostSubmitStage } from '../types';
+import type { BookingFormData, DayStatus, FeeEstimate, PostSubmitStage, VenueAvailability } from '../types';
 
 export const EMPTY_BOOKING_FORM: BookingFormData = {
   classificationCode: '',
@@ -108,6 +108,9 @@ export function occupancyHours(row: { during: string; blocked?: string | null })
   return { startHour, endHour: startHour + hours };
 }
 
+/** The booking day's window and rules: opening and closing hour, minimum Event length, Changeover. */
+export type DayHours = { openingHour: number; closingHour: number; minDurationHours: number; changeoverHours: number };
+
 /**
  * Pure: a day's Occupancies -> its calendar status for one Venue.
  *
@@ -117,16 +120,51 @@ export function occupancyHours(row: { during: string; blocked?: string | null })
  * closing, as the database allows. Booked hours alone don't decide it: seven
  * held hours in the middle of the day can leave no room for a six-hour Event.
  */
-export function computeDayStatus(
-  occupiedRanges: HourRange[],
-  dayHours: { openingHour: number; closingHour: number; minDurationHours: number; changeoverHours: number },
-): DayStatus {
+export function computeDayStatus(occupiedRanges: HourRange[], dayHours: DayHours): DayStatus {
   if (occupiedRanges.length === 0) return 'available';
   const { openingHour, closingHour, minDurationHours, changeoverHours } = dayHours;
   for (let start = openingHour; start + minDurationHours <= closingHour; start++) {
     if (!hasTimeConflict(occupiedRanges, start, minDurationHours, changeoverHours)) return 'partial';
   }
   return 'fully-booked';
+}
+
+type AvailabilityRow = Pick<VenueAvailability, 'venue_code' | 'event_date' | 'during' | 'blocked' | 'kind'>;
+
+/**
+ * Pure: the hours one Venue's Occupancies hold on one day. Each row is one
+ * Space's Occupancy, listed under every Venue that uses that Space, so
+ * filtering on the Venue brings in the Atrium's and the Arena's for Full
+ * Facility, and the Arena's for rehearsal. Maintenance rows are not
+ * Occupancies and are left out; `venueDayStatus` reads them.
+ */
+export function occupiedRangesOn(rows: AvailabilityRow[], venueCode: string, dateStr: string): HourRange[] {
+  return rows
+    .filter((row) => row.venue_code === venueCode && row.event_date === dateStr && row.kind !== 'maintenance')
+    .map(occupancyHours)
+    .filter((r): r is HourRange => r !== null);
+}
+
+/**
+ * Pure: the `public_venue_availability` rows -> one Venue's status on one day.
+ *
+ * A maintenance row decides it (SCRUM-263): a day inside a Maintenance Period
+ * is Under maintenance whatever Occupancies are on it. The view lists a
+ * Space's maintenance days under every Venue made of it, so filtering on the
+ * Venue is enough for Full Facility to close when either Space does.
+ * Otherwise the Occupancies decide.
+ */
+export function venueDayStatus(
+  rows: AvailabilityRow[],
+  venueCode: string,
+  dateStr: string,
+  dayHours: DayHours,
+): DayStatus {
+  const underMaintenance = rows.some(
+    (row) => row.venue_code === venueCode && row.event_date === dateStr && row.kind === 'maintenance',
+  );
+  if (underMaintenance) return 'under-maintenance';
+  return computeDayStatus(occupiedRangesOn(rows, venueCode, dateStr), dayHours);
 }
 
 /**

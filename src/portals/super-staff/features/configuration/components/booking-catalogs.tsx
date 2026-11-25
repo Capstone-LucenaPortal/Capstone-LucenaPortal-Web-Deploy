@@ -43,6 +43,7 @@ export function VenuesCard({ editor }: { editor: CatalogEditor<BookingVenue> }) 
           saving={editor.savingKey === row.code}
           onSave={() => void editor.save(row.code)}
           onRevert={() => editor.revert(row.code)}
+          refusal={editor.rowRefusals[row.code]}
         >
           <LabelCell
             rowKey={row.code}
@@ -101,6 +102,7 @@ export function EventTypesCard({
           saving={editor.savingKey === row.code}
           onSave={() => void editor.save(row.code)}
           onRevert={() => editor.revert(row.code)}
+          refusal={editor.rowRefusals[row.code]}
         >
           <LabelCell
             rowKey={row.code}
@@ -153,6 +155,7 @@ export function ClassificationsCard({
           saving={editor.savingKey === row.code}
           onSave={() => void editor.save(row.code)}
           onRevert={() => editor.revert(row.code)}
+          refusal={editor.rowRefusals[row.code]}
         >
           {/* The label is read-only: update_booking_classification does not
               accept one, and this table has no is_active column at all. */}

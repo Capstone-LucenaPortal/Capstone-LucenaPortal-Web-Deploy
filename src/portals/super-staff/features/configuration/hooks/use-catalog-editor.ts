@@ -31,6 +31,15 @@ export type CatalogEditor<T> = {
    * the way a config field does.
    */
   rowErrors: Record<string, ConfigErrors>;
+  /**
+   * The database's refusal of a row's last save, translated by `errorMessage`
+   * and keyed by row key. Apart from `rowErrors` because it belongs to the
+   * whole row, not to a field: `CatalogRow` shows it on a line under the row,
+   * where it outlives the toast. Gone once the row is edited or reverted (as
+   * `rowErrors` are), when a new save of it starts, and when a reload replaces
+   * the draft it described.
+   */
+  rowRefusals: Record<string, string>;
   update: (key: string, patch: Partial<T>) => void;
   save: (key: string) => Promise<void>;
   revert: (key: string) => void;
@@ -79,11 +88,14 @@ export function useCatalogEditor<T>({
   const [error, setError] = useState<string | null>(null);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [rowErrors, setRowErrors] = useState<Record<string, ConfigErrors>>({});
+  const [rowRefusals, setRowRefusals] = useState<Record<string, string>>({});
 
   const refresh = useCallback(async () => {
     const fresh = await load();
     setSaved(fresh);
     setRows(fresh);
+    // The fresh rows replace every draft, so no refusal describes one any more.
+    setRowRefusals({});
   }, [load]);
 
   useEffect(() => {
@@ -116,43 +128,42 @@ export function useCatalogEditor<T>({
   );
 
   /**
-   * Editing a refused row clears its errors — the highlight described the
-   * value that was rejected, not the one being typed.
+   * Editing a refused row clears its errors and its refusal — both described
+   * the value that was rejected, not the one being typed.
    *
-   * Returns the SAME object when there is nothing to clear, which is the
-   * common case: this runs on every keystroke, and a fresh object each time
-   * would re-render the whole card for every character typed in any catalog.
+   * Each setter returns the SAME object when there is nothing to clear, which
+   * is the common case: this runs on every keystroke, and a fresh object each
+   * time would re-render the whole card for every character typed in any
+   * catalog.
    */
-  const clearRowErrors = useCallback((key: string) => {
-    setRowErrors((e) => {
-      if (!(key in e)) return e;
-      const { [key]: _cleared, ...rest } = e;
-      return rest;
-    });
+  const clearRowFeedback = useCallback((key: string) => {
+    setRowErrors((e) => withoutKey(e, key));
+    setRowRefusals((r) => withoutKey(r, key));
   }, []);
 
   const update = useCallback(
     (key: string, patch: Partial<T>) => {
-      clearRowErrors(key);
+      clearRowFeedback(key);
       setRows((rs) => rs.map((r) => (keyOf(r) === key ? { ...r, ...patch } : r)));
     },
-    [keyOf, clearRowErrors],
+    [keyOf, clearRowFeedback],
   );
 
   const revert = useCallback(
     (key: string) => {
-      clearRowErrors(key);
+      clearRowFeedback(key);
       setRows((rs) =>
         rs.map((r) => (keyOf(r) === key ? (saved.find((s) => keyOf(s) === key) ?? r) : r)),
       );
     },
-    [saved, keyOf, clearRowErrors],
+    [saved, keyOf, clearRowFeedback],
   );
 
   const save = useCallback(
     async (key: string) => {
       const row = rows.find((r) => keyOf(r) === key);
       if (!row) return;
+      setRowRefusals((r) => withoutKey(r, key));
 
       const found = validate(row);
       if (Object.keys(found).length > 0) {
@@ -165,7 +176,9 @@ export function useCatalogEditor<T>({
       try {
         await commit(row);
       } catch (e: unknown) {
-        toast(errorMessage(e, "Could not save. Try again."), "error");
+        const message = errorMessage(e, "Could not save. Try again.");
+        toast(message, "error");
+        setRowRefusals((r) => ({ ...r, [key]: message }));
         setSavingKey(null);
         return;
       }
@@ -201,9 +214,17 @@ export function useCatalogEditor<T>({
     dirtyKeys,
     savingKey,
     rowErrors,
+    rowRefusals,
     update,
     save,
     revert,
     reload: refresh,
   };
+}
+
+/** `record` without `key`, or the same object when it has no such key. */
+function withoutKey<V>(record: Record<string, V>, key: string): Record<string, V> {
+  if (!(key in record)) return record;
+  const { [key]: _cleared, ...rest } = record;
+  return rest;
 }

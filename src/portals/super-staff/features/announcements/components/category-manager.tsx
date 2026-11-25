@@ -88,6 +88,7 @@ export function CategoryManager() {
                   saving={editor.savingKey === row.code}
                   onSave={() => void editor.save(row.code)}
                   onRevert={() => editor.revert(row.code)}
+                  refusal={editor.rowRefusals[row.code]}
                 >
                   <LabelCell
                     rowKey={row.code}

@@ -49,6 +49,10 @@ export function BookingCalendar({
   const previous = shiftMonth(year, month, -1);
   const next = shiftMonth(year, month, 1);
   const hasAnyBooking = grid.flat().some((day) => day.blocks.length > 0);
+  // A closed Space is not a clear one (SCRUM-263).
+  const anySpaceClosed = grid
+    .flat()
+    .some((day) => SPACE_ORDER.some((space) => day.statusBySpace[space] === "under-maintenance"));
 
   return (
     <div>
@@ -115,7 +119,8 @@ export function BookingCalendar({
         /* "Clear", not "no results" — nobody searched for anything. */
         <p className="mt-4 rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
           Nothing is booked at the Convention Center in{" "}
-          {MONTH_NAMES[month - 1]} {year}. Both spaces are clear all month.
+          {MONTH_NAMES[month - 1]} {year}.
+          {!anySpaceClosed && " Both spaces are clear all month."}
         </p>
       )}
 
@@ -132,6 +137,10 @@ export function BookingCalendar({
         <LegendDot className="bg-green-400" label="free" />
         <LegendDot className="bg-yellow-400" label="part-booked" />
         <LegendDot className="bg-red-400" label="fully booked" />
+        <LegendDot
+          className="bg-purple-500"
+          label="under maintenance (closed by Super Staff; the reason is on the day)"
+        />
         <span>
           A booking marked “both spaces” is one Full Facility booking occupying
           both lanes, not two bookings.

@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { Children, type ReactNode } from "react";
 import { Badge } from "@/portals/super-staff/components/ui/badge";
 import { Button } from "@/portals/super-staff/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/portals/super-staff/components/ui/card";
@@ -81,6 +81,11 @@ export function CatalogCard({
  * to two buttons shoved every other column sideways the moment you typed.
  * `invisible` keeps their width; `aria-hidden` and `disabled` keep them out of
  * the accessibility tree and unclickable. The dash sits in the same grid cell.
+ *
+ * A `refusal` (the database's translated reason for refusing this row's last
+ * save) gets its own full-width line under the row, so it stays readable and
+ * copyable after the toast has gone. It is a separate `<tr>` rather than text
+ * in the action cell, which would widen that column and shove the rest aside.
  */
 export function CatalogRow({
   isActive = true,
@@ -88,6 +93,7 @@ export function CatalogRow({
   saving,
   onSave,
   onRevert,
+  refusal,
   children,
 }: {
   /** Pass `true` for catalogs with no is_active column (classifications). */
@@ -96,43 +102,64 @@ export function CatalogRow({
   saving: boolean;
   onSave: () => void;
   onRevert: () => void;
+  /** The hook's `rowRefusals[key]`. */
+  refusal?: string;
+  /** One `<td>` per child: the refusal line spans them by counting them. */
   children: ReactNode;
 }) {
+  // toArray drops the false/null of a skipped conditional cell; JSX comments
+  // never reach here. The +1 is the action cell.
+  const columns = Children.toArray(children).length + 1;
   return (
-    <tr
-      className={cn(
-        "border-b border-gray-100 last:border-0",
-        !isActive && "bg-gray-50 text-gray-500",
-      )}
-    >
-      {children}
-      <td className="px-4 py-2 text-right whitespace-nowrap">
-        <span className="inline-grid items-center justify-items-end">
-          <span
-            className={cn("col-start-1 row-start-1 inline-flex gap-2", !dirty && "invisible")}
-            aria-hidden={!dirty}
-          >
-            <Button variant="secondary" size="sm" onClick={onRevert} disabled={saving || !dirty}>
-              Revert
-            </Button>
-            <Button variant="primary" size="sm" onClick={onSave} disabled={saving || !dirty}>
-              {/* Both labels share one grid cell, so "Saving…" cannot widen it. */}
-              <span className="inline-grid">
-                <span className={cn("col-start-1 row-start-1", saving && "invisible")} aria-hidden={saving}>
-                  Save
+    <>
+      <tr
+        className={cn(
+          // A refused row's border moves below its refusal line, which reads as
+          // part of the row.
+          !refusal && "border-b border-gray-100 last:border-0",
+          !isActive && "bg-gray-50 text-gray-500",
+        )}
+      >
+        {children}
+        <td className="px-4 py-2 text-right whitespace-nowrap">
+          <span className="inline-grid items-center justify-items-end">
+            <span
+              className={cn("col-start-1 row-start-1 inline-flex gap-2", !dirty && "invisible")}
+              aria-hidden={!dirty}
+            >
+              <Button variant="secondary" size="sm" onClick={onRevert} disabled={saving || !dirty}>
+                Revert
+              </Button>
+              <Button variant="primary" size="sm" onClick={onSave} disabled={saving || !dirty}>
+                {/* Both labels share one grid cell, so "Saving…" cannot widen it. */}
+                <span className="inline-grid">
+                  <span className={cn("col-start-1 row-start-1", saving && "invisible")} aria-hidden={saving}>
+                    Save
+                  </span>
+                  <span className={cn("col-start-1 row-start-1", !saving && "invisible")} aria-hidden={!saving}>
+                    Saving…
+                  </span>
                 </span>
-                <span className={cn("col-start-1 row-start-1", !saving && "invisible")} aria-hidden={!saving}>
-                  Saving…
-                </span>
-              </span>
-            </Button>
+              </Button>
+            </span>
+            {!dirty && (
+              <span className="col-start-1 row-start-1 text-xs text-gray-500">&mdash;</span>
+            )}
           </span>
-          {!dirty && (
-            <span className="col-start-1 row-start-1 text-xs text-gray-500">&mdash;</span>
-          )}
-        </span>
-      </td>
-    </tr>
+        </td>
+      </tr>
+      {refusal && (
+        <tr className={cn("border-b border-gray-100 last:border-0", !isActive && "bg-gray-50")}>
+          <td colSpan={columns} className="px-4 pb-3 pt-0">
+            {/* w-0 + min-w-full: the line fills the row but adds nothing to
+                the auto layout, so a long Booking list can't move the columns. */}
+            <p role="alert" className="w-0 min-w-full text-sm text-red-600">
+              {refusal}
+            </p>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
@@ -311,6 +338,38 @@ export function ActiveCell({
         />
         <ReservedBadge shown={!checked}>
           <InactiveBadge />
+        </ReservedBadge>
+      </label>
+    </td>
+  );
+}
+
+/**
+ * Retire / reactivate, for the dated rows Super Staff add themselves (Holidays,
+ * Maintenance Periods). Like `ActiveCell`, but the badge reads Retired: these
+ * rows have no delete, and a retired one stays listed so it can be undone.
+ */
+export function RetireCell({
+  rowKey,
+  checked,
+  onChange,
+}: {
+  rowKey: string;
+  checked: boolean;
+  onChange: (isActive: boolean) => void;
+}) {
+  return (
+    <td className="px-4 py-2">
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          aria-label={`${rowKey} active`}
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          className="h-4 w-4 accent-lucena-blue"
+        />
+        <ReservedBadge shown={!checked}>
+          <Badge variant="default">Retired</Badge>
         </ReservedBadge>
       </label>
     </td>
