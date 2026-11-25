@@ -82,6 +82,11 @@ _Avoid_: Old card, Expired card, Replaced card
 A Yellow Card Application a Citizen files while holding an active card, to replace the details printed on it. The old card stays valid until the Correction is approved, when it becomes a **Superseded card** and a new card with a new number is issued. The new card belongs to the Correction, so it is revoked from the Correction's review page, not the old card's. Distinct from a **Revision Request**, which fixes an Application before any decision, and from a Profile edit, which never changes a card.
 _Avoid_: Amendment, Card update, Reissue
 
+### Incident
+
+**Incident** in this system means an **Incident Report**: a Citizen's report of something in the city (Citizen, Staff and Responder glossaries). ITIL's "incident", a fault in the IT service itself, is a **System issue** here, owned by Super-staff and reported either by System health or by a person. A problem with the portal is never filed as an Incident Report, and a System issue is never routed to a department.
+_Avoid_: incident (when meaning a fault in the portal — say System issue)
+
 ### Monitoring
 
 **Monitoring** means two different things depending on the Portal. Since #72 (ADR 0008) Super-staff's old Monitoring screen is **System Health**:

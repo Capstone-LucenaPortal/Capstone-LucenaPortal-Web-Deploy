@@ -209,6 +209,16 @@ its graded checks. Request errors and failed sign-ins are not checks: only
 Supabase's logs hold them, and the Database and Accounts pages say so.
 _Avoid_: metric, alert
 
+**System issue.** A problem with the portal itself — a page that fails, a
+form that won't submit, a sign-in that won't work — as reported by a person,
+where System health is the software watching itself. Together they are the two
+sources of IT incidents: monitoring and user reports. A signed-in Citizen
+reports one from the portal; someone who cannot sign in emails the helpdesk,
+and Super-staff log it on their behalf. Super-staff, as IT/MIS, own every
+System issue. It is never an **Incident Report**: that is a problem *in the
+city*, routed to a department and worked by Responders.
+_Avoid_: incident, ticket, bug, complaint
+
 **"System healthy X% of samples", never "uptime".** The figure counts the
 5-minute samples whose overall status was `ok`. App reachability is not
 sampled, so it says nothing about whether the app answered.
