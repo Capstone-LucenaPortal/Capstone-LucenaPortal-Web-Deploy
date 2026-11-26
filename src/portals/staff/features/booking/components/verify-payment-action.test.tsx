@@ -208,4 +208,48 @@ describe("VerifyPaymentAction", () => {
     expect(screen.queryByText(/before verifying this payment/i)).toBeNull();
     expect(screen.queryByText(/current downpayment/i)).toBeNull();
   });
+
+  describe("opens each panel empty after a refused save is cancelled (#31)", () => {
+    it("the accept panel", async () => {
+      vi.spyOn(actions, "verifyPayment").mockResolvedValue({
+        ok: false,
+        message: "That official receipt number is already recorded against another payment.",
+        stale: false,
+      });
+      const user = userEvent.setup();
+      renderAction();
+
+      await user.click(screen.getByRole("button", { name: "Verify payment" }));
+      await user.type(screen.getByLabelText(/Official receipt no/), "OR-0042");
+      await user.click(screen.getByRole("button", { name: "I have seen this payment" }));
+      expect(await screen.findByRole("alert")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+      await user.click(screen.getByRole("button", { name: "Verify payment" }));
+
+      expect(screen.getByLabelText(/Official receipt no/)).toHaveValue("");
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+
+    it("the reject panel", async () => {
+      vi.spyOn(actions, "verifyPayment").mockResolvedValue({
+        ok: false,
+        message: "This payment can no longer be decided.",
+        stale: true,
+      });
+      const user = userEvent.setup();
+      renderAction();
+
+      await user.click(screen.getByRole("button", { name: "Reject payment" }));
+      await user.type(screen.getByLabelText(/Reason/), "Screenshot unreadable");
+      await user.click(screen.getAllByRole("button", { name: "Reject payment" })[1]);
+      expect(await screen.findByRole("alert")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+      await user.click(screen.getByRole("button", { name: "Reject payment" }));
+
+      expect(screen.getByLabelText(/Reason/)).toHaveValue("");
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+  });
 });

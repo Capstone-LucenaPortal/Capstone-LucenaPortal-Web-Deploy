@@ -146,16 +146,23 @@ describe('no Yellow Card office hardcoded into a page', () => {
 });
 
 describe('resolveTrunkline', () => {
-  it('prefers the LGU value and falls back when it is absent or blank', () => {
+  it('returns the trunkline the city saved in Site Info', () => {
     expect(resolveTrunkline('(042) 788-2298')).toBe('(042) 788-2298');
-    expect(resolveTrunkline(null)).toBe('(042) 373-1121');
-    expect(resolveTrunkline('   ')).toBe('(042) 373-1121');
+    expect(resolveTrunkline('  (042) 788-2298 ')).toBe('(042) 788-2298');
+  });
+
+  // #47: a number the city did not publish is never shown, so there is no
+  // fallback. Callers hide the phone row on null.
+  it('returns null when Site Info has no trunkline', () => {
+    expect(resolveTrunkline(null)).toBeNull();
+    expect(resolveTrunkline(undefined)).toBeNull();
+    expect(resolveTrunkline('   ')).toBeNull();
   });
 });
 
 describe('telHref', () => {
   it('rewrites a leading 0 to +63 so the link dials from abroad', () => {
-    expect(telHref('(042) 373-1121')).toBe('tel:+63423731121');
+    expect(telHref('(042) 788-2298')).toBe('tel:+63427882298');
   });
 
   it('leaves an already-international number alone', () => {

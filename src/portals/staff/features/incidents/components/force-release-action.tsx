@@ -19,6 +19,13 @@ export function ForceReleaseAction({ incident }: { incident: Incident }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
+  /** Opens empty however it was last closed (see RefuseIncidentAction). */
+  function openPanel() {
+    setReason("");
+    setError(null);
+    setOpen(true);
+  }
+
   function handleConfirm() {
     if (!reason.trim()) return;
     setError(null);
@@ -34,16 +41,13 @@ export function ForceReleaseAction({ incident }: { incident: Incident }) {
       }
 
       setOpen(false);
-      // Same reason as the routing dialog: a stale reason must not ride along
-      // with a later release.
-      setReason("");
       router.refresh();
     });
   }
 
   return (
     <div>
-      <Button variant="destructive" onClick={() => setOpen(true)}>
+      <Button variant="destructive" onClick={openPanel}>
         Force-release claim
       </Button>
 

@@ -11,6 +11,7 @@ import {
   type CharterSources,
 } from '@/portals/citizen/features/content/lib/citizens-charter';
 
+/** What the Charter is built from when every source failed. */
 const EMPTY_SOURCES: CharterSources = {
   yellowCard: null,
   yellowCardDocuments: [],
@@ -136,20 +137,78 @@ function ServiceEntry({ service }: { service: CharterService }) {
   );
 }
 
+/**
+ * The service entries and "Where to reach us", rendered only once the sources
+ * have answered.
+ */
+function CharterBody({ charter }: { charter: Charter }) {
+  const { office } = charter;
+
+  return (
+    <>
+      <div style={{ display: 'grid', gap: 24 }}>
+        {charter.services.map((service) => (
+          <ServiceEntry key={service.code} service={service} />
+        ))}
+      </div>
+
+      <div style={{ marginTop: 40, paddingTop: 28, borderTop: '1px solid #DDDDDD' }}>
+        <h2 style={{ fontSize: 'clamp(18px, 3vw, 22px)', fontWeight: 700, color: '#003DA5', marginBottom: 16 }}>
+          Where to reach us
+        </h2>
+        <dl style={{ display: 'grid', gap: 20, margin: 0 }}>
+          <Field label="Office">
+            {office.addressLines.map((line) => (
+              <span key={line} style={{ display: 'block' }}>
+                {line}
+              </span>
+            ))}
+          </Field>
+          {office.hours && <Field label="Office hours">{office.hours}</Field>}
+          {office.trunkline && (
+            <Field label="Trunkline">
+              <a href={telHref(office.trunkline)} style={{ color: '#003DA5', textDecoration: 'none' }}>
+                {office.trunkline}
+              </a>
+            </Field>
+          )}
+          <Field label="Feedback and complaints">
+            Email{' '}
+            <a href={`mailto:${HELPDESK_EMAIL}`} style={{ color: '#003DA5', textDecoration: 'none' }}>
+              {HELPDESK_EMAIL}
+            </a>{' '}
+            for anything about this portal, or{' '}
+            <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: '#003DA5', textDecoration: 'none' }}>
+              {CONTACT_EMAIL}
+            </a>{' '}
+            for general enquiries. Complaints are acknowledged within the office hours shown above.
+          </Field>
+        </dl>
+      </div>
+    </>
+  );
+}
+
 export default function CitizensCharter() {
-  const [charter, setCharter] = useState<Charter>(() => buildCharter(EMPTY_SOURCES));
+  // Null until the sources settle (#47). buildCharter's prose is for a catalog
+  // that is unavailable, not one still loading, so it is never a placeholder.
+  const [charter, setCharter] = useState<Charter | null>(null);
 
   useEffect(() => {
     let active = true;
-    loadSources().then((sources) => {
-      if (active) setCharter(buildCharter(sources));
-    });
+    loadSources()
+      .then(buildCharter)
+      // loadSources settles every read, so this only guards a read that
+      // throws before returning its promise: the page must still leave the
+      // loading state, with every source degraded to prose.
+      .catch(() => buildCharter(EMPTY_SOURCES))
+      .then((built) => {
+        if (active) setCharter(built);
+      });
     return () => {
       active = false;
     };
   }, []);
-
-  const { office } = charter;
 
   return (
     <section className="page-section" style={{ padding: '48px clamp(20px, 5vw, 48px) 80px', maxWidth: 900, margin: '0 auto' }}>
@@ -178,43 +237,13 @@ export default function CitizensCharter() {
         own service configuration.
       </div>
 
-      <div style={{ display: 'grid', gap: 24 }}>
-        {charter.services.map((service) => (
-          <ServiceEntry key={service.code} service={service} />
-        ))}
-      </div>
-
-      <div style={{ marginTop: 40, paddingTop: 28, borderTop: '1px solid #DDDDDD' }}>
-        <h2 style={{ fontSize: 'clamp(18px, 3vw, 22px)', fontWeight: 700, color: '#003DA5', marginBottom: 16 }}>
-          Where to reach us
-        </h2>
-        <dl style={{ display: 'grid', gap: 20, margin: 0 }}>
-          <Field label="Office">
-            {office.addressLines.map((line) => (
-              <span key={line} style={{ display: 'block' }}>
-                {line}
-              </span>
-            ))}
-          </Field>
-          {office.hours && <Field label="Office hours">{office.hours}</Field>}
-          <Field label="Trunkline">
-            <a href={telHref(office.trunkline)} style={{ color: '#003DA5', textDecoration: 'none' }}>
-              {office.trunkline}
-            </a>
-          </Field>
-          <Field label="Feedback and complaints">
-            Email{' '}
-            <a href={`mailto:${HELPDESK_EMAIL}`} style={{ color: '#003DA5', textDecoration: 'none' }}>
-              {HELPDESK_EMAIL}
-            </a>{' '}
-            for anything about this portal, or{' '}
-            <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: '#003DA5', textDecoration: 'none' }}>
-              {CONTACT_EMAIL}
-            </a>{' '}
-            for general enquiries. Complaints are acknowledged within the office hours shown above.
-          </Field>
-        </dl>
-      </div>
+      {charter ? (
+        <CharterBody charter={charter} />
+      ) : (
+        <p role="status" style={{ fontSize: 14, color: '#666666', margin: 0 }}>
+          Loading the services and contact details…
+        </p>
+      )}
     </section>
   );
 }

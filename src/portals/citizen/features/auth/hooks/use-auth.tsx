@@ -35,10 +35,10 @@ interface AuthContextValue {
    * browser opened the reset email — it must not be treated as a normal
    * signed-in session anywhere in the app. */
   isPasswordRecovery: boolean;
-  /** Set once when a session was ended by the idle timeout, so the UI can say
-   * why the citizen is suddenly signed out. Cleared by `dismissIdleNotice`. */
-  idleSignOutNotice: boolean;
-  dismissIdleNotice: () => void;
+  /** Why the citizen site just signed this person out on its own, so the Sign
+   * In modal can say so (#55, #56). Set together with opening the modal; cleared
+   * by closing it, by signing in or up, and by `logout`. */
+  signOutReason: SignOutReason | null;
   setUser: (user: User | null) => void;
   login: (email: string, password: string) => Promise<void>;
   /** Resolves to how the sign-up succeeded. Only `'signed-in'` sets the user
@@ -52,6 +52,11 @@ interface AuthContextValue {
   setAuthMode: (mode: 'login' | 'signup' | 'forgot') => void;
 }
 
+/** A sign-out the citizen site does on its own and explains: the idle cap, or
+ * a staff account signed in on the citizen site. The expired recovery flag
+ * signs out too, but silently, so it is not one of these. */
+export type SignOutReason = 'idle' | 'wrong-portal';
+
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -63,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // sign in, by an email link for one, must not inherit it.
   const [recoveryUserId, setRecoveryUserId] = useState<string | null>(null);
   const isPasswordRecovery = recoveryUserId !== null && user?.id === recoveryUserId;
-  const [idleSignOutNotice, setIdleSignOutNotice] = useState(false);
+  const [signOutReason, setSignOutReason] = useState<SignOutReason | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'signup' | 'forgot'>('login');
   const router = useRouter();
@@ -77,11 +82,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRecoveryUserId(null);
   }, []);
 
+  /** Forget why the last sign-out happened, here and for the next load: the
+   * stored idle key mirrors the state, so a reason the person dismissed must
+   * not come back on a reload. */
+  const clearSignOutReason = () => {
+    setSignOutReason(null);
+    if (typeof window !== 'undefined') localStorage.removeItem(IDLE_SIGNOUT_NOTICE_KEY);
+  };
+
+  /** A sign-out the site did on its own always comes with the Sign In modal
+   * saying why, whatever page the person is on (#55, #56). */
+  const showSignOutReason = useCallback((reason: SignOutReason) => {
+    setSignOutReason(reason);
+    setAuthMode('login');
+    setShowAuthModal(true);
+  }, []);
+
   /** Best-effort sign-out for the security paths (idle cap, expired recovery
    * flag, wrong portal). Unlike the user-initiated `logout`, this must never
    * throw or leave the UI showing a signed-in state — the whole point is to
    * end a session that should not still be live. */
-  const hardSignOut = useCallback(async (reason: 'idle' | 'recovery-expired' | 'wrong-portal') => {
+  const hardSignOut = useCallback(async (reason: SignOutReason | 'recovery-expired') => {
     try {
       await authService.logout();
     } catch {
@@ -95,9 +116,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (reason === 'idle') localStorage.setItem(IDLE_SIGNOUT_NOTICE_KEY, '1');
       }
       setUserState(null);
-      if (reason === 'idle') setIdleSignOutNotice(true);
+      if (reason !== 'recovery-expired') showSignOutReason(reason);
     }
-  }, [endPasswordRecovery]);
+  }, [endPasswordRecovery, showSignOutReason]);
 
   // Read through a ref so `reconcileProfile` stays stable for the provider's
   // lifetime: the bootstrap effect below subscribes to auth changes exactly
@@ -131,7 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     if (outcome === 'not-a-citizen') {
       await hardSignOut('wrong-portal');
-      router.push('/?wrong-portal=staff');
+      router.push('/');
       return;
     }
     if (outcome === 'incomplete' && pathnameRef.current !== '/complete-signup') {
@@ -161,9 +182,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     if (flag.state === 'active') setRecoveryUserId(flag.userId);
 
+    // Kept until the reason is cleared, so every reload says it again.
     if (typeof window !== 'undefined' && localStorage.getItem(IDLE_SIGNOUT_NOTICE_KEY)) {
-      localStorage.removeItem(IDLE_SIGNOUT_NOTICE_KEY);
-      setIdleSignOutNotice(true);
+      showSignOutReason('idle');
     }
 
     authService
@@ -203,7 +224,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       unsub();
     };
-  }, [hardSignOut, reconcileProfile, endPasswordRecovery]);
+  }, [hardSignOut, reconcileProfile, endPasswordRecovery, showSignOutReason]);
 
   // ---- Cross-tab recovery-flag consistency ----
   // The PASSWORD_RECOVERY event fires in exactly one tab, but the session it
@@ -257,23 +278,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const setUser = (u: User | null) => setUserState(u);
 
-  const dismissIdleNotice = () => setIdleSignOutNotice(false);
-
   const login = async (email: string, password: string) => {
     const u = await authService.login(email, password);
     setUserState(u);
     // A password was just proven, so any reset pending on this browser is over.
     endPasswordRecovery();
-    setIdleSignOutNotice(false);
+    clearSignOutReason();
     if (typeof window !== 'undefined') {
       localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
-      localStorage.removeItem(IDLE_SIGNOUT_NOTICE_KEY);
     }
     setShowAuthModal(false);
   };
 
   const signup = async (data: SignupData) => {
     const result = await authService.signup(data);
+    // Either outcome is a successful sign-up, so the old reason is stale; the
+    // "Check Your Email" panel's Sign In button must not bring it back.
+    clearSignOutReason();
     // Awaiting email confirmation is not a sign-in: no session exists yet, so
     // the modal stays open to tell the citizen to check their email (#65).
     if (result.status === 'confirm-email') return result.status;
@@ -296,11 +317,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setUserState(null);
       endPasswordRecovery();
-      setIdleSignOutNotice(false);
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem(LAST_ACTIVITY_KEY);
-        localStorage.removeItem(IDLE_SIGNOUT_NOTICE_KEY);
-      }
+      clearSignOutReason();
+      if (typeof window !== 'undefined') localStorage.removeItem(LAST_ACTIVITY_KEY);
     }
   };
 
@@ -309,11 +327,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setShowAuthModal(true);
   };
 
-  const closeAuthModal = () => setShowAuthModal(false);
+  const closeAuthModal = () => {
+    setShowAuthModal(false);
+    clearSignOutReason();
+  };
 
   return (
     <AuthContext.Provider value={{
-      user, loading, isPasswordRecovery, idleSignOutNotice, dismissIdleNotice,
+      user, loading, isPasswordRecovery, signOutReason,
       setUser, login, signup, logout,
       openAuthModal, closeAuthModal, showAuthModal,
       authMode, setAuthMode,

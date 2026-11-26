@@ -69,3 +69,45 @@ describe("BarangayCoverageTable aria-sort", () => {
     expect(applicantsTh).toHaveAttribute("aria-sort", "descending");
   });
 });
+
+// #38: the empty-state row says why the table is empty, and never claims
+// emptiness before a real load.
+describe("BarangayCoverageTable empty state", () => {
+  it("says no barangay matches a search term that hides every row", async () => {
+    const user = userEvent.setup();
+    const { getByRole, getByText } = render(<BarangayCoverageTable rows={rows} canExport />);
+
+    await user.type(getByRole("searchbox", { name: "Search barangay" }), "Zzz");
+
+    expect(
+      getByText("No barangay matches “Zzz”. Clear the search to see all barangays.")
+    ).toBeInTheDocument();
+  });
+
+  it("says no applicants in this range when a real load has no rows and the search is empty", () => {
+    const { getByText, queryByText } = render(<BarangayCoverageTable rows={[]} canExport />);
+
+    expect(getByText("No applicants in this range.")).toBeInTheDocument();
+    expect(queryByText(/No barangay matches/)).not.toBeInTheDocument();
+    expect(queryByText(/“”/)).not.toBeInTheDocument();
+  });
+
+  it("treats a whitespace-only search as empty", async () => {
+    const user = userEvent.setup();
+    const { getByRole, getByText, queryByText } = render(
+      <BarangayCoverageTable rows={[]} canExport />
+    );
+
+    await user.type(getByRole("searchbox", { name: "Search barangay" }), "   ");
+
+    expect(getByText("No applicants in this range.")).toBeInTheDocument();
+    expect(queryByText(/No barangay matches/)).not.toBeInTheDocument();
+  });
+
+  it("shows no empty-state sentence before a real load", () => {
+    const { queryByText } = render(<BarangayCoverageTable rows={[]} canExport={false} />);
+
+    expect(queryByText(/No applicants/)).not.toBeInTheDocument();
+    expect(queryByText(/No barangay matches/)).not.toBeInTheDocument();
+  });
+});

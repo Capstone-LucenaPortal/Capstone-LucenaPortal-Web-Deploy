@@ -141,4 +141,25 @@ describe("ReviewDocumentAction", () => {
       "There is no organisation document on file",
     );
   });
+
+  it("opens the decline panel empty after a refused send is cancelled (#31)", async () => {
+    vi.spyOn(actions, "reviewDocument").mockResolvedValue({
+      ok: false,
+      message: "This booking is no longer awaiting a Tier Review.",
+      stale: true,
+    });
+    const user = userEvent.setup();
+    render(<ReviewDocumentAction bookingId="bk-1" {...FIRST_LOOK} />);
+
+    await user.click(screen.getByRole("button", { name: "Request revision" }));
+    await user.type(screen.getByLabelText(/Reason/), "The scan is blurry.");
+    await user.click(screen.getByRole("button", { name: "Send Revision Request" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Request revision" }));
+
+    expect(screen.getByLabelText(/Reason/)).toHaveValue("");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 });

@@ -44,12 +44,24 @@ export function RecordBalanceAction({
   const [amount, setAmount] = useState(String(balanceAmount));
   const [receiptNo, setReceiptNo] = useState("");
   const [method, setMethod] = useState<PaymentMethod>("cash");
-  // Exempt: this is a client component seeding form state on mount. There is
-  // no render-top above it to be handed a moment from, and the value is not a
-  // moment anything is measured against — it is a default the operator edits,
-  // and the RPC judges what they submit.
-  // eslint-disable-next-line no-restricted-syntax
-  const [paidAt, setPaidAt] = useState(todayInManila(new Date()));
+  // Set each time the panel opens; the panel is closed until then.
+  const [paidAt, setPaidAt] = useState("");
+
+  /** Opens at its starting values however it was last closed (see RefuseIncidentAction). */
+  function openPanel() {
+    setAmount(String(balanceAmount));
+    setReceiptNo("");
+    setMethod("cash");
+    // Exempt: this is a client component seeding a form default as the panel
+    // opens. There is no render-top above it to be handed a moment from, and
+    // the value is not a moment anything is measured against — it is a default
+    // the operator edits, and the RPC judges what they submit. Read here, not
+    // on mount, so a panel opened after Manila midnight says today.
+    // eslint-disable-next-line no-restricted-syntax
+    setPaidAt(todayInManila(new Date()));
+    setError(null);
+    setOpen(true);
+  }
 
   function handleConfirm() {
     setError(null);
@@ -66,14 +78,13 @@ export function RecordBalanceAction({
         return;
       }
       setOpen(false);
-      setReceiptNo("");
       router.refresh();
     });
   }
 
   return (
     <div>
-      <Button onClick={() => setOpen(true)}>Record balance payment</Button>
+      <Button onClick={openPanel}>Record balance payment</Button>
 
       <Modal open={open} onClose={() => setOpen(false)}>
         <h2 className="text-lg font-bold text-gray-900">

@@ -17,6 +17,13 @@ async function open() {
   return user;
 }
 
+/** The Staff Modal's dimmed backdrop, which closes the panel when clicked. */
+function backdrop(): HTMLElement {
+  const el = document.querySelector<HTMLElement>(".fixed.inset-0 > [aria-hidden='true']");
+  if (!el) throw new Error("No Modal backdrop is showing");
+  return el;
+}
+
 describe("RecordBalanceAction", () => {
   it("prefills the amount, because the RPC demands an exact match", async () => {
     await open();
@@ -34,16 +41,17 @@ describe("RecordBalanceAction", () => {
   });
 
   it("defaults the paid-on date to today in Manila", async () => {
-    await open();
-    // Exempt for the same reason the component is: this asserts that the
-    // default is *today*, so it has to read the same wall clock the component
-    // reads. A fixed instant here would assert a different property.
-    // eslint-disable-next-line no-restricted-syntax
-    const now = new Date();
-    const today = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Manila",
-    }).format(now);
-    expect(screen.getByLabelText(/Paid on/)).toHaveValue(today);
+    // A faked system clock rather than the wall clock, at a moment when UTC
+    // and Manila disagree on the day: 23:30 UTC on the 26th is 07:30 on the
+    // 27th in Manila, so a default taken in UTC would show the wrong date.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-26T23:30:00Z"));
+    try {
+      await open();
+      expect(screen.getByLabelText(/Paid on/)).toHaveValue("2026-11-27");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("requires an OR number", async () => {
@@ -72,6 +80,78 @@ describe("RecordBalanceAction", () => {
         method: "check",
       }),
     );
+  });
+
+  describe("opens at its starting values however it was last closed (#31)", () => {
+    async function fillEverything(user: ReturnType<typeof userEvent.setup>) {
+      await user.clear(screen.getByLabelText(/Amount/));
+      await user.type(screen.getByLabelText(/Amount/), "100");
+      await user.type(screen.getByLabelText(/Official receipt number/), "OR-9001");
+      await user.selectOptions(screen.getByLabelText("Method"), "check");
+      await user.clear(screen.getByLabelText(/Paid on/));
+      await user.type(screen.getByLabelText(/Paid on/), "2026-01-15");
+    }
+
+    function expectStartingValues(today: string) {
+      expect(screen.getByLabelText(/Amount/)).toHaveValue(20400);
+      expect(screen.getByLabelText(/Official receipt number/)).toHaveValue("");
+      expect(screen.getByLabelText("Method")).toHaveValue("cash");
+      expect(screen.getByLabelText(/Paid on/)).toHaveValue(today);
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    }
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("after a refused save is cancelled", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-11-26T03:00:00Z"));
+      vi.spyOn(actions, "recordBalancePayment").mockResolvedValue({
+        ok: false,
+        message: "The amount must match the outstanding balance exactly.",
+        stale: false,
+      });
+      const user = await open();
+
+      await fillEverything(user);
+      await user.click(screen.getByRole("button", { name: "Record payment" }));
+      expect(await screen.findByRole("alert")).toBeInTheDocument();
+      // While the panel stays open, a refused save keeps what was typed.
+      expect(screen.getByLabelText(/Official receipt number/)).toHaveValue("OR-9001");
+
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+      await user.click(screen.getByRole("button", { name: "Record balance payment" }));
+
+      expectStartingValues("2026-11-26");
+    });
+
+    it("after a click on the backdrop", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-11-26T03:00:00Z"));
+      const user = await open();
+
+      await fillEverything(user);
+      await user.click(backdrop());
+      await user.click(screen.getByRole("button", { name: "Record balance payment" }));
+
+      expectStartingValues("2026-11-26");
+    });
+
+    it("dates the payment today in Manila as of the reopening, not the first open", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      // 23:30 in Manila on the 26th…
+      vi.setSystemTime(new Date("2026-11-26T15:30:00Z"));
+      const user = await open();
+      expect(screen.getByLabelText(/Paid on/)).toHaveValue("2026-11-26");
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+      // …and 00:30 on the 27th when the panel is opened again.
+      vi.setSystemTime(new Date("2026-11-26T16:30:00Z"));
+      await user.click(screen.getByRole("button", { name: "Record balance payment" }));
+
+      expect(screen.getByLabelText(/Paid on/)).toHaveValue("2026-11-27");
+    });
   });
 
   it("surfaces the duplicate-OR message", async () => {

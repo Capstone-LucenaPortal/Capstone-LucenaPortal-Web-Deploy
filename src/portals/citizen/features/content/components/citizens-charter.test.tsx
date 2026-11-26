@@ -57,6 +57,17 @@ function withBackend() {
   });
 }
 
+/** Gives every catalog read the same behaviour. */
+function everyRead(impl: () => unknown) {
+  for (const read of [getYellowCardConfig, getYellowCardDocumentTypes, getIncidentConfig, getBookingConfig, getSiteInfo]) {
+    read.mockImplementation(impl);
+  }
+}
+
+function telLinks(container: HTMLElement) {
+  return container.querySelectorAll('a[href^="tel:"]');
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -102,6 +113,68 @@ describe('CitizensCharter', () => {
     await screen.findByText('Yellow Card Application');
 
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+  });
+
+  // #47: until the sources settle the page used to render the prose meant for
+  // an *unavailable* catalog, plus a hard-coded trunkline as a live tel: link.
+  describe('while the catalogs load', () => {
+    it('shows a loading state, not the unavailable-catalog prose or a phone number', () => {
+      everyRead(() => new Promise(() => {}));
+      const { container } = render(<CitizensCharter />);
+
+      expect(screen.getByRole('status')).toHaveTextContent(/loading/i);
+      expect(screen.queryByText('A few business days')).toBeNull();
+      expect(screen.queryByText('Yellow Card Application')).toBeNull();
+      expect(screen.queryByText('Where to reach us')).toBeNull();
+      expect(telLinks(container)).toHaveLength(0);
+    });
+
+    it('renders the heading and the pending-approval note straight away', () => {
+      everyRead(() => new Promise(() => {}));
+      render(<CitizensCharter />);
+
+      expect(screen.getByRole('heading', { level: 1, name: "Citizen's Charter" })).toBeInTheDocument();
+      expect(screen.getByText(/pending official approval/)).toBeInTheDocument();
+    });
+  });
+
+  it('renders the services and contact block once the catalogs settle', async () => {
+    withBackend();
+    const { container } = render(<CitizensCharter />);
+
+    expect(await screen.findByText('Yellow Card Application')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.getByText('Where to reach us')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '(042) 788-2298' })).toHaveAttribute('href', 'tel:+63427882298');
+    expect(telLinks(container)).toHaveLength(1);
+  });
+
+  it('omits the Trunkline row when Site Info has no trunkline', async () => {
+    withoutBackend();
+    const { container } = render(<CitizensCharter />);
+
+    expect(await screen.findByText('Where to reach us')).toBeInTheDocument();
+    expect(screen.queryByText('Trunkline')).toBeNull();
+    expect(telLinks(container)).toHaveLength(0);
+  });
+
+  it('leaves the loading state even when every catalog read rejects', async () => {
+    everyRead(() => Promise.reject(new Error('network down')));
+    render(<CitizensCharter />);
+
+    expect(await screen.findByText('A few business days')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('leaves the loading state even when a read throws before returning a promise', async () => {
+    withoutBackend();
+    getSiteInfo.mockImplementation(() => {
+      throw new Error('client not ready');
+    });
+    render(<CitizensCharter />);
+
+    expect(await screen.findByText('A few business days')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).toBeNull();
   });
 
   it('stays readable when a catalog read rejects', async () => {

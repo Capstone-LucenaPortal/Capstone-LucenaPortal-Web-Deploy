@@ -53,6 +53,14 @@ export function VerifyPaymentAction({
   const [reason, setReason] = useState("");
   const [receiptNo, setReceiptNo] = useState("");
 
+  /** Each panel opens empty however it was last closed (see RefuseIncidentAction). */
+  function openPanel(next: "accept" | "reject") {
+    setReason("");
+    setReceiptNo("");
+    setError(null);
+    setMode(next);
+  }
+
   function run(decision: "accept" | "reject") {
     setError(null);
     startTransition(async () => {
@@ -68,8 +76,6 @@ export function VerifyPaymentAction({
         return;
       }
       setMode(null);
-      setReason("");
-      setReceiptNo("");
       router.refresh();
     });
   }
@@ -78,14 +84,14 @@ export function VerifyPaymentAction({
     <div>
       <div className="flex flex-wrap items-center gap-2">
         <Button
-          onClick={() => setMode("accept")}
+          onClick={() => openPanel("accept")}
           disabled={pending || accept.kind === "blocked"}
         >
           Verify payment
         </Button>
         <Button
           variant="destructive"
-          onClick={() => setMode("reject")}
+          onClick={() => openPanel("reject")}
           disabled={pending}
         >
           Reject payment

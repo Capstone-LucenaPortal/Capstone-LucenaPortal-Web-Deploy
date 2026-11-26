@@ -92,4 +92,25 @@ describe("RejectBookingAction", () => {
       "the event is committed",
     );
   });
+
+  it("opens empty after a refused save is cancelled (#31)", async () => {
+    vi.spyOn(actions, "rejectBooking").mockResolvedValue({
+      ok: false,
+      message: "This booking can no longer be rejected.",
+      stale: true,
+    });
+    const user = userEvent.setup();
+    render(<RejectBookingAction bookingId="bk-1" status="awaiting_payment" />);
+
+    await user.click(screen.getByRole("button", { name: "Reject booking" }));
+    await user.type(screen.getByLabelText(/Reason/), "Venue double-booked");
+    await user.click(screen.getAllByRole("button", { name: "Reject booking" })[1]);
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Reject booking" }));
+
+    expect(screen.getByLabelText(/Reason/)).toHaveValue("");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 });

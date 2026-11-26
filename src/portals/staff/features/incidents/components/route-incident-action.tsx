@@ -21,12 +21,14 @@ export function RouteIncidentAction({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const [department, setDepartment] = useState(
+  // The department the form starts with: where the report already sits, else
+  // where the catalogue suggests, else the first department.
+  const startingDepartment =
     incident.assigned_department_code ??
-      incident.suggested_department_code ??
-      departments[0]?.[0] ??
-      "",
-  );
+    incident.suggested_department_code ??
+    departments[0]?.[0] ??
+    "";
+  const [department, setDepartment] = useState(startingDepartment);
   const [level, setLevel] = useState<IncidentLevel>(incident.incident_level);
   const [note, setNote] = useState("");
 
@@ -49,6 +51,18 @@ export function RouteIncidentAction({
 
   const isReroute = incident.routed_at !== null;
 
+  /**
+   * Opens at its starting values however it was last closed (see
+   * RefuseIncidentAction), read from the report as the page now has it.
+   */
+  function openPanel() {
+    setDepartment(startingDepartment);
+    setLevel(incident.incident_level);
+    setNote("");
+    setError(null);
+    setOpen(true);
+  }
+
   function handleConfirm() {
     setError(null);
     startTransition(async () => {
@@ -65,9 +79,6 @@ export function RouteIncidentAction({
       }
 
       setOpen(false);
-      // Clear the note, or reopening the dialog to reroute silently re-attaches
-      // the note from the previous routing to a different decision.
-      setNote("");
       // The Server Action revalidated; refresh so this page re-reads rather
       // than showing the state it rendered with.
       router.refresh();
@@ -76,7 +87,7 @@ export function RouteIncidentAction({
 
   return (
     <div>
-      <Button onClick={() => setOpen(true)}>
+      <Button onClick={openPanel}>
         {isReroute ? "Reroute" : "Route to department"}
       </Button>
 

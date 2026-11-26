@@ -29,6 +29,13 @@ export function RejectBookingAction({
   const [error, setError] = useState<string | null>(null);
   const [reason, setReason] = useState("");
 
+  /** Opens empty however it was last closed (see RefuseIncidentAction). */
+  function openPanel() {
+    setReason("");
+    setError(null);
+    setOpen(true);
+  }
+
   function handleConfirm() {
     setError(null);
     startTransition(async () => {
@@ -38,14 +45,13 @@ export function RejectBookingAction({
         return;
       }
       setOpen(false);
-      setReason("");
       router.refresh();
     });
   }
 
   return (
     <div>
-      <Button variant="destructive" onClick={() => setOpen(true)}>
+      <Button variant="destructive" onClick={openPanel}>
         Reject booking
       </Button>
 

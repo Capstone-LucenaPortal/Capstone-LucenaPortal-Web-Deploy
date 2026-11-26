@@ -165,10 +165,14 @@ export function BarangayCoverageTable({
                 </tr>
               );
             })}
-            {visibleRows.length === 0 && (
+            {/* Before a real load the table is only a placeholder, so it claims
+                nothing: the page's loading status and error banner speak (#38). */}
+            {visibleRows.length === 0 && canExport && (
               <tr>
                 <td colSpan={3} className="px-6 py-8 text-center text-sm text-gray-500">
-                  No barangay matches “{query}”. Clear the search to see all barangays.
+                  {query.trim()
+                    ? `No barangay matches “${query}”. Clear the search to see all barangays.`
+                    : "No applicants in this range."}
                 </td>
               </tr>
             )}

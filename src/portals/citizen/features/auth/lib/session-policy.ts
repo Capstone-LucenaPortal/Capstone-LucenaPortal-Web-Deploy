@@ -25,8 +25,9 @@ export const IDLE_CHECK_INTERVAL_MS = 60 * 1000;
  * session the citizen is actively using in another tab. */
 export const LAST_ACTIVITY_KEY = 'lucena_last_activity';
 
-/** Set when a session ends because it went idle, so the next page load can say
- * so instead of silently presenting a signed-out portal. Consumed once. */
+/** Set when a session ends because it went idle, so a reload can say so
+ * instead of silently presenting a signed-out portal. Kept until the reason is
+ * cleared: the Sign In modal closed, a sign-in or sign-up, or Logout. */
 export const IDLE_SIGNOUT_NOTICE_KEY = 'lucena_idle_signout';
 
 /** DOM events counted as activity. `visibilitychange` is included so returning

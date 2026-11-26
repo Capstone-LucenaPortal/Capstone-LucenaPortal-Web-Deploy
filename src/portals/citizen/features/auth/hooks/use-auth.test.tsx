@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { AuthProvider, useAuth } from '@/portals/citizen/features/auth/hooks/use-auth';
 import { authService } from '@/portals/citizen/features/auth/lib/auth';
+import {
+  IDLE_CHECK_INTERVAL_MS,
+  IDLE_TIMEOUT_MS,
+  encodeRecoveryFlag,
+} from '@/portals/citizen/features/auth/lib/session-policy';
 
 type Listener = (user: { id: string } | null, event?: string) => void;
 let listener: Listener | null = null;
@@ -160,5 +165,124 @@ describe('AuthProvider sign-up', () => {
     expect(hook.result.current.user).toBeNull();
     expect(hook.result.current.showAuthModal).toBe(true);
     expect(localStorage.getItem('lucena_last_activity')).toBeNull();
+  });
+});
+
+// Issues #55 and #56. A sign-out the citizen site does on its own says why:
+// the Sign In modal opens with the reason, on any page.
+describe('AuthProvider sign-out reason', () => {
+  it('signs a staff account out to the home page with the Sign In modal open and the wrong-portal reason', async () => {
+    vi.mocked(authService.getCurrentUser).mockResolvedValueOnce({ id: 'STAFF-1', email: '', name: '' });
+    vi.mocked(authService.ensureCitizenProfile).mockResolvedValueOnce('not-a-citizen');
+    const hook = await mount();
+    await waitFor(() => expect(hook.result.current.signOutReason).toBe('wrong-portal'));
+    expect(hook.result.current.user).toBeNull();
+    expect(hook.result.current.showAuthModal).toBe(true);
+    expect(hook.result.current.authMode).toBe('login');
+    expect(router.push).toHaveBeenCalledWith('/');
+  });
+  // The idle cap runs on every page, public ones included: usePathname is '/'.
+  it('opens the Sign In modal with the idle reason when the idle cap signs the citizen out', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.mocked(authService.getCurrentUser).mockResolvedValueOnce({ id: 'USER-A', email: '', name: '' });
+      const hook = await mount();
+      expect(hook.result.current.user?.id).toBe('USER-A');
+      await act(async () => { vi.advanceTimersByTime(IDLE_TIMEOUT_MS + IDLE_CHECK_INTERVAL_MS); });
+      await waitFor(() => expect(hook.result.current.signOutReason).toBe('idle'));
+      expect(hook.result.current.user).toBeNull();
+      expect(hook.result.current.showAuthModal).toBe(true);
+      expect(hook.result.current.authMode).toBe('login');
+
+      // The reason outlives a reload, and the modal opens again with it.
+      hook.unmount();
+      const nextLoad = await mount();
+      expect(nextLoad.result.current.signOutReason).toBe('idle');
+      expect(nextLoad.result.current.showAuthModal).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('signs out an expired password recovery without a reason or the modal', async () => {
+    localStorage.setItem('lucena_pw_recovery_pending', encodeRecoveryFlag('USER-A', Date.now() - 31 * 60 * 1000));
+    const hook = await mount();
+    await waitFor(() => expect(authService.logout).toHaveBeenCalled());
+    expect(hook.result.current.signOutReason).toBeNull();
+    expect(hook.result.current.showAuthModal).toBe(false);
+  });
+
+  it('has no reason on an ordinary load', async () => {
+    const hook = await mount();
+    expect(hook.result.current.signOutReason).toBeNull();
+    expect(hook.result.current.showAuthModal).toBe(false);
+  });
+
+  const signedOutAsStaff = async () => {
+    vi.mocked(authService.getCurrentUser).mockResolvedValueOnce({ id: 'STAFF-1', email: '', name: '' });
+    vi.mocked(authService.ensureCitizenProfile).mockResolvedValueOnce('not-a-citizen');
+    const hook = await mount();
+    await waitFor(() => expect(hook.result.current.signOutReason).toBe('wrong-portal'));
+    return hook;
+  };
+
+  it('clears the reason when the modal is closed, so the next Sign In shows none', async () => {
+    const hook = await signedOutAsStaff();
+    act(() => hook.result.current.closeAuthModal());
+    expect(hook.result.current.signOutReason).toBeNull();
+    act(() => hook.result.current.openAuthModal('login'));
+    expect(hook.result.current.signOutReason).toBeNull();
+  });
+
+  it('clears the reason on a successful sign-in', async () => {
+    const hook = await signedOutAsStaff();
+    await act(() => hook.result.current.login('juan@example.com', 'Correct-horse-1'));
+    expect(hook.result.current.signOutReason).toBeNull();
+  });
+
+  it('clears the reason on a sign-up that signs in', async () => {
+    const hook = await signedOutAsStaff();
+    await act(async () => { await hook.result.current.signup({} as Parameters<typeof hook.result.current.signup>[0]); });
+    expect(hook.result.current.signOutReason).toBeNull();
+  });
+
+  it('does not bring the idle reason back on a reload once the modal was closed', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.mocked(authService.getCurrentUser).mockResolvedValueOnce({ id: 'USER-A', email: '', name: '' });
+      const hook = await mount();
+      await act(async () => { vi.advanceTimersByTime(IDLE_TIMEOUT_MS + IDLE_CHECK_INTERVAL_MS); });
+      await waitFor(() => expect(hook.result.current.signOutReason).toBe('idle'));
+      act(() => hook.result.current.closeAuthModal());
+
+      hook.unmount();
+      const nextLoad = await mount();
+      expect(nextLoad.result.current.signOutReason).toBeNull();
+      expect(nextLoad.result.current.showAuthModal).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // #65: awaiting email confirmation is a successful sign-up too, and the
+  // "Check Your Email" panel's Sign In button must not bring the old line back.
+  it('clears the reason on a sign-up that awaits email confirmation', async () => {
+    const hook = await signedOutAsStaff();
+    vi.mocked(authService.signup).mockResolvedValueOnce({ status: 'confirm-email' });
+    await act(async () => { await hook.result.current.signup({} as Parameters<typeof hook.result.current.signup>[0]); });
+    expect(hook.result.current.signOutReason).toBeNull();
+  });
+
+  it('clears the reason on Logout', async () => {
+    const hook = await signedOutAsStaff();
+    await act(() => hook.result.current.logout());
+    expect(hook.result.current.signOutReason).toBeNull();
+  });
+
+  it('keeps the reason when the modal switches to Sign Up and back', async () => {
+    const hook = await signedOutAsStaff();
+    act(() => hook.result.current.setAuthMode('signup'));
+    act(() => hook.result.current.setAuthMode('login'));
+    expect(hook.result.current.signOutReason).toBe('wrong-portal');
   });
 });

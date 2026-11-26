@@ -79,3 +79,53 @@ describe("BarangayReportsTable aria-sort", () => {
     expect(reportsTh).toHaveAttribute("aria-sort", "descending");
   });
 });
+
+// #39: the empty state is chosen by whether the range has any rows at all,
+// not by what the category dropdown says.
+describe("BarangayReportsTable empty states", () => {
+  function getTableBody(container: HTMLElement) {
+    return container.querySelector<HTMLElement>("tbody")!;
+  }
+
+  it("says the range has no reports when rows are empty and the filter is All categories", () => {
+    const { container } = render(<BarangayReportsTable rows={[]} insight={insight} canExport={false} />);
+
+    expect(getTableBody(container)).toHaveTextContent("No reports in this range.");
+    expect(getTableBody(container)).not.toHaveTextContent("as its top category");
+  });
+
+  it("says the range has no reports when a real category is left selected and the range empties", async () => {
+    const user = userEvent.setup();
+    const { container, getByLabelText, rerender } = render(
+      <BarangayReportsTable rows={rows} insight={insight} canExport />
+    );
+    await user.selectOptions(getByLabelText("Filter by category"), "Sanitation");
+
+    rerender(<BarangayReportsTable rows={[]} insight={insight} canExport={false} />);
+
+    expect(getTableBody(container)).toHaveTextContent("No reports in this range.");
+    expect(getTableBody(container)).not.toHaveTextContent("as its top category");
+  });
+
+  it("names the category when the range has reports but none has it as the top category", async () => {
+    const user = userEvent.setup();
+    const { container, getByLabelText, rerender } = render(
+      <BarangayReportsTable rows={rows} insight={insight} canExport />
+    );
+    await user.selectOptions(getByLabelText("Filter by category"), "Sanitation");
+
+    // New range: still has reports, but no barangay tops out on Sanitation.
+    rerender(<BarangayReportsTable rows={[rows[0]]} insight={insight} canExport />);
+
+    expect(getTableBody(container)).toHaveTextContent("No barangay has Sanitation as its top category.");
+    expect(getTableBody(container)).not.toHaveTextContent("No reports in this range.");
+  });
+
+  it("shows the rows and no empty-state message when the range has reports under All categories", () => {
+    const { container } = render(<BarangayReportsTable rows={rows} insight={insight} canExport />);
+
+    expect(within(getTableBody(container)).getAllByRole("row")).toHaveLength(2);
+    expect(getTableBody(container)).not.toHaveTextContent("No reports in this range.");
+    expect(getTableBody(container)).not.toHaveTextContent("as its top category");
+  });
+});

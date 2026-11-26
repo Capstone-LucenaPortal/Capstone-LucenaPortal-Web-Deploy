@@ -32,8 +32,8 @@ export default function SiteFooter() {
         if (!cancelled) setTrunkline(info?.trunkline ?? null);
       })
       .catch(() => {
-        // A footer must never be the thing that breaks a page. The constant
-        // fallback in resolveTrunkline covers this.
+        // A footer must never be the thing that breaks a page. With no
+        // trunkline the sentence simply drops its phone part.
       });
     return () => {
       cancelled = true;
@@ -60,11 +60,19 @@ export default function SiteFooter() {
         <div>
           <p style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>Lucena City E-Services</p>
           <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.85)', lineHeight: 1.7 }}>
-            For any inquiries, please call{' '}
-            <a href={telHref(phone)} style={{ color: 'white', fontWeight: 700, textDecoration: 'none' }}>
-              {phone}
-            </a>{' '}
-            or email<br />
+            {/* Only a trunkline the city saved in Site Info is shown (#47): while
+                it loads, or when there is none, the sentence offers email only. */}
+            {phone ? (
+              <>
+                For any inquiries, please call{' '}
+                <a href={telHref(phone)} style={{ color: 'white', fontWeight: 700, textDecoration: 'none' }}>
+                  {phone}
+                </a>{' '}
+                or email<br />
+              </>
+            ) : (
+              <>For any inquiries, please email<br /></>
+            )}
             <a href={`mailto:${HELPDESK_EMAIL}`} style={{ color: 'rgba(255,255,255,0.9)', textDecoration: 'none' }}>
               {HELPDESK_EMAIL}
             </a>

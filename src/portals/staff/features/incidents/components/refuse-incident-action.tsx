@@ -58,6 +58,19 @@ export function RefuseIncidentAction({ incident }: { incident: Incident }) {
     !reasonTooLong &&
     (!isDuplicate || originalReference.trim() !== "");
 
+  /**
+   * The panel opens empty however it was last closed — Cancel, the backdrop,
+   * or a refused save — so a stale reason is never confirmed by mistake.
+   * Clearing on open rather than on Cancel covers the backdrop too.
+   */
+  function openPanel() {
+    setRefusal("invalid");
+    setOriginalReference("");
+    setReason("");
+    setError(null);
+    setOpen(true);
+  }
+
   function handleConfirm() {
     if (!ready) return;
     setError(null);
@@ -79,16 +92,13 @@ export function RefuseIncidentAction({ incident }: { incident: Incident }) {
       }
 
       setOpen(false);
-      setRefusal("invalid");
-      setOriginalReference("");
-      setReason("");
       router.refresh();
     });
   }
 
   return (
     <div>
-      <Button variant="destructive" onClick={() => setOpen(true)}>
+      <Button variant="destructive" onClick={openPanel}>
         Refuse report
       </Button>
 

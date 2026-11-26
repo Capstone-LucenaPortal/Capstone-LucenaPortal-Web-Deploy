@@ -56,6 +56,13 @@ async function openModal(over: Partial<Incident> = {}) {
 
 const confirmButton = () => screen.getByRole("button", { name: "Confirm refusal" });
 
+/** The Staff Modal's dimmed backdrop, which closes the panel when clicked. */
+function backdrop(): HTMLElement {
+  const el = document.querySelector<HTMLElement>(".fixed.inset-0 > [aria-hidden='true']");
+  if (!el) throw new Error("No Modal backdrop is showing");
+  return el;
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -219,6 +226,65 @@ describe("RefuseIncidentAction", () => {
       "No report has the reference number you entered.",
     );
     expect(screen.getByLabelText(/Original's reference/)).toHaveValue("INC-2026-999999");
+  });
+
+  describe("opens empty however it was last closed (#31)", () => {
+    async function fillEverything(user: ReturnType<typeof userEvent.setup>) {
+      await user.click(screen.getByLabelText("Duplicate"));
+      await user.type(screen.getByLabelText(/Original's reference/), "INC-2026-000076");
+      await user.type(screen.getByLabelText(/Reason/), "Same burst main.");
+    }
+
+    function expectStartingValues() {
+      expect(screen.getByLabelText("Invalid")).toBeChecked();
+      expect(screen.queryByLabelText(/Original's reference/)).not.toBeInTheDocument();
+      expect(screen.getByLabelText(/Reason/)).toHaveValue("");
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    }
+
+    it("after Cancel", async () => {
+      const user = await openModal();
+      await fillEverything(user);
+
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+      await user.click(screen.getByRole("button", { name: "Refuse report" }));
+
+      expectStartingValues();
+      // A Duplicate chosen again starts with an empty reference too.
+      await user.click(screen.getByLabelText("Duplicate"));
+      expect(screen.getByLabelText(/Original's reference/)).toHaveValue("");
+    });
+
+    it("after a click on the backdrop", async () => {
+      const user = await openModal();
+      await fillEverything(user);
+
+      await user.click(backdrop());
+      await user.click(screen.getByRole("button", { name: "Refuse report" }));
+
+      expectStartingValues();
+    });
+
+    it("after a refused save, which kept everything while the panel stayed open", async () => {
+      vi.spyOn(actions, "refuseIncident").mockResolvedValue({
+        ok: false,
+        message: "No report has the reference number you entered.",
+        stale: false,
+      });
+
+      const user = await openModal();
+      await fillEverything(user);
+      await user.click(confirmButton());
+
+      expect(await screen.findByRole("alert")).toBeInTheDocument();
+      expect(screen.getByLabelText(/Original's reference/)).toHaveValue("INC-2026-000076");
+      expect(screen.getByLabelText(/Reason/)).toHaveValue("Same burst main.");
+
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+      await user.click(screen.getByRole("button", { name: "Refuse report" }));
+
+      expectStartingValues();
+    });
   });
 
   it("closes the dialog after a refusal — the page re-reads instead of a banner", async () => {

@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect, useId, useRef } from 'react';
+import Link from 'next/link';
 import { PasswordVisibilityToggle } from '@/shared/auth/password-visibility-toggle';
-import { useAuth } from '@/portals/citizen/features/auth/hooks/use-auth';
+import { useAuth, type SignOutReason } from '@/portals/citizen/features/auth/hooks/use-auth';
+import { IDLE_TIMEOUT_MS } from '@/portals/citizen/features/auth/lib/session-policy';
 import { Button } from '@/portals/citizen/components/ui/button';
 import ModalShell, { ModalCloseButton } from '@/portals/citizen/components/ui/modal-shell';
 import { PhoneInput } from '@/portals/citizen/components/ui/phone-input';
@@ -33,8 +35,33 @@ export default function AuthModal() {
   return <AuthForm key={authMode} barangays={barangays} />;
 }
 
+/**
+ * Why the site just signed this person out on its own (#55, #56). A status,
+ * not a red form error: nothing they typed was wrong. The wrong-portal wording
+ * is the PO's (2026-10-27); /employee is where every City employee signs in
+ * (#80, ADR 0009), and there is deliberately no Dashboard link.
+ */
+function SignOutReasonNotice({ reason }: { reason: SignOutReason }) {
+  return (
+    <p
+      role="status"
+      className="text-sm text-gray-800 bg-lucena-blue/5 border border-lucena-blue/20 rounded-lg leading-relaxed"
+      style={{ padding: '12px 14px', marginBottom: 20 }}
+    >
+      {reason === 'wrong-portal' ? (
+        <>
+          This is a staff account. Sign in at your own Portal.{' '}
+          <Link href="/employee" className="font-semibold text-lucena-blue underline">City employee sign-in</Link>
+        </>
+      ) : (
+        <>You were signed out after {IDLE_TIMEOUT_MS / 60_000} minutes of inactivity.</>
+      )}
+    </p>
+  );
+}
+
 function AuthForm({ barangays }: { barangays: CatalogOption[] }) {
-  const { login, signup, closeAuthModal, authMode: mode, setAuthMode: setMode } = useAuth();
+  const { login, signup, closeAuthModal, authMode: mode, setAuthMode: setMode, signOutReason } = useAuth();
 
   // One stable prefix per mounted form. Every label/input pair below derives
   // its id from it, so screen readers announce a field name instead of the bare
@@ -225,6 +252,7 @@ function AuthForm({ barangays }: { barangays: CatalogOption[] }) {
       <ModalShell labelledBy={headingId} onClose={closeAuthModal} panelClassName={modalClass} panelStyle={{ padding: 40, position: 'relative' }}>
         <ModalCloseButton onClose={closeAuthModal} />
         <h2 id={headingId} className="text-[26px] font-bold text-lucena-blue" style={{ marginBottom: 24 }}>Sign In</h2>
+        {signOutReason && <SignOutReasonNotice reason={signOutReason} />}
         <form
           onSubmit={(e) => {
             e.preventDefault();

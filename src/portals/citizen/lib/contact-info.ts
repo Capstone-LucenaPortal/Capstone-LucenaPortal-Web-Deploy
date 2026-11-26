@@ -112,15 +112,14 @@ export const OFFICE_ADDRESS_LINES = [
 ] as const;
 
 /**
- * Fallback trunkline, used only until `public_site_info.trunkline` loads (or if
- * it is null). Prefer the DB value everywhere — pass it through
- * `resolveTrunkline` rather than reading this constant directly.
+ * The trunkline to display: the one the city saved in Site Info
+ * (`public_site_info.trunkline`), or `null` while it loads, when the read
+ * fails, or when none is saved. There is deliberately no fallback number: a
+ * hard-coded one showed and dialled on every first paint (#47), and a number
+ * the city did not publish is never shown. Callers hide the phone on `null`.
  */
-const FALLBACK_TRUNKLINE = '(042) 373-1121';
-
-/** The trunkline to display: the LGU's own value when present. */
-export function resolveTrunkline(fromSiteInfo: string | null | undefined): string {
-  return fromSiteInfo?.trim() || FALLBACK_TRUNKLINE;
+export function resolveTrunkline(fromSiteInfo: string | null | undefined): string | null {
+  return fromSiteInfo?.trim() || null;
 }
 
 /**
@@ -128,7 +127,7 @@ export function resolveTrunkline(fromSiteInfo: string | null | undefined): strin
  *
  * Strips spaces, dashes and parentheses, and rewrites a leading 0 to the +63
  * country code so the link dials correctly from a phone roaming abroad — a
- * bare `tel:(042) 373-1121` is not reliably dialable.
+ * bare `tel:(042) 788-2298` is not reliably dialable.
  */
 export function telHref(value: string): string {
   const digits = value.replace(/[^\d+]/g, '');

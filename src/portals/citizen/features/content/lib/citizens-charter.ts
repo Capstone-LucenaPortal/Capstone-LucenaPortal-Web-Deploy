@@ -40,7 +40,8 @@ export interface CharterService {
 export interface CharterOffice {
   /** Null when `public_site_info` publishes none — the row is then omitted. */
   hours: string | null;
-  trunkline: string;
+  /** Null when `public_site_info` publishes none — the row is then omitted. */
+  trunkline: string | null;
   addressLines: readonly string[];
 }
 

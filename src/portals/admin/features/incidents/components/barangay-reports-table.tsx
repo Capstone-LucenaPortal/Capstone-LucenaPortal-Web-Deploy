@@ -171,7 +171,11 @@ export function BarangayReportsTable({
             {visibleRows.length === 0 && (
               <tr>
                 <td colSpan={4} className="px-6 py-8 text-center text-sm text-gray-500">
-                  No barangay has {category} as its top category.
+                  {/* Branch on the range, not the dropdown: an empty range can
+                      still have a real category left selected from before (#39). */}
+                  {rows.length === 0
+                    ? "No reports in this range."
+                    : `No barangay has ${category} as its top category.`}
                 </td>
               </tr>
             )}

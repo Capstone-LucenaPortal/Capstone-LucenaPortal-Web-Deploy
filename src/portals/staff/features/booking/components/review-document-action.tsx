@@ -67,6 +67,13 @@ export function ReviewDocumentAction({
   const [reason, setReason] = useState("");
   const copy = DECLINE[decline];
 
+  /** Opens empty however it was last closed (see RefuseIncidentAction). */
+  function openPanel() {
+    setReason("");
+    setError(null);
+    setOpen(true);
+  }
+
   function run(decision: "accept" | TierReview["decline"]) {
     setError(null);
     startTransition(async () => {
@@ -80,7 +87,6 @@ export function ReviewDocumentAction({
         return;
       }
       setOpen(false);
-      setReason("");
       router.refresh();
     });
   }
@@ -101,7 +107,7 @@ export function ReviewDocumentAction({
         </Button>
         <Button
           variant={decline === "reject" ? "destructive" : "secondary"}
-          onClick={() => setOpen(true)}
+          onClick={openPanel}
           disabled={pending || !hasOrgDocument}
           title={noDocument}
         >

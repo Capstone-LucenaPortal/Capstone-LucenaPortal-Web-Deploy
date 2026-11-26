@@ -157,8 +157,15 @@ describe('buildCharter', () => {
       });
     });
 
-    it('falls back to the shared trunkline constant when site info is empty', () => {
-      expect(buildCharter(EMPTY).office.trunkline).toBe('(042) 373-1121');
+    // #47: a trunkline the city did not save is never published, so the
+    // Trunkline row is omitted the same way office hours are.
+    it('omits the trunkline rather than inventing one when site info is empty', () => {
+      expect(buildCharter(EMPTY).office.trunkline).toBeNull();
+    });
+
+    it('omits a blank trunkline', () => {
+      const blank = { ...LIVE, siteInfo: { ...LIVE.siteInfo!, trunkline: '   ' } };
+      expect(buildCharter(blank).office.trunkline).toBeNull();
     });
 
     // `contact-info.ts` is explicit that an unverifiable channel must be removed

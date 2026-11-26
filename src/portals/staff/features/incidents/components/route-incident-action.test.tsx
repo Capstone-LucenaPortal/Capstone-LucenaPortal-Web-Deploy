@@ -140,6 +140,31 @@ describe("RouteIncidentAction", () => {
     expect(screen.getByLabelText("Department")).toBeInTheDocument();
   });
 
+  it("opens at its starting values after a refused save is cancelled (#31)", async () => {
+    vi.spyOn(actions, "routeIncident").mockResolvedValue({
+      ok: false,
+      message: "This incident can no longer be routed.",
+      stale: true,
+    });
+    const user = userEvent.setup();
+
+    renderAction();
+    await user.click(screen.getByRole("button", { name: "Route to department" }));
+    await user.selectOptions(screen.getByLabelText("Department"), "engineering");
+    await user.selectOptions(screen.getByLabelText("Level"), "critical");
+    await user.type(screen.getByLabelText(/Note/), "Try Engineering.");
+    await user.click(screen.getByRole("button", { name: "Confirm route" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Route to department" }));
+
+    expect(screen.getByLabelText("Department")).toHaveValue("water");
+    expect(screen.getByLabelText("Level")).toHaveValue("high");
+    expect(screen.getByLabelText(/Note/)).toHaveValue("");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("clears the note after a successful route", async () => {
     // Caught in the live pass: the note survived the dialog closing, so
     // reopening it to reroute silently re-attached the previous routing's note

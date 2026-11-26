@@ -222,14 +222,17 @@ export default function LCCAbout({ onBook }: LCCAboutProps) {
                 in the schema yet (public_site_info_entries supports only
                 'emergency_hotline' and 'floor_directory' kinds), so rather than
                 keep publishing unverifiable numbers this points at the channels
-                that are real. Filed as a SuperStaff ask. */}
-            <div>
-              <ContactLabel icon={<PhoneIcon />} label="Phone" />
-              <p style={{ color: '#333333' }}>
-                <a href={telHref(trunkline)} style={{ color: '#003DA5', textDecoration: 'none' }}>{trunkline}</a>
-                {' '}(Lucena City Hall trunkline)
-              </p>
-            </div>
+                that are real. Filed as a SuperStaff ask. The Phone entry shows
+                only once Site Info gives a trunkline (#47). */}
+            {trunkline && (
+              <div>
+                <ContactLabel icon={<PhoneIcon />} label="Phone" />
+                <p style={{ color: '#333333' }}>
+                  <a href={telHref(trunkline)} style={{ color: '#003DA5', textDecoration: 'none' }}>{trunkline}</a>
+                  {' '}(Lucena City Hall trunkline)
+                </p>
+              </div>
+            )}
             <div>
               <ContactLabel icon={<EmailIcon />} label="Email" />
               <p style={{ color: '#333333' }}>

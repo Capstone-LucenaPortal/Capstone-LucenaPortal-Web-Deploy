@@ -114,6 +114,25 @@ describe("ForceReleaseAction", () => {
     expect(screen.getByLabelText(/Reason/)).toHaveValue("");
   });
 
+  it("opens empty after a refused save is cancelled (#31)", async () => {
+    vi.spyOn(actions, "forceReleaseIncident").mockResolvedValue({
+      ok: false,
+      message: "Only a supervisor can force-release a claim.",
+      stale: false,
+    });
+
+    const user = await openModal();
+    await user.type(screen.getByLabelText(/Reason/), "Crew reassigned.");
+    await user.click(screen.getByRole("button", { name: "Confirm force-release" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Force-release claim" }));
+
+    expect(screen.getByLabelText(/Reason/)).toHaveValue("");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("shows no success banner — the page re-reads instead", async () => {
     vi.spyOn(actions, "forceReleaseIncident").mockResolvedValue({ ok: true });
 

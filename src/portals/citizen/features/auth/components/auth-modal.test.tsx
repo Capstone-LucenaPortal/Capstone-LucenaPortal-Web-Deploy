@@ -9,6 +9,7 @@ const signup = vi.fn();
 const closeAuthModal = vi.fn();
 const setAuthMode = vi.fn();
 let mode: 'login' | 'signup' | 'forgot' = 'login';
+let signOutReason: 'idle' | 'wrong-portal' | null = null;
 
 // The provider itself talks to authService and Supabase on mount; the subject
 // under test here is the markup, so the context is stubbed at the hook.
@@ -17,8 +18,7 @@ vi.mock('@/portals/citizen/features/auth/hooks/use-auth', () => ({
     user: null,
     loading: false,
     isPasswordRecovery: false,
-    idleSignOutNotice: false,
-    dismissIdleNotice: vi.fn(),
+    signOutReason,
     setUser: vi.fn(),
     login,
     signup,
@@ -39,6 +39,46 @@ vi.mock('@/portals/citizen/lib/supabase/catalogs', () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   mode = 'login';
+  signOutReason = null;
+});
+
+// Issues #55 and #56: a sign-out the site did on its own is explained above the
+// Sign In form, as a status rather than a red form error.
+describe('AuthModal — sign-out reason', () => {
+  it('tells a staff account to sign in at its own Portal, with a link to City employee sign-in', () => {
+    signOutReason = 'wrong-portal';
+    render(<AuthModal />);
+    expect(screen.getByRole('status')).toHaveTextContent('This is a staff account. Sign in at your own Portal.');
+    expect(screen.getByRole('link', { name: 'City employee sign-in' })).toHaveAttribute('href', '/employee');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('says the session ended after 30 minutes of inactivity', () => {
+    signOutReason = 'idle';
+    render(<AuthModal />);
+    expect(screen.getByRole('status')).toHaveTextContent('You were signed out after 30 minutes of inactivity.');
+    expect(screen.queryByRole('link', { name: 'City employee sign-in' })).not.toBeInTheDocument();
+  });
+
+  it('shows no reason when the citizen opened Sign In themselves', () => {
+    render(<AuthModal />);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  // The provider's closeAuthModal is what clears the reason (use-auth.test.tsx).
+  it('closes through closeAuthModal', async () => {
+    signOutReason = 'wrong-portal';
+    render(<AuthModal />);
+    await userEvent.click(screen.getByRole('button', { name: /close dialog/i }));
+    expect(closeAuthModal).toHaveBeenCalled();
+  });
+
+  it.each(['signup', 'forgot'] as const)('hides the reason in %s mode', (m) => {
+    signOutReason = 'idle';
+    mode = m;
+    render(<AuthModal />);
+    expect(screen.queryByText(/signed out after/)).not.toBeInTheDocument();
+  });
 });
 
 describe('AuthModal — sign in', () => {
