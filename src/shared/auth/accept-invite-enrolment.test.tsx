@@ -101,13 +101,13 @@ vi.mock("../supabase/client", () => ({
 }));
 
 const PAGES = [
-  { portal: "Admin", path: "/admin/accept-invite", home: "/admin/dashboard", idle: false, Page: AdminAcceptInvitePage },
-  { portal: "Staff", path: "/staff/accept-invite", home: "/staff/dashboard", idle: true, Page: StaffAcceptInvitePage },
-  { portal: "Super Staff", path: "/super-staff/accept-invite", home: "/super-staff/accounts", idle: true, Page: SuperStaffAcceptInvitePage },
-  { portal: "Responder", path: "/responder/accept-invite", home: "/responder/pool", idle: true, Page: ResponderAcceptInvitePage },
+  { portal: "Admin", path: "/admin/accept-invite", home: "/admin/dashboard", Page: AdminAcceptInvitePage },
+  { portal: "Staff", path: "/staff/accept-invite", home: "/staff/dashboard", Page: StaffAcceptInvitePage },
+  { portal: "Super Staff", path: "/super-staff/accept-invite", home: "/super-staff/accounts", Page: SuperStaffAcceptInvitePage },
+  { portal: "Responder", path: "/responder/accept-invite", home: "/responder/pool", Page: ResponderAcceptInvitePage },
 ];
 
-describe.each(PAGES)("$portal accept-invite: enrolling an authenticator", ({ path, home, idle, Page }) => {
+describe.each(PAGES)("$portal accept-invite: enrolling an authenticator", ({ path, home, Page }) => {
   beforeEach(() => {
     vi.clearAllMocks();
     signedIn = true;
@@ -280,7 +280,7 @@ describe.each(PAGES)("$portal accept-invite: enrolling an authenticator", ({ pat
     expect(replace).not.toHaveBeenCalled();
   });
 
-  it.runIf(idle)("restarts the idle clock once the code is entered, not at the password", async () => {
+  it("restarts the idle clock once the code is entered, not at the password", async () => {
     render(<Page />);
     await setPassword();
     await screen.findByLabelText("Authenticator code");

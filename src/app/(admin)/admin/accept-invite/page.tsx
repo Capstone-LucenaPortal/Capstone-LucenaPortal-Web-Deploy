@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { PasswordVisibilityToggle } from "@/shared/auth/password-visibility-toggle";
 import { Button } from "@/portals/admin/components/ui/button";
+import { restartIdleClock } from "@/portals/admin/lib/supabase/idle-timeout";
 import {
   InviteAuthenticatorCode,
   InviteEnrolment,
@@ -167,6 +168,12 @@ export default function AcceptInvitePage() {
   }
 
   function goHome() {
+    // A fresh idle clock, started only now the code is in: the stale one
+    // left by an earlier session in this browser would otherwise end the new
+    // session on its first request. It also drops the old clock offset, so
+    // the request guard measures it again.
+    restartIdleClock(Date.now());
+
     // The code is in, so they go straight through the portal gate rather
     // than back to /employee.
     router.replace("/admin/dashboard");

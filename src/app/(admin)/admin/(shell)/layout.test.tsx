@@ -7,6 +7,7 @@ import {
   hasSession,
   type AdminProfileRow,
 } from "@/portals/admin/features/auth/lib/profile";
+import { LAST_ACTIVITY_COOKIE } from "@/portals/admin/lib/supabase/idle-timeout";
 
 const redirect = vi.fn((path: string) => {
   throw new Error(`NEXT_REDIRECT ${path}`);
@@ -56,6 +57,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  document.cookie = `${LAST_ACTIVITY_COOKIE}=; Path=/; Max-Age=0`;
   vi.mocked(getAdminProfile).mockReset();
   vi.mocked(hasSession).mockReset();
   redirect.mockClear();
@@ -98,6 +100,13 @@ describe("AdminShellLayout: an active admin", () => {
     }
   });
 
+  // The browser half of the 15-minute idle timeout (SCRUM-265): it starts the
+  // shared idle clock as the shell mounts.
+  it("starts the idle timeout", async () => {
+    await renderLayout();
+    expect(document.cookie).toMatch(new RegExp(`${LAST_ACTIVITY_COOKIE}=\\d{13}`));
+  });
+
   it("never asks whether there is a session: the profile row already says so", async () => {
     await renderLayout();
     expect(hasSession).not.toHaveBeenCalled();
@@ -123,6 +132,9 @@ describe("AdminShellLayout: a refused account", () => {
     expect(screen.queryByRole("main")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Skip to content" })).not.toBeInTheDocument();
     expect(redirect).not.toHaveBeenCalled();
+    // No idle timeout on a refusal: it would sign the account out from under
+    // the message, and a wrong-portal account keeps its session.
+    expect(document.cookie).not.toContain(LAST_ACTIVITY_COOKIE);
   });
 
   it("names the account's own Portal to a wrong-portal account, and keeps its session", async () => {

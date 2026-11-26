@@ -5,7 +5,7 @@
 // #150); this part only watches what happens after that render:
 //
 // - the session ends mid-visit (signed out in another tab, expired): go to the
-//   employee sign-in;
+//   employee sign-in, with the idle note if the idle timer has run out;
 // - a different user signs in mid-visit: hide the page until their profile
 //   loads, then judge it with the same decideRoleAccess the server used.
 //
@@ -24,6 +24,11 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../hooks/use-auth";
 import { AccessRefusal, type AccessRefusalDecision } from "./access-refusal";
 import { decideRoleAccess } from "@/portals/admin/lib/supabase/access";
+import {
+  IDLE_SIGNOUT_PATH,
+  isIdleExpired,
+  readLastActivity,
+} from "@/portals/admin/lib/supabase/idle-timeout";
 import { EMPLOYEE_SIGN_IN_PATH } from "@/shared/guard/portals";
 
 export function ShellGate({ children }: { children: ReactNode }) {
@@ -74,7 +79,15 @@ export function ShellGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (hasLoaded && !isLoading && !session && !pinnedDecision) {
-      router.push(EMPLOYEE_SIGN_IN_PATH);
+      // An idle sign-out ends the session too, and IdleTimeout sends the tab
+      // to the idle note on its own. Whichever of the two redirects runs last
+      // must agree, so a run-out timer means the idle note here as well; it
+      // also gives a second open Admin tab the note. This relies on sign-out
+      // leaving the idle clock as it was: a sign-out that cleared it would
+      // send an idle tab here to the plain sign-in. replace(), not push():
+      // the Admin page must not be one Back away.
+      const idle = isIdleExpired(readLastActivity(), Date.now());
+      router.replace(idle ? IDLE_SIGNOUT_PATH : EMPLOYEE_SIGN_IN_PATH);
     }
   }, [hasLoaded, isLoading, session, pinnedDecision, router]);
 

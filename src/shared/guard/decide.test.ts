@@ -54,9 +54,11 @@ describe("decideRequest — the four /<prefix>/login addresses", () => {
   ]);
 });
 
-// Admin's row: role admin, no idle timeout, a failed profile read → forbidden.
-// Rows ported from the old
-// src/portals/admin/lib/supabase/access.test.ts (decideAccess, requiresRoleCheck).
+// Admin's row: role admin, 15-minute idle timeout, a failed profile read →
+// forbidden.
+// The role-gate rows are ported from the old
+// src/portals/admin/lib/supabase/access.test.ts (decideAccess, requiresRoleCheck);
+// the idle rows came with SCRUM-265, after Staff's.
 describe("decideRequest — Admin (/admin)", () => {
   runRows([
     // No session.
@@ -86,8 +88,23 @@ describe("decideRequest — Admin (/admin)", () => {
     ["sends a non-admin to forbidden from /login-history", { pathname: "/admin/login-history", hasSession: true, profile: ok("super_staff") }, { kind: "redirect", to: "/admin/forbidden" }],
     ["sends a failed profile read to forbidden", { pathname: "/admin/dashboard", hasSession: true, profile: readFailed }, { kind: "redirect", to: "/admin/forbidden" }],
 
-    // No idle timeout: a clock long stale changes nothing.
-    ["ignores a stale activity clock", { pathname: "/admin/dashboard", hasSession: true, profile: ok("admin"), lastActivity: NOW - 24 * 60 * MINUTE }, { kind: "allow" }],
+    ["sends no session to a plain sign-in, not to the idle sign-out", { pathname: "/admin/dashboard", lastActivity: NOW - 16 * MINUTE }, { kind: "redirect", to: "/employee" }],
+
+    // Idle timeout: 15 minutes, as Staff's and Super-staff's (SCRUM-265), for
+    // this Portal's own role only. The clock is one cookie shared by every
+    // Portal, so another role's session is not this Portal's to time out
+    // (issue #19): it is refused, not signed out.
+    ["serves a session whose last activity is inside the window", { pathname: "/admin/dashboard", hasSession: true, profile: ok("admin"), lastActivity: NOW - 15 * MINUTE }, { kind: "allow" }],
+    ["ends an idle session and sends it to the employee sign-in with the reason", { pathname: "/admin/dashboard", hasSession: true, profile: ok("admin"), lastActivity: NOW - 15 * MINUTE - 1 }, { kind: "redirect", to: "/employee?reason=idle", signOut: true }],
+    ["reads the role of an idle session before ending it", { pathname: "/admin/dashboard", hasSession: true, lastActivity: NOW - 16 * MINUTE }, { kind: "read-profile" }],
+    ["ends an idle session of a deactivated account of this Portal's role", { pathname: "/admin/dashboard", hasSession: true, profile: ok("admin", "inactive"), lastActivity: NOW - 16 * MINUTE }, { kind: "redirect", to: "/employee?reason=idle", signOut: true }],
+    ["ends an idle session whose role cannot be read", { pathname: "/admin/dashboard", hasSession: true, profile: readFailed, lastActivity: NOW - 16 * MINUTE }, { kind: "redirect", to: "/employee?reason=idle", signOut: true }],
+    ["refuses an idle session of another role without ending it", { pathname: "/admin/dashboard", hasSession: true, profile: ok("staff"), lastActivity: NOW - 16 * MINUTE }, { kind: "redirect", to: "/admin/forbidden" }],
+    // A responder 16 minutes quiet is still inside its own 60-minute window:
+    // Admin's 15 minutes must not end it.
+    ["refuses, without ending, a responder session past Admin's window but inside its own", { pathname: "/admin/dashboard", hasSession: true, profile: ok("responder"), lastActivity: NOW - 16 * MINUTE }, { kind: "redirect", to: "/admin/forbidden" }],
+    ["serves forbidden to an idle session of another role without ending it", { pathname: "/admin/forbidden", hasSession: true, profile: ok("staff"), lastActivity: NOW - 16 * MINUTE }, { kind: "allow" }],
+    ["fails open when no activity has been recorded", { pathname: "/admin/dashboard", hasSession: true, profile: ok("admin") }, { kind: "allow" }],
   ]);
 });
 

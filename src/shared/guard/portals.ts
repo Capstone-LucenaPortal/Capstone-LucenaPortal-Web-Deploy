@@ -2,7 +2,8 @@
 //
 // The request guard's per-Portal table (ADR 0006): one row per staff-side
 // Portal, chosen by path prefix. The rows differ on purpose — each Portal
-// keeps the rules it had before the merge — and sit side by side here so
+// kept the rules it had before the merge, and a later ticket may change one
+// (as SCRUM-265 did Admin's idle timeout) — and sit side by side here so
 // they cannot drift silently. Adding a Portal to the guard means adding a row.
 //
 // Paths under no row's prefix (the Citizen Portal at the root) get no server
@@ -49,7 +50,11 @@ export const PORTALS: readonly PortalRow[] = [
   {
     prefix: PORTAL_PREFIX.admin,
     role: "admin",
-    idleTimeoutMs: null,
+    // The same 15 minutes as Admin's browser-side clock
+    // (src/portals/admin/lib/supabase/idle-timeout.ts's IDLE_TIMEOUT_MS), and
+    // as Staff and Super-staff. ADR 0006 left Admin with none through the
+    // merge, as a post-freeze ticket; SCRUM-265 is that ticket.
+    idleTimeoutMs: 15 * 60 * 1000,
     onProfileReadError: "forbidden",
     home: `${PORTAL_PREFIX.admin}/dashboard`,
   },

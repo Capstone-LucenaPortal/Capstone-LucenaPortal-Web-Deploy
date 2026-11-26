@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
+import { IdleTimeout } from "@/portals/admin/components/layout/idle-timeout";
 import { Sidebar } from "@/portals/admin/components/layout/sidebar";
 import { AccessRefusal } from "@/portals/admin/features/auth/components/access-refusal";
 import { ShellGate } from "@/portals/admin/features/auth/components/shell-gate";
@@ -37,6 +38,10 @@ export default async function AdminShellLayout({ children }: { children: ReactNo
     // Watches the browser's session for what happens after this render: a
     // sign-out elsewhere, or a different user signing in.
     <ShellGate>
+      {/* The browser half of the 15-minute idle timeout; the request guard
+          enforces the same clock. Only past the gate, and inside ShellGate so
+          a refusal there unmounts it too. */}
+      <IdleTimeout />
       {/* Column below md so Sidebar's mobile top bar sits above the content
           instead of being squeezed into a row alongside it; row from md up,
           matching Sidebar's own md breakpoint for switching from the off-canvas

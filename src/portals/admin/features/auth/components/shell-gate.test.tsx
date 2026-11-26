@@ -2,11 +2,12 @@ import { render, screen } from "@testing-library/react";
 import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ShellGate } from "./shell-gate";
+import { IDLE_TIMEOUT_MS, LAST_ACTIVITY_COOKIE } from "@/portals/admin/lib/supabase/idle-timeout";
 
-const push = vi.fn();
+const replace = vi.fn();
 const refresh = vi.fn();
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push, refresh }),
+  useRouter: () => ({ replace, refresh }),
 }));
 
 const signOut = vi.fn();
@@ -73,7 +74,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  push.mockClear();
+  replace.mockClear();
+  document.cookie = `${LAST_ACTIVITY_COOKIE}=; Path=/; Max-Age=0`;
   refresh.mockClear();
   signOut.mockReset();
 });
@@ -84,7 +86,7 @@ describe("ShellGate on page load", () => {
   it("shows the page while the browser is still reading the session", () => {
     renderGate();
     expect(screen.getByText("page content")).toBeInTheDocument();
-    expect(push).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
   });
 
   it("keeps the same page mounted through the browser's first read", () => {
@@ -101,11 +103,34 @@ describe("ShellGate mid-visit", () => {
 
     // SIGNED_OUT: a user change, so AuthProvider raises isLoading first.
     step({ session: null, isLoading: true, profile: null });
-    expect(push).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
     step({ session: null, isLoading: false, profile: null });
 
-    expect(push).toHaveBeenCalledWith("/employee");
+    expect(replace).toHaveBeenCalledWith("/employee");
     expect(screen.queryByText("page content")).not.toBeInTheDocument();
+  });
+
+  // The idle sign-out ends the session too, and this redirect may run after
+  // IdleTimeout's own: both must land on the idle note. It also gives a second
+  // open Admin tab the note.
+  it("sends this tab to the idle sign-out when the session ends after the idle timer has run out", () => {
+    const { step } = loadedGate();
+    document.cookie = `${LAST_ACTIVITY_COOKIE}=${Date.now() - IDLE_TIMEOUT_MS - 1000}; Path=/`;
+
+    step({ session: null, isLoading: true, profile: null });
+    step({ session: null, isLoading: false, profile: null });
+
+    expect(replace).toHaveBeenCalledWith("/employee?reason=idle");
+  });
+
+  it("sends this tab to the plain sign-in when the session ends with the idle timer still running", () => {
+    const { step } = loadedGate();
+    document.cookie = `${LAST_ACTIVITY_COOKIE}=${Date.now() - 60_000}; Path=/`;
+
+    step({ session: null, isLoading: true, profile: null });
+    step({ session: null, isLoading: false, profile: null });
+
+    expect(replace).toHaveBeenCalledWith("/employee");
   });
 
   it("does not remount the page on a same-user event such as TOKEN_REFRESHED", () => {
@@ -173,6 +198,6 @@ describe("ShellGate mid-visit", () => {
     step({ session: null, isLoading: false, profile: null });
 
     expect(screen.getByText(/your account has been deactivated/i)).toBeInTheDocument();
-    expect(push).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
   });
 });
