@@ -48,7 +48,7 @@ describe('WebsiteProblemBanner', () => {
   it('asks whether the problem is with the website, and opens the form in a dialog', async () => {
     render(<WebsiteProblemBanner />);
     expect(screen.getByRole('button', { name: 'Report a website problem' }).parentElement).toHaveTextContent(
-      "Is the problem with this website, not the city? Something won't load or won't submit?",
+      'Did you run into a problem with this website?',
     );
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 

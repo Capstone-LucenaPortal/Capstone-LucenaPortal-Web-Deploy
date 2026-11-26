@@ -54,7 +54,7 @@ export function WebsiteProblemBanner() {
           style={{ padding: '12px 16px' }}
         >
           <span>
-            Is the problem with <strong>this website</strong>, not the city? Something won&apos;t load or won&apos;t submit?
+            Did you run into a problem with <strong>this website</strong>?
           </span>
           <button
             type="button"
