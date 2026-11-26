@@ -47,10 +47,6 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 
-vi.mock("@/portals/super-staff/features/inbox/lib/queries", () => ({
-  listContactMessages: () => Promise.resolve([]),
-}));
-
 vi.mock("@/portals/super-staff/features/system-health/lib/queries");
 
 function DirtyPage({ dirty }: { dirty: boolean }) {

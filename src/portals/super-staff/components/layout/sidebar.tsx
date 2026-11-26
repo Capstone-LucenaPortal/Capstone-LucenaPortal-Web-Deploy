@@ -7,9 +7,6 @@ import { usePathname } from "next/navigation";
 import {
   Users,
   Settings,
-  Megaphone,
-  CalendarDays,
-  Inbox,
   ScrollText,
   HeartPulse,
   PanelLeftClose,
@@ -17,8 +14,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useUnsavedChanges } from "@/portals/super-staff/components/providers/unsaved-changes-provider";
-import { listContactMessages } from "@/portals/super-staff/features/inbox/lib/queries";
-import { countUnread } from "@/portals/super-staff/features/inbox/lib/status";
 import { REFRESH_MS } from "@/portals/super-staff/features/system-health/hooks/use-system-health";
 import {
   checkReachability,
@@ -39,15 +34,6 @@ const isGroup = (entry: NavEntry): entry is NavGroup => "items" in entry;
 const navEntries: NavEntry[] = [
   { href: "/super-staff/accounts", label: "Accounts", icon: Users },
   { href: "/super-staff/configuration", label: "Configuration", icon: Settings },
-  {
-    label: "Content",
-    icon: Megaphone,
-    items: [
-      { href: "/super-staff/announcements", label: "Announcements", icon: Megaphone },
-      { href: "/super-staff/events", label: "Events", icon: CalendarDays },
-      { href: "/super-staff/inbox", label: "Inbox", icon: Inbox },
-    ],
-  },
   { href: "/super-staff/audit-log", label: "Audit Log", icon: ScrollText },
   { href: SYSTEM_HEALTH_HREF, label: "System Health", icon: HeartPulse },
 ];
@@ -67,18 +53,11 @@ type HealthReading = HealthStatus | "unreadable" | null;
 export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
-  const [unread, setUnread] = useState(0);
   const [health, setHealth] = useState<HealthReading>(null);
   const { requestLeave } = useUnsavedChanges();
 
   useEffect(() => {
     setCollapsed(localStorage.getItem(STORAGE_KEY) === "true");
-  }, []);
-
-  useEffect(() => {
-    listContactMessages()
-      .then((m) => setUnread(countUnread(m)))
-      .catch(() => setUnread(0)); // a nav badge must never break navigation
   }, []);
 
   // The System Health dot follows the snapshot's overall status and the app's
@@ -116,7 +95,6 @@ export function Sidebar() {
   // No two routes share a prefix, so startsWith is an unambiguous active check.
   function renderItem({ href, label, icon: Icon }: NavItem, nested: boolean) {
     const active = pathname.startsWith(href);
-    const badge = href === "/super-staff/inbox" && unread > 0 ? unread : null;
     const dot =
       href !== SYSTEM_HEALTH_HREF ? null : health === "unreadable" ? "red" : navDot(health);
     return (
@@ -161,16 +139,6 @@ export function Sidebar() {
             </>
           )}
         </span>
-        {badge !== null && (
-          <span
-            className={cn(
-              "rounded-full bg-white px-1.5 py-0.5 text-xs font-semibold text-lucena-blue",
-              collapsed && "absolute translate-x-3 -translate-y-3",
-            )}
-          >
-            {badge}
-          </span>
-        )}
       </Link>
     );
   }
