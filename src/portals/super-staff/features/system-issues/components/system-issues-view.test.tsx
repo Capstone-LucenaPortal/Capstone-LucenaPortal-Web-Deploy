@@ -216,6 +216,38 @@ describe("SystemIssuesView — the queue", () => {
     ]);
   });
 
+  it("re-sorts by date reported the moment Sort by changes, and keeps it across tabs (#195)", async () => {
+    const user = userEvent.setup();
+    await renderView();
+    const sortBy = screen.getByLabelText("Sort by");
+    expect(sortBy).toHaveValue("default");
+
+    await user.selectOptions(sortBy, "Newest reported");
+    expect(references()).toEqual([
+      "SI-2026-000031",
+      "SI-2026-000020",
+      "SI-2026-000015",
+      "SI-2026-000010",
+      "SI-2026-000004",
+    ]);
+
+    await user.click(screen.getByRole("tab", { name: /^All/ }));
+    expect(sortBy).toHaveValue("newest");
+    expect(references()).toEqual([
+      "SI-2026-000031",
+      "SI-2026-000020",
+      "SI-2026-000015",
+      "SI-2026-000010",
+      "SI-2026-000004",
+      "SI-2026-000008",
+      "SI-2026-000003",
+      "SI-2026-000002",
+    ]);
+
+    await user.selectOptions(sortBy, "Oldest reported");
+    expect(references()[0]).toBe("SI-2026-000002");
+  });
+
   it("shows each row's area, excerpt, priority, status, reported time and reporter", async () => {
     await renderView();
 

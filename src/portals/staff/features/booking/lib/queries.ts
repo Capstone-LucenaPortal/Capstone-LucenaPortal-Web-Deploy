@@ -1,5 +1,6 @@
 import { createClient, type Db } from "@/shared/supabase/server";
 import { buildSearchFilter } from "@/portals/staff/lib/supabase/search-filter";
+import type { QueueSort } from "@/portals/staff/lib/queue-sort";
 import { countByStatus, toCalendarBooking, toMaintenancePeriod, toQueueItem } from "./row-mapper";
 import { NEEDS_ACTION, statusesFor, type StatusFilter } from "./queue-params";
 import { NEEDS_ACTION_STATUSES } from "./status";
@@ -76,6 +77,7 @@ const QUEUE_LIMIT = 100;
 export interface QueueOptions {
   status?: StatusFilter;
   search?: string;
+  sort?: QueueSort;
 }
 
 /**
@@ -91,9 +93,11 @@ export interface QueueResult {
 /**
  * The queue read.
  *
- * Two orderings, chosen by the filter, and this is deliberate: the needs-action
- * tab is about how long somebody has been waiting on us, and everything else
- * reads as a schedule.
+ * Under the Default sort, two orderings, chosen by the filter, and this is
+ * deliberate: the needs-action tab is about how long somebody has been waiting
+ * on us, and everything else reads as a schedule. Newest and Oldest (#195)
+ * override both with submitted_at alone, in the database so they reach past
+ * QUEUE_LIMIT.
  *
  * The match count rides on the same request as the rows, so it is filtered
  * exactly as they are. A second count query repeating the filters would drift.
@@ -121,7 +125,10 @@ export async function getBookingQueue(
   const searchFilter = buildSearchFilter(SEARCH_COLUMNS, options.search);
   if (searchFilter) query = query.or(searchFilter);
 
-  if (filter === NEEDS_ACTION) {
+  const sort = options.sort ?? "default";
+  if (sort !== "default") {
+    query = query.order("submitted_at", { ascending: sort === "oldest" });
+  } else if (filter === NEEDS_ACTION) {
     // Oldest first. The point of this tab is how long somebody has been
     // waiting on us — decision 8 makes slow quoting visible as a staff
     // problem rather than resolving it by dropping the reservation.

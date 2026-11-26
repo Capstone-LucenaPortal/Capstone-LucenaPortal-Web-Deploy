@@ -171,6 +171,41 @@ describe("getBookingQueue", () => {
   });
 
   /**
+   * #195. Newest and Oldest replace both of the tabs' own orderings with
+   * submission date alone, applied by the database so it reaches every
+   * matching row.
+   */
+  it("orders by submission date alone under Newest and Oldest, on every tab", async () => {
+    const { fetch, requests } = createRecordingFetch([CANNED_QUEUE_ROW]);
+    const db = createTestClient(fetch);
+
+    await getBookingQueue({ status: NEEDS_ACTION, sort: "newest" }, db);
+    await getBookingQueue({ status: "confirmed", sort: "newest" }, db);
+    await getBookingQueue({ status: NEEDS_ACTION, sort: "oldest" }, db);
+    await getBookingQueue({ sort: "oldest" }, db);
+
+    expect(requests.map((r) => parseQueryParams(r.url).order)).toEqual([
+      "submitted_at.desc",
+      "submitted_at.desc",
+      "submitted_at.asc",
+      "submitted_at.asc",
+    ]);
+  });
+
+  it("keeps each tab's own ordering under Default", async () => {
+    const { fetch, requests } = createRecordingFetch([CANNED_QUEUE_ROW]);
+    const db = createTestClient(fetch);
+
+    await getBookingQueue({ status: NEEDS_ACTION, sort: "default" }, db);
+    await getBookingQueue({ status: "confirmed", sort: "default" }, db);
+
+    expect(requests.map((r) => parseQueryParams(r.url).order)).toEqual([
+      "submitted_at.asc",
+      "event_date.asc,start_time.asc",
+    ]);
+  });
+
+  /**
    * One screenful. Unlike the Incidents queue this one is not ordered by
    * urgency, so what the limit drops is the far end of a schedule rather than
    * the least urgent work — which is why the figure is pinned as the

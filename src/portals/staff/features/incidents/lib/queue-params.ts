@@ -1,3 +1,4 @@
+import type { QueueSort } from "@/portals/staff/lib/queue-sort";
 import { STATUS_ORDER } from "./status";
 import type { IncidentStatus } from "../types";
 
@@ -16,19 +17,22 @@ export function parseStatusFilter(raw: string | undefined): StatusFilter {
 }
 
 /**
- * Tab links must carry the current search term, or clicking a status throws away
- * what the user typed.
+ * Tab links must carry the current search term and sort, or clicking a status
+ * throws away what the user typed and picked.
  */
 export function buildQueueHref({
   status,
   search,
+  sort = "default",
 }: {
   status: StatusFilter;
   search?: string;
+  sort?: QueueSort;
 }): string {
   const params = new URLSearchParams();
   if (status !== "all") params.set("status", status);
   if (search?.trim()) params.set("q", search.trim());
+  if (sort !== "default") params.set("sort", sort);
 
   const query = params.toString();
   return query ? `/staff/incidents?${query}` : "/staff/incidents";

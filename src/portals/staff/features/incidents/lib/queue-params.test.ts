@@ -32,3 +32,15 @@ describe("buildQueueHref", () => {
     );
   });
 });
+
+describe("buildQueueHref — sort", () => {
+  it("carries a chosen sort alongside the tab and the search", () => {
+    expect(buildQueueHref({ status: "in_pool", search: "flood", sort: "newest" })).toBe(
+      "/staff/incidents?status=in_pool&q=flood&sort=newest",
+    );
+  });
+
+  it("leaves Default out of the URL", () => {
+    expect(buildQueueHref({ status: "all", sort: "default" })).toBe("/staff/incidents");
+  });
+});

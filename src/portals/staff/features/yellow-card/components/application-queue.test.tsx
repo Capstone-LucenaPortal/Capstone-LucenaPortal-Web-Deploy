@@ -64,7 +64,7 @@ function item(overrides: Partial<YellowCardQueueItem> = {}): YellowCardQueueItem
 describe("ApplicationQueue", () => {
   it("renders a stat tile for every status including withdrawn", () => {
     render(
-      <ApplicationQueue applications={[item()]} matchCount={1} counts={counts} status="all" search="" />,
+      <ApplicationQueue sort="default" applications={[item()]} matchCount={1} counts={counts} status="all" search="" />,
     );
 
     expect(screen.getByText("Withdrawn")).toBeInTheDocument();
@@ -73,7 +73,7 @@ describe("ApplicationQueue", () => {
 
   it("lists the applications it is given, with the full name and barangay", () => {
     render(
-      <ApplicationQueue applications={[item()]} matchCount={1} counts={counts} status="all" search="" />,
+      <ApplicationQueue sort="default" applications={[item()]} matchCount={1} counts={counts} status="all" search="" />,
     );
 
     expect(screen.getByText("YC-2026-000069")).toBeInTheDocument();
@@ -87,7 +87,7 @@ describe("ApplicationQueue", () => {
 
   it("badges a Correction's row beside its status, and not a first application's", () => {
     render(
-      <ApplicationQueue
+      <ApplicationQueue sort="default"
         applications={[
           item({ id: "app-1", reference_number: "YC-2026-000069" }),
           item({ id: "app-2", reference_number: "YC-2026-000210", is_correction: true }),
@@ -107,7 +107,7 @@ describe("ApplicationQueue", () => {
 
   it("carries the active status through the search form so a search keeps the tab", () => {
     const { container } = render(
-      <ApplicationQueue applications={[item()]} matchCount={1} counts={counts} status="pending" search="" />,
+      <ApplicationQueue sort="default" applications={[item()]} matchCount={1} counts={counts} status="pending" search="" />,
     );
 
     const hidden = container.querySelector('input[name="status"]');
@@ -116,7 +116,7 @@ describe("ApplicationQueue", () => {
 
   it("carries the search term into every tab link so switching tabs keeps it", () => {
     render(
-      <ApplicationQueue
+      <ApplicationQueue sort="default"
         applications={[item()]}
         matchCount={1}
         counts={counts}
@@ -131,13 +131,34 @@ describe("ApplicationQueue", () => {
     );
   });
 
+  it("carries the sort into every tab link, and shows it in the search form's Sort by", () => {
+    render(
+      <ApplicationQueue
+        applications={[item()]}
+        matchCount={1}
+        counts={counts}
+        status="all"
+        search="santos"
+        sort="newest"
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: /Approved \(3\)/ })).toHaveAttribute(
+      "href",
+      "/staff/yellow-card?status=approved&q=santos&sort=newest",
+    );
+    const select = screen.getByLabelText("Sort by");
+    expect(select).toHaveValue("newest");
+    expect(select.closest("form")).toHaveAttribute("action", "/staff/yellow-card");
+  });
+
   /**
    * The state is the database's (l80); the queue only shows it, beside the
    * deadline it is measured against. A paused or decided application has none.
    */
   it("shows each running application's deadline state and its Processing Deadline", () => {
     render(
-      <ApplicationQueue
+      <ApplicationQueue sort="default"
         applications={[
           item({ id: "a", reference_number: "YC-A", deadline_state: "overdue" }),
           item({ id: "b", reference_number: "YC-B", deadline_state: "at_risk" }),
@@ -165,7 +186,7 @@ describe("ApplicationQueue", () => {
 
   it("shows an empty state when the server returned no rows", () => {
     render(
-      <ApplicationQueue applications={[]} matchCount={0} counts={counts} status="approved" search="zzz" />,
+      <ApplicationQueue sort="default" applications={[]} matchCount={0} counts={counts} status="approved" search="zzz" />,
     );
 
     expect(screen.getByText("No applications match your search.")).toBeInTheDocument();
@@ -180,7 +201,7 @@ describe("ApplicationQueue", () => {
    */
   it("hands the activity badge the pending and resubmitted tallies and nothing else", () => {
     render(
-      <ApplicationQueue
+      <ApplicationQueue sort="default"
         applications={[item()]}
         matchCount={1}
         counts={{
@@ -206,7 +227,7 @@ describe("ApplicationQueue", () => {
    */
   it("reports the rows shown against the rows that match, not the whole view", () => {
     render(
-      <ApplicationQueue
+      <ApplicationQueue sort="default"
         applications={[item()]}
         matchCount={1}
         counts={counts}
@@ -226,7 +247,7 @@ describe("ApplicationQueue", () => {
    */
   it("shows the true match count when the matches run past one screenful", () => {
     render(
-      <ApplicationQueue
+      <ApplicationQueue sort="default"
         applications={[item()]}
         matchCount={140}
         counts={counts}

@@ -39,3 +39,15 @@ describe("buildQueueHref", () => {
     );
   });
 });
+
+describe("buildQueueHref — sort", () => {
+  it("carries a chosen sort alongside the tab and the search", () => {
+    expect(buildQueueHref({ status: "pending", search: "santos", sort: "oldest" })).toBe(
+      "/staff/yellow-card?status=pending&q=santos&sort=oldest",
+    );
+  });
+
+  it("leaves Default out of the URL", () => {
+    expect(buildQueueHref({ status: "all", sort: "default" })).toBe("/staff/yellow-card");
+  });
+});

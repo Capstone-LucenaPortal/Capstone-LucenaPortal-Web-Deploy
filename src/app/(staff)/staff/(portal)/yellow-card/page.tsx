@@ -6,21 +6,23 @@ import {
   getYellowCardStatusCounts,
 } from "@/portals/staff/features/yellow-card/lib/queries";
 import { parseStatusFilter } from "@/portals/staff/features/yellow-card/lib/queue-params";
+import { parseQueueSort } from "@/portals/staff/lib/queue-sort";
 
 export default async function YellowCardQueuePage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; q?: string }>;
+  searchParams: Promise<{ status?: string; q?: string; sort?: string }>;
 }) {
   // Before anything else, so a refused account fires no Yellow Card read.
   if (!(await isAssigned("yellow-card"))) return <NotYourModule module="yellow-card" />;
 
-  const { status: rawStatus, q } = await searchParams;
+  const { status: rawStatus, q, sort: rawSort } = await searchParams;
   const status = parseStatusFilter(rawStatus);
   const search = q?.trim() ?? "";
+  const sort = parseQueueSort(rawSort);
 
   const [queue, counts] = await Promise.all([
-    getYellowCardQueue({ status, search }),
+    getYellowCardQueue({ status, search, sort }),
     getYellowCardStatusCounts(),
   ]);
 
@@ -37,6 +39,7 @@ export default async function YellowCardQueuePage({
           counts={counts}
           status={status}
           search={search}
+          sort={sort}
         />
       </div>
     </div>

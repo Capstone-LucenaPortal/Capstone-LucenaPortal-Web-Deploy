@@ -2,6 +2,8 @@ import Link from "next/link";
 import { cn } from "@/portals/staff/lib/utils";
 import { LinkTabs } from "@/portals/staff/components/ui/link-tabs";
 import { QueueActivityBar } from "@/portals/staff/components/queue/queue-activity-bar";
+import { SortSelect } from "@/portals/staff/components/queue/sort-select";
+import type { QueueSort } from "@/portals/staff/lib/queue-sort";
 import { countAwaitingTriage } from "../lib/actions";
 import { awaitingTriageCount, STATUS_LABELS, STATUS_ORDER } from "../lib/status";
 import { buildQueueHref, type StatusFilter } from "../lib/queue-params";
@@ -19,6 +21,7 @@ export function IncidentQueue({
   atRiskCount,
   activeStatus,
   search,
+  sort,
   now,
   threshold,
 }: {
@@ -29,6 +32,8 @@ export function IncidentQueue({
   atRiskCount: number;
   activeStatus: StatusFilter;
   search?: string;
+  /** The Sort by choice (#195); the query has already applied it. */
+  sort: QueueSort;
   now: Date;
   threshold: number;
 }) {
@@ -56,8 +61,8 @@ export function IncidentQueue({
 
       {/* A GET form, so the search term lands in the URL where the server read
           can see it. The status is carried as a hidden field or the current tab
-          is lost on submit. */}
-      <form method="get" action="/staff/incidents" className="mt-6 flex max-w-md gap-2">
+          is lost on submit; the Sort by dropdown rides in the same form. */}
+      <form method="get" action="/staff/incidents" className="mt-6 flex max-w-2xl gap-2">
         {activeStatus !== "all" && (
           <input type="hidden" name="status" value={activeStatus} />
         )}
@@ -75,6 +80,7 @@ export function IncidentQueue({
         >
           Search
         </button>
+        <SortSelect sort={sort} />
       </form>
 
       <LinkTabs
@@ -102,13 +108,13 @@ export function IncidentQueue({
             value: "all",
             label: "All",
             count: total,
-            href: buildQueueHref({ status: "all", search }),
+            href: buildQueueHref({ status: "all", search, sort }),
           },
           ...STATUS_ORDER.map((status) => ({
             value: status,
             label: STATUS_LABELS[status],
             count: statusCounts[status],
-            href: buildQueueHref({ status, search }),
+            href: buildQueueHref({ status, search, sort }),
           })),
         ]}
       />

@@ -1,4 +1,5 @@
 import { MANILA_TIME_ZONE } from "@/shared/dates/manila";
+import type { QueueSort } from "@/portals/staff/lib/queue-sort";
 import { NEEDS_ACTION_STATUSES, STATUS_ORDER } from "./status";
 import type { BookingStatus } from "../types";
 
@@ -38,24 +39,27 @@ export function statusesFor(
 }
 
 /**
- * Tab links must carry the current search term, or clicking a status throws
- * away what the user typed.
+ * Tab links must carry the current search term and sort, or clicking a status
+ * throws away what the user typed and picked.
  *
  * ⚠️ It deliberately gains nothing for the calendar. Switching to the calendar
- * DROPS the status filter and the search term, because neither has a meaning
+ * DROPS the status filter, the search term and the sort, because none has a meaning
  * on a grid — a month is not a subset of "confirmed". Switching back lands on
  * an unfiltered list. That is intended, not a bug.
  */
 export function buildQueueHref({
   status,
   search,
+  sort = "default",
 }: {
   status: StatusFilter;
   search?: string;
+  sort?: QueueSort;
 }): string {
   const params = new URLSearchParams();
   if (status !== "all") params.set("status", status);
   if (search?.trim()) params.set("q", search.trim());
+  if (sort !== "default") params.set("sort", sort);
   const query = params.toString();
   return query ? `/staff/booking?${query}` : "/staff/booking";
 }

@@ -113,6 +113,7 @@ function renderQueue(props: Partial<Parameters<typeof IncidentQueue>[0]> = {}) {
       statusCounts={counts({ in_pool: 1 })}
       atRiskCount={0}
       activeStatus="all"
+      sort="default"
       now={NOW}
       threshold={0.5}
       {...props}
@@ -223,6 +224,18 @@ describe("IncidentQueue", () => {
     );
   });
 
+  it("carries the sort into every tab link, and shows it in the search form's Sort by", () => {
+    renderQueue({ activeStatus: "all", search: "cotta", sort: "oldest" });
+
+    expect(screen.getByRole("link", { name: /^In Pool/ })).toHaveAttribute(
+      "href",
+      "/staff/incidents?status=in_pool&q=cotta&sort=oldest",
+    );
+    const select = screen.getByLabelText("Sort by");
+    expect(select).toHaveValue("oldest");
+    expect(select.closest("form")).toHaveAttribute("action", "/staff/incidents");
+  });
+
   it("renders the empty state when the filter matched nothing", () => {
     renderQueue({ incidents: [], matchCount: 0, statusCounts: counts() });
     expect(screen.getByText("No incidents match this filter.")).toBeInTheDocument();
@@ -277,6 +290,7 @@ describe("IncidentQueue", () => {
         statusCounts={counts({ resolved: 1 })}
         atRiskCount={0}
         activeStatus="all"
+        sort="default"
         now={NOW}
         threshold={0.5}
       />,

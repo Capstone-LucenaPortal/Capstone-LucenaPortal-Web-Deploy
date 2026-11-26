@@ -98,7 +98,7 @@ describe("YellowCardQueuePage", () => {
       }),
     );
 
-    expect(queue).toHaveBeenCalledWith({ status: "pending", search: "santos" });
+    expect(queue).toHaveBeenCalledWith({ status: "pending", search: "santos", sort: "default" });
   });
 
   it("falls back to the all filter when the URL carries a status that does not exist", async () => {
@@ -113,6 +113,19 @@ describe("YellowCardQueuePage", () => {
       }),
     );
 
-    expect(queue).toHaveBeenCalledWith({ status: "all", search: "" });
+    expect(queue).toHaveBeenCalledWith({ status: "all", search: "", sort: "default" });
+  });
+
+  it("passes a chosen sort down to the query, and an unknown one as Default", async () => {
+    const queue = vi
+      .spyOn(queries, "getYellowCardQueue")
+      .mockResolvedValue({ items: [application], matchCount: 1 });
+    vi.spyOn(queries, "getYellowCardStatusCounts").mockResolvedValue(counts);
+
+    render(await YellowCardQueuePage({ searchParams: Promise.resolve({ sort: "oldest" }) }));
+    render(await YellowCardQueuePage({ searchParams: Promise.resolve({ sort: "sideways" }) }));
+
+    expect(queue).toHaveBeenNthCalledWith(1, { status: "all", search: "", sort: "oldest" });
+    expect(queue).toHaveBeenNthCalledWith(2, { status: "all", search: "", sort: "default" });
   });
 });

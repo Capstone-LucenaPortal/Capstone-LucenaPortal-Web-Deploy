@@ -97,6 +97,7 @@ function renderQueue(over: Partial<Parameters<typeof BookingQueue>[0]> = {}) {
       balanceOutstanding={69750}
       filter="all"
       search=""
+      sort="default"
       total={21}
       now={NOW}
       {...over}
@@ -240,6 +241,17 @@ describe("BookingQueue", () => {
     renderQueue({ search: "chamber", filter: "confirmed" });
     const tab = screen.getByRole("link", { name: /^All / });
     expect(tab).toHaveAttribute("href", "/staff/booking?q=chamber");
+  });
+
+  it("carries the sort into every tab href, and shows it in the search form's Sort by", () => {
+    renderQueue({ search: "chamber", filter: "confirmed", sort: "oldest" });
+    expect(screen.getByRole("link", { name: /^All / })).toHaveAttribute(
+      "href",
+      "/staff/booking?q=chamber&sort=oldest",
+    );
+    const select = screen.getByLabelText("Sort by");
+    expect(select).toHaveValue("oldest");
+    expect(select.closest("form")).toHaveAttribute("action", "/staff/booking");
   });
 
   // SCRUM-155: the search box has no visible label, so it carries its own name.

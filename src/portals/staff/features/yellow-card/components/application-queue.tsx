@@ -3,6 +3,8 @@ import { formatDate } from "@/portals/staff/lib/utils";
 import { Badge } from "@/portals/staff/components/ui/badge";
 import { LinkTabs } from "@/portals/staff/components/ui/link-tabs";
 import { QueueActivityBar } from "@/portals/staff/components/queue/queue-activity-bar";
+import { SortSelect } from "@/portals/staff/components/queue/sort-select";
+import type { QueueSort } from "@/portals/staff/lib/queue-sort";
 import { countAwaitingReview } from "../lib/actions";
 import { getFullName } from "../lib/get-full-name";
 import { buildQueueHref, type StatusFilter } from "../lib/queue-params";
@@ -18,6 +20,8 @@ interface ApplicationQueueProps {
   counts: Record<YellowCardStatus, number>;
   status: StatusFilter;
   search: string;
+  /** The Sort by choice (#195); the query has already applied it. */
+  sort: QueueSort;
 }
 
 export function ApplicationQueue({
@@ -26,6 +30,7 @@ export function ApplicationQueue({
   counts,
   status,
   search,
+  sort,
 }: ApplicationQueueProps) {
   const total = STATUS_ORDER.reduce((sum, key) => sum + counts[key], 0);
 
@@ -46,9 +51,10 @@ export function ApplicationQueue({
       {/*
         A plain GET form. The filter lives in the URL because the server does
         the filtering, so this needs no JavaScript, survives a refresh, and is
-        linkable. The hidden field carries the active tab through a search.
+        linkable. The hidden field carries the active tab through a search, and
+        the Sort by dropdown rides in the same form.
       */}
-      <form method="get" action="/staff/yellow-card" className="mt-6 flex max-w-md gap-2">
+      <form method="get" action="/staff/yellow-card" className="mt-6 flex max-w-2xl gap-2">
         {status !== "all" && <input type="hidden" name="status" value={status} />}
         <label htmlFor="q" className="sr-only">
           Search applications
@@ -67,6 +73,7 @@ export function ApplicationQueue({
         >
           Search
         </button>
+        <SortSelect sort={sort} />
       </form>
 
       <LinkTabs
@@ -84,12 +91,12 @@ export function ApplicationQueue({
           />
         }
         options={[
-          { value: "all", label: "All", count: total, href: buildQueueHref({ status: "all", search }) },
+          { value: "all", label: "All", count: total, href: buildQueueHref({ status: "all", search, sort }) },
           ...STATUS_ORDER.map((key) => ({
             value: key,
             label: STATUS_LABELS[key],
             count: counts[key],
-            href: buildQueueHref({ status: key, search }),
+            href: buildQueueHref({ status: key, search, sort }),
           })),
         ]}
       />

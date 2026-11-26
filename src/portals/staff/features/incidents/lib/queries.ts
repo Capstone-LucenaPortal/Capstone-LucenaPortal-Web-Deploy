@@ -1,5 +1,6 @@
 import { createClient, type Db } from "@/shared/supabase/server";
 import { buildSearchFilter } from "@/portals/staff/lib/supabase/search-filter";
+import type { QueueSort } from "@/portals/staff/lib/queue-sort";
 import { countByStatus, toQueueItem } from "./row-mapper";
 import type { StatusFilter } from "./queue-params";
 import { deriveSlaState } from "./sla";
@@ -67,6 +68,7 @@ const QUEUE_LIMIT = 100;
 export interface QueueOptions {
   status?: StatusFilter;
   search?: string;
+  sort?: QueueSort;
 }
 
 /**
@@ -80,8 +82,8 @@ export interface QueueResult {
 }
 
 /**
- * Ordering, verified by live query on 2026-08-07 — 13 active, then 6 resolved,
- * then 6 closed:
+ * Ordering under the Default sort, verified by live query on 2026-08-07 —
+ * 13 active, then 6 resolved, then 6 closed:
  *
  *   closed_at   nulls first  — everything not closed comes first
  *   resolved_at nulls first  — within that, active before resolved
@@ -103,6 +105,10 @@ export interface QueueResult {
  * on one screenful; the day they do not, this wants a second read of the
  * awaiting-triage rows rather than a bigger limit.
  *
+ * Newest and Oldest (#195) are a pure order by submitted_at, in the database
+ * so they reach past QUEUE_LIMIT, and they skip the lift: the officer asked
+ * for date order, not urgency.
+ *
  * The match count rides on the same request as the rows, so it is filtered
  * exactly as they are. A second count query repeating the filters would drift.
  * The reorder above moves rows within the page and leaves the count alone.
@@ -116,11 +122,18 @@ export async function getIncidentQueue(
   let query = supabase
     .from("staff_incidents")
     .select(QUEUE_COLUMNS, { count: "exact" })
-    .order("closed_at", { ascending: true, nullsFirst: true })
-    .order("resolved_at", { ascending: true, nullsFirst: true })
-    .order("sla_due_at", { ascending: true, nullsFirst: false })
-    .order("submitted_at", { ascending: false })
     .limit(QUEUE_LIMIT);
+
+  const sort = options.sort ?? "default";
+  if (sort === "default") {
+    query = query
+      .order("closed_at", { ascending: true, nullsFirst: true })
+      .order("resolved_at", { ascending: true, nullsFirst: true })
+      .order("sla_due_at", { ascending: true, nullsFirst: false })
+      .order("submitted_at", { ascending: false });
+  } else {
+    query = query.order("submitted_at", { ascending: sort === "oldest" });
+  }
 
   if (options.status && options.status !== "all") {
     query = query.eq("status", options.status);
@@ -132,9 +145,8 @@ export async function getIncidentQueue(
   const { data, count, error } = await query;
   if (error) throw new Error(`staff_incidents read failed: ${error.message}`);
 
-  const items = awaitingTriageFirst(
-    ((data as StaffIncidentQueueRow[] | null) ?? []).map(toQueueItem),
-  );
+  const rows = ((data as StaffIncidentQueueRow[] | null) ?? []).map(toQueueItem);
+  const items = sort === "default" ? awaitingTriageFirst(rows) : rows;
   // count is null only if PostgREST drops the Content-Range it was asked for.
   // The rows on hand are then the best figure there is, though it hides a cut.
   return { items, matchCount: count ?? items.length };

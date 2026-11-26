@@ -180,3 +180,15 @@ describe("buildCalendarHref", () => {
     expect(buildCalendarHref({ year: 2026, month: 8 })).not.toContain("q=");
   });
 });
+
+describe("buildQueueHref — sort", () => {
+  it("carries a chosen sort alongside the tab and the search", () => {
+    expect(buildQueueHref({ status: NEEDS_ACTION, search: "chamber", sort: "newest" })).toBe(
+      "/staff/booking?status=needs-action&q=chamber&sort=newest",
+    );
+  });
+
+  it("leaves Default out of the URL", () => {
+    expect(buildQueueHref({ status: "all", sort: "default" })).toBe("/staff/booking");
+  });
+});

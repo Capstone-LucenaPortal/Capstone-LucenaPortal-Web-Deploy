@@ -19,6 +19,7 @@ import {
   parseStatusFilter,
   parseView,
 } from "@/portals/staff/features/booking/lib/queue-params";
+import { parseQueueSort, type QueueSort } from "@/portals/staff/lib/queue-sort";
 import {
   buildMonthGrid,
   monthGridBounds,
@@ -35,6 +36,7 @@ export default async function BookingQueuePage({
   searchParams: Promise<{
     status?: string;
     q?: string;
+    sort?: string;
     view?: string;
     month?: string;
   }>;
@@ -61,7 +63,7 @@ export default async function BookingQueuePage({
   const body =
     view === "calendar"
       ? await renderCalendar(year, month, now)
-      : await renderList(params.status, params.q ?? "", now);
+      : await renderList(params.status, params.q ?? "", parseQueueSort(params.sort), now);
 
   return (
     <div>
@@ -99,12 +101,13 @@ export default async function BookingQueuePage({
 async function renderList(
   status: string | undefined,
   search: string,
+  sort: QueueSort,
   now: Date,
 ) {
   const filter = parseStatusFilter(status);
 
   const [queue, counts, balanceOutstanding] = await Promise.all([
-    getBookingQueue({ status: filter, search }),
+    getBookingQueue({ status: filter, search, sort }),
     getBookingStatusCounts(),
     getBalanceOutstanding(),
   ]);
@@ -122,6 +125,7 @@ async function renderList(
       balanceOutstanding={balanceOutstanding}
       filter={filter}
       search={search}
+      sort={sort}
       total={total}
       now={now}
     />

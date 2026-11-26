@@ -105,7 +105,7 @@ describe("IncidentsQueuePage", () => {
       }),
     );
 
-    expect(queue).toHaveBeenCalledWith({ status: "in_pool", search: "cotta" });
+    expect(queue).toHaveBeenCalledWith({ status: "in_pool", search: "cotta", sort: "default" });
   });
 
   it("falls back to all when the URL carries a status the database never had", async () => {
@@ -118,7 +118,17 @@ describe("IncidentsQueuePage", () => {
       }),
     );
 
-    expect(queue).toHaveBeenCalledWith({ status: "all", search: undefined });
+    expect(queue).toHaveBeenCalledWith({ status: "all", search: undefined, sort: "default" });
+  });
+
+  it("passes a chosen sort down to the query, and an unknown one as Default", async () => {
+    const queue = stubReads();
+
+    render(await IncidentsQueuePage({ searchParams: Promise.resolve({ sort: "newest" }) }));
+    render(await IncidentsQueuePage({ searchParams: Promise.resolve({ sort: "urgent" }) }));
+
+    expect(queue).toHaveBeenNthCalledWith(1, { status: "all", search: undefined, sort: "newest" });
+    expect(queue).toHaveBeenNthCalledWith(2, { status: "all", search: undefined, sort: "default" });
   });
 
   it("hands the at-risk count through to the summary card", async () => {

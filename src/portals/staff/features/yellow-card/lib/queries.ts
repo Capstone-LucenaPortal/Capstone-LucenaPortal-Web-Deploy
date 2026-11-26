@@ -1,5 +1,6 @@
 import { createClient, type Db } from "@/shared/supabase/server";
 import { buildSearchFilter } from "@/portals/staff/lib/supabase/search-filter";
+import type { QueueSort } from "@/portals/staff/lib/queue-sort";
 import { countByStatus, toQueueItem } from "./row-mapper";
 import type { StatusFilter } from "./queue-params";
 import type { StaffYellowCardQueueRow } from "./row-mapper";
@@ -50,6 +51,7 @@ const QUEUE_LIMIT = 100;
 export interface QueueOptions {
   status?: StatusFilter;
   search?: string;
+  sort?: QueueSort;
 }
 
 /**
@@ -63,9 +65,10 @@ export interface QueueResult {
 }
 
 /**
- * Ordering: soonest SLA deadline first. due_at is NULL while the clock is
- * paused (the ball is with the citizen), so those sort last and then by most
- * recently submitted.
+ * Ordering, under the Default sort: soonest SLA deadline first. due_at is NULL
+ * while the clock is paused (the ball is with the citizen), so those sort last
+ * and then by most recently submitted. Newest and Oldest (#195) order by
+ * submitted_at alone, in the database, so they reach past QUEUE_LIMIT.
  *
  * The match count rides on the same request as the rows, so it is filtered
  * exactly as they are. A second count query repeating the filters would drift.
@@ -79,9 +82,16 @@ export async function getYellowCardQueue(
   let query = supabase
     .from("staff_yellow_card_queue")
     .select(QUEUE_COLUMNS, { count: "exact" })
-    .order("due_at", { ascending: true, nullsFirst: false })
-    .order("submitted_at", { ascending: false })
     .limit(QUEUE_LIMIT);
+
+  const sort = options.sort ?? "default";
+  if (sort === "default") {
+    query = query
+      .order("due_at", { ascending: true, nullsFirst: false })
+      .order("submitted_at", { ascending: false });
+  } else {
+    query = query.order("submitted_at", { ascending: sort === "oldest" });
+  }
 
   if (options.status && options.status !== "all") {
     query = query.eq("status", options.status);

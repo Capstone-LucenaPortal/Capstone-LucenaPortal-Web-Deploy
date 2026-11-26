@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/portals/super-staff/components/ui/button";
+import { Select } from "@/portals/super-staff/components/ui/select";
 import { cn, formatDateTime } from "@/portals/super-staff/lib/utils";
 import { systemIssueErrorMessage } from "../lib/system-issue-errors";
 import { listSystemIssues } from "../lib/system-issue-queries";
-import { TABS, inTab, queue, type QueueTab } from "../lib/queue";
+import { SORTS, TABS, inTab, queue, type QueueSort, type QueueTab } from "../lib/queue";
 import { CATEGORY_LABEL, isLive, reporterLabel, type SystemIssue } from "../types";
 import { IssueDetail } from "./issue-detail";
 import { IssueStatusPill, PriorityPill } from "./issue-pills";
@@ -24,6 +25,8 @@ type Load =
 export function SystemIssuesView() {
   const [load, setLoad] = useState<Load>({ kind: "loading" });
   const [tab, setTab] = useState<QueueTab>("attention");
+  // Not remembered between visits: a fresh visit is the triage order (#195).
+  const [sort, setSort] = useState<QueueSort>("default");
   // Null follows the tab's first row. A picked issue stays in the panel even
   // once an action moves it out of the tab, so the officer sees what happened.
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -44,7 +47,7 @@ export function SystemIssuesView() {
   }, [reload]);
 
   const issues = load.kind === "ready" ? load.issues : [];
-  const shown = queue(issues, tab);
+  const shown = queue(issues, tab, sort);
   const selected = issues.find((i) => i.id === selectedId) ?? shown[0] ?? null;
   const live = issues.filter(isLive);
 
@@ -91,30 +94,48 @@ export function SystemIssuesView() {
         <p className="text-sm text-red-500">{load.message}</p>
       ) : (
         <>
-          <div role="tablist" aria-label="Status" className="mb-3 flex gap-1 border-b border-gray-200">
-            {TABS.map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                role="tab"
-                aria-selected={tab === t.key}
-                onClick={() => {
-                  setTab(t.key);
-                  setSelectedId(null);
-                }}
-                className={cn(
-                  "-mb-px border-b-2 px-3 py-2 text-sm",
-                  tab === t.key
-                    ? "border-lucena-blue font-semibold text-lucena-blue"
-                    : "border-transparent text-gray-500 hover:text-gray-700",
-                )}
+          <div className="mb-3 flex flex-wrap items-end gap-2 border-b border-gray-200">
+            <div role="tablist" aria-label="Status" className="flex gap-1">
+              {TABS.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === t.key}
+                  onClick={() => {
+                    setTab(t.key);
+                    setSelectedId(null);
+                  }}
+                  className={cn(
+                    "-mb-px border-b-2 px-3 py-2 text-sm",
+                    tab === t.key
+                      ? "border-lucena-blue font-semibold text-lucena-blue"
+                      : "border-transparent text-gray-500 hover:text-gray-700",
+                  )}
+                >
+                  {t.label}{" "}
+                  <span className="text-xs font-normal text-gray-400">
+                    ({issues.filter((i) => inTab(i, t.key)).length})
+                  </span>
+                </button>
+              ))}
+            </div>
+            {/* Sorts the rows already held, so it needs no reread. Like a tab,
+                it is not remembered between visits. */}
+            <label className="ml-auto flex items-center gap-2 pb-1.5 text-sm text-gray-600">
+              Sort by
+              <Select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as QueueSort)}
+                className="h-9 w-auto px-2 text-gray-900"
               >
-                {t.label}{" "}
-                <span className="text-xs font-normal text-gray-400">
-                  ({issues.filter((i) => inTab(i, t.key)).length})
-                </span>
-              </button>
-            ))}
+                {SORTS.map((s) => (
+                  <option key={s.key} value={s.key}>
+                    {s.label}
+                  </option>
+                ))}
+              </Select>
+            </label>
           </div>
 
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start">

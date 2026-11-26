@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { LinkTabs } from "@/portals/staff/components/ui/link-tabs";
 import { QueueActivityBar } from "@/portals/staff/components/queue/queue-activity-bar";
+import { SortSelect } from "@/portals/staff/components/queue/sort-select";
+import type { QueueSort } from "@/portals/staff/lib/queue-sort";
 import { countNeedsAction } from "../lib/actions";
 import { STATUS_LABELS, STATUS_ORDER } from "../lib/status";
 import {
@@ -26,6 +28,8 @@ interface BookingQueueProps {
   balanceOutstanding: number;
   filter: StatusFilter;
   search: string;
+  /** The Sort by choice (#195); the query has already applied it. */
+  sort: QueueSort;
   /** Every booking in the view: the All tab's count, not the footer's. */
   total: number;
   /** The route's one moment (ADR-0005) — a Tier Claim's age is measured to it. */
@@ -48,6 +52,7 @@ export function BookingQueue({
   balanceOutstanding,
   filter,
   search,
+  sort,
   total,
   now,
 }: BookingQueueProps) {
@@ -70,8 +75,8 @@ export function BookingQueue({
 
       {/* A GET form, so the search term lands in the URL where the server read
           can see it. The status is carried as a hidden field or the current tab
-          is lost on submit. */}
-      <form method="get" action="/staff/booking" className="mt-6 flex max-w-md gap-2">
+          is lost on submit; the Sort by dropdown rides in the same form. */}
+      <form method="get" action="/staff/booking" className="mt-6 flex max-w-2xl gap-2">
         {filter !== "all" && <input type="hidden" name="status" value={filter} />}
         <input
           type="text"
@@ -87,6 +92,7 @@ export function BookingQueue({
         >
           Search
         </button>
+        <SortSelect sort={sort} />
       </form>
 
       {/* "Needs action" leads, because its three statuses are not adjacent in
@@ -121,19 +127,19 @@ export function BookingQueue({
             value: NEEDS_ACTION,
             label: "Needs action",
             count: needsActionCount,
-            href: buildQueueHref({ status: NEEDS_ACTION, search }),
+            href: buildQueueHref({ status: NEEDS_ACTION, search, sort }),
           },
           {
             value: "all",
             label: "All",
             count: total,
-            href: buildQueueHref({ status: "all", search }),
+            href: buildQueueHref({ status: "all", search, sort }),
           },
           ...STATUS_ORDER.map((status) => ({
             value: status,
             label: STATUS_LABELS[status],
             count: counts[status],
-            href: buildQueueHref({ status, search }),
+            href: buildQueueHref({ status, search, sort }),
           })),
         ]}
       />

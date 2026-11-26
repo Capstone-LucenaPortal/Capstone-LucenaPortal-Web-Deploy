@@ -33,6 +33,32 @@ export function triageOrder(a: SystemIssue, b: SystemIssue): number {
   return rank(a.priority) - rank(b.priority) || Date.parse(a.createdAt) - Date.parse(b.createdAt);
 }
 
-export function queue(issues: SystemIssue[], tab: QueueTab): SystemIssue[] {
-  return issues.filter((i) => inTab(i, tab)).sort(triageOrder);
+/**
+ * The Sort by dropdown (#195). Default is the triage rule; Newest and Oldest
+ * order by the Reported column alone. It sorts here, in the browser, because
+ * the view already holds every issue.
+ */
+export type QueueSort = "default" | "newest" | "oldest";
+
+export const SORTS: { key: QueueSort; label: string }[] = [
+  { key: "default", label: "Default" },
+  { key: "newest", label: "Newest reported" },
+  { key: "oldest", label: "Oldest reported" },
+];
+
+const reportedOrder = (a: SystemIssue, b: SystemIssue) =>
+  Date.parse(a.createdAt) - Date.parse(b.createdAt);
+
+const ORDERS: Record<QueueSort, (a: SystemIssue, b: SystemIssue) => number> = {
+  default: triageOrder,
+  newest: (a, b) => reportedOrder(b, a),
+  oldest: reportedOrder,
+};
+
+export function queue(
+  issues: SystemIssue[],
+  tab: QueueTab,
+  sort: QueueSort,
+): SystemIssue[] {
+  return issues.filter((i) => inTab(i, tab)).sort(ORDERS[sort]);
 }

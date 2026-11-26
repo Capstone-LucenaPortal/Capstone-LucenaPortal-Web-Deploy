@@ -191,6 +191,40 @@ describe("getIncidentQueue", () => {
   });
 
   /**
+   * #195. Newest and Oldest are a pure order by submission date, applied by
+   * the database so it reaches every matching row — no Awaiting Triage lift.
+   */
+  it("orders by submission date alone under Newest and Oldest", async () => {
+    const { fetch, requests } = createRecordingFetch([CANNED_QUEUE_ROW]);
+    const db = createTestClient(fetch);
+
+    await getIncidentQueue({ sort: "newest" }, db);
+    await getIncidentQueue({ sort: "oldest" }, db);
+
+    expect(parseQueryParams(requests[0].url).order).toBe("submitted_at.desc");
+    expect(parseQueryParams(requests[1].url).order).toBe("submitted_at.asc");
+  });
+
+  it("does not lift Awaiting Triage rows under Newest or Oldest", async () => {
+    const queueRow = (id: string, status: StaffIncidentQueueRow["status"]) => ({
+      ...CANNED_QUEUE_ROW,
+      id,
+      status,
+    });
+    const rows = [
+      queueRow("newest", "in_progress"),
+      queueRow("middle", "open"),
+      queueRow("oldest", "resolved"),
+    ];
+
+    for (const sort of ["newest", "oldest"] as const) {
+      const { fetch } = createRecordingFetch(rows);
+      const { items } = await getIncidentQueue({ sort }, createTestClient(fetch));
+      expect(items.map((item) => item.id)).toEqual(["newest", "middle", "oldest"]);
+    }
+  });
+
+  /**
    * One screenful, defensible only because the queue is ordered by urgency:
    * the rows past this limit are by construction the least urgent.
    */

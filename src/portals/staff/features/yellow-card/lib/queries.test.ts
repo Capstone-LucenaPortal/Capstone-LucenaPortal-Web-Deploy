@@ -100,6 +100,31 @@ describe("getYellowCardQueue", () => {
     expect(params.order!.split(",")[0]).toBe("due_at.asc.nullslast");
   });
 
+  /**
+   * #195. Newest and Oldest are ordered by the database, so they reach every
+   * matching row, not just the hundred it hands back. Deadline plays no part.
+   */
+  it("orders newest submitted first under Newest, oldest first under Oldest", async () => {
+    const { fetch, requests } = createRecordingFetch([CANNED_QUEUE_ROW]);
+    const db = createTestClient(fetch);
+
+    await getYellowCardQueue({ sort: "newest" }, db);
+    await getYellowCardQueue({ sort: "oldest" }, db);
+
+    expect(parseQueryParams(requests[0].url).order).toBe("submitted_at.desc");
+    expect(parseQueryParams(requests[1].url).order).toBe("submitted_at.asc");
+    expect(parseQueryParams(requests[0].url).limit).toBe("100");
+  });
+
+  it("keeps the deadline order under Default", async () => {
+    const { fetch, requests } = createRecordingFetch([CANNED_QUEUE_ROW]);
+    const db = createTestClient(fetch);
+
+    await getYellowCardQueue({ sort: "default" }, db);
+
+    expect(parseQueryParams(requests[0].url).order).toBe("due_at.asc.nullslast,submitted_at.desc");
+  });
+
   it("limits the queue to one screenful", async () => {
     const { fetch, requests } = createRecordingFetch([CANNED_QUEUE_ROW]);
     const db = createTestClient(fetch);

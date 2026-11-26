@@ -68,7 +68,7 @@ function stubQueries() {
 
 /** Renders the page and returns nothing; each case asserts on `screen`. */
 async function renderPage(
-  params: { status?: string; q?: string; view?: string; month?: string } = {},
+  params: { status?: string; q?: string; sort?: string; view?: string; month?: string } = {},
 ) {
   cleanup();
   stubProfileRow(["booking"]);
@@ -144,6 +144,7 @@ describe("BookingQueuePage — list view", () => {
     expect(queries.getBookingQueue).toHaveBeenCalledWith({
       status: "needs-action",
       search: "",
+      sort: "default",
     });
   });
 
@@ -154,6 +155,7 @@ describe("BookingQueuePage — list view", () => {
     expect(queries.getBookingQueue).toHaveBeenCalledWith({
       status: "all",
       search: "",
+      sort: "default",
     });
   });
 
@@ -163,6 +165,23 @@ describe("BookingQueuePage — list view", () => {
     expect(queries.getBookingQueue).toHaveBeenCalledWith({
       status: "all",
       search: "chamber",
+      sort: "default",
+    });
+  });
+
+  it("passes a chosen sort through, and an unknown one as Default", async () => {
+    await renderPage({ sort: "newest" });
+    expect(queries.getBookingQueue).toHaveBeenLastCalledWith({
+      status: "all",
+      search: "",
+      sort: "newest",
+    });
+
+    await renderPage({ sort: "by-venue" });
+    expect(queries.getBookingQueue).toHaveBeenLastCalledWith({
+      status: "all",
+      search: "",
+      sort: "default",
     });
   });
 

@@ -8,17 +8,19 @@ import {
   getIncidentStatusCounts,
 } from "@/portals/staff/features/incidents/lib/queries";
 import { parseStatusFilter } from "@/portals/staff/features/incidents/lib/queue-params";
+import { parseQueueSort } from "@/portals/staff/lib/queue-sort";
 
 export default async function IncidentsQueuePage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; q?: string }>;
+  searchParams: Promise<{ status?: string; q?: string; sort?: string }>;
 }) {
   // Before anything else, so a refused account fires no Incidents read.
   if (!(await isAssigned("incidents"))) return <NotYourModule module="incidents" />;
 
-  const { status, q } = await searchParams;
+  const { status, q, sort: rawSort } = await searchParams;
   const activeStatus = parseStatusFilter(status);
+  const sort = parseQueueSort(rawSort);
 
   // One clock for the whole page, so every row agrees what time it is — and so
   // does the At Risk card above them, which counts against this same moment.
@@ -34,7 +36,7 @@ export default async function IncidentsQueuePage({
   const thresholdRead = getAtRiskThreshold();
 
   const [queue, statusCounts, atRiskCount] = await Promise.all([
-    getIncidentQueue({ status: activeStatus, search: q }),
+    getIncidentQueue({ status: activeStatus, search: q, sort }),
     getIncidentStatusCounts(),
     thresholdRead.then((t) => getAtRiskCount(t, now)),
   ]);
@@ -55,6 +57,7 @@ export default async function IncidentsQueuePage({
           atRiskCount={atRiskCount}
           activeStatus={activeStatus}
           search={q}
+          sort={sort}
           now={now}
           threshold={threshold}
         />
