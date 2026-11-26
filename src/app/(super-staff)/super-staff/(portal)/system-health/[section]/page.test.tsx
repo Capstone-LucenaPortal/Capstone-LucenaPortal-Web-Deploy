@@ -328,7 +328,7 @@ describe("System Health · section pages", () => {
       await renderSection("notifications");
 
       const panel = screen.getByRole("region", { name: "Delivery by channel (24 h)" });
-      expect(panel).toHaveTextContent("SMS is not built: nothing in this system writes an SMS notification.");
+      expect(panel).not.toHaveTextContent("SMS is not built");
       expect(panel).toHaveTextContent('"Sent" means the provider accepted the message, not that it arrived.');
       expect(screen.getByRole("region", { name: "Queued notifications, last 24 h" })).toBeInTheDocument();
     });

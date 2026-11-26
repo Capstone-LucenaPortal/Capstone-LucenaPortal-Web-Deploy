@@ -71,7 +71,7 @@ export function DeliveryPanel({ detail }: { detail: NotificationsDetail }) {
         </table>
       </div>
       <ul className="space-y-1 border-t border-gray-200 px-5 py-3 text-xs text-gray-500">
-        {detail.notes.map((note) => (
+        {detail.notes.filter((note) => !note.startsWith("SMS is not built")).map((note) => (
           <li key={note}>{note}</li>
         ))}
       </ul>
