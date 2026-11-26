@@ -10,6 +10,8 @@
 // `revoke_yellow_card`.
 // `maintenance` (DB l125) holds Maintenance Periods added, edited, retired or
 // reactivated by Super Staff from the Configuration screen.
+// `system_issues` (DB l128a) holds System issues submitted, triaged, started,
+// resolved or closed; each entry targets the issue (target kind `system_issue`).
 export type AuditArea =
   | "accounts"
   | "configuration"
@@ -19,7 +21,8 @@ export type AuditArea =
   | "calendar"
   | "auth"
   | "yellow_card"
-  | "maintenance";
+  | "maintenance"
+  | "system_issues";
 
 export type AuditEntry = {
   id: string;

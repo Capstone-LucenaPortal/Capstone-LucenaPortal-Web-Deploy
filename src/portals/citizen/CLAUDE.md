@@ -103,7 +103,7 @@ they start with `src/`.
 src/app/(citizen)/           App Router routes ONLY — no components, no helpers
 components/{layout,ui}/      Cross-feature presentational components
 features/<slice>/            auth · booking · content · dashboard · incidents ·
-  components/ hooks/ lib/    notifications · profile · yellow-card
+  components/ hooks/ lib/    notifications · profile · system-issues · yellow-card
   types.ts                   the slice's domain types
 lib/                         supabase/ (client, catalogs),
                              storage/ (file-validation, image-sanitizer),

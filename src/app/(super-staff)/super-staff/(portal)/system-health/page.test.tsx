@@ -8,6 +8,7 @@ import {
   healthySnapshot,
   withCheck,
 } from "@/portals/super-staff/features/system-health/test/fixture";
+import * as issueQueries from "@/portals/super-staff/features/system-issues/lib/system-issue-queries";
 import SystemHealthLayout from "./layout";
 import GeneralPage from "./page";
 
@@ -16,6 +17,8 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/portals/super-staff/features/system-health/lib/queries");
+
+vi.mock("@/portals/super-staff/features/system-issues/lib/system-issue-queries");
 
 vi.mock("@/portals/super-staff/features/monitoring/lib/queries", () => ({
   getMetrics: () =>
@@ -36,6 +39,12 @@ beforeEach(() => {
   vi.mocked(queries.checkReachability).mockResolvedValue(FAST);
   vi.mocked(queries.listHealthSamples).mockResolvedValue(SAMPLES);
   vi.mocked(queries.getHealthSummary).mockResolvedValue(SUMMARY);
+  vi.mocked(issueQueries.getSystemIssueSummary).mockResolvedValue({
+    open: 7,
+    highOpen: 2,
+    unprioritisedOpen: 3,
+    oldestOpenAt: "2026-11-20T02:00:00+00:00",
+  });
 });
 
 function renderGeneral() {
@@ -279,6 +288,8 @@ describe("System Health · General", () => {
       "Notifications (OK)",
       "Background jobs (OK)",
       "Accounts & sign-in (OK)",
+      // User reports: ungraded (ADR 0013), so no status.
+      "System issues",
     ]);
     expect(within(nav).getByRole("link", { name: /^General/ })).toHaveAttribute("aria-current", "page");
   });
@@ -289,6 +300,93 @@ describe("System Health · General", () => {
     await screen.findByRole("region", { name: "Platform" });
     expect(screen.queryByRole("region", { name: "Thresholds" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: /sign-ins/i })).not.toBeInTheDocument();
+  });
+
+  describe("User reports card", () => {
+    const card = () => screen.findByRole("region", { name: "User reports" });
+
+    it("shows the open System issues, the High ones, those not yet prioritised and the oldest", async () => {
+      renderGeneral();
+
+      const c = await card();
+      expect(await within(c).findByText("7")).toBeInTheDocument();
+      expect(within(c).getByText(/^Open:/).textContent).toBe("Open: 7");
+      expect(within(c).getByText(/^High priority/).textContent).toBe("High priority: 2");
+      expect(within(c).getByText(/^Not yet prioritised/).textContent).toBe("Not yet prioritised: 3");
+      expect(within(c).getByText(/^Oldest open/).textContent).toBe("Oldest open: Nov 20, 2026, 10:00 AM");
+    });
+
+    it("leads to the System issues queue", async () => {
+      renderGeneral();
+
+      expect(within(await card()).getByRole("link", { name: /System issues/ })).toHaveAttribute(
+        "href",
+        "/super-staff/system-health/issues",
+      );
+    });
+
+    it("sits under the status overview, before Service impact", async () => {
+      renderGeneral();
+
+      const c = await card();
+      const platform = screen.getByRole("region", { name: "Platform" });
+      const impact = screen.getByRole("region", { name: "Service impact" });
+      expect(platform.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(c.compareDocumentPosition(impact) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it("says it is not graded, and changes no grade: High reports leave all systems working", async () => {
+      vi.mocked(issueQueries.getSystemIssueSummary).mockResolvedValue({
+        open: 40,
+        highOpen: 40,
+        unprioritisedOpen: 0,
+        oldestOpenAt: "2026-10-01T02:00:00+00:00",
+      });
+      renderGeneral();
+
+      const c = await card();
+      expect(await within(c).findByText(/^High priority/)).toHaveTextContent("High priority: 40");
+      expect(c).toHaveTextContent(/not graded/i);
+      expect(screen.getByRole("heading", { name: "All systems working" })).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("navigation", { name: "System Health sections" }))
+          .getAllByRole("link")
+          .map((l) => l.textContent),
+      ).toEqual([
+        "General (OK)",
+        "Yellow Card (OK)",
+        "Incidents (OK)",
+        "LCC Bookings (OK)",
+        "Database (OK)",
+        "Storage (OK)",
+        "Notifications (OK)",
+        "Background jobs (OK)",
+        "Accounts & sign-in (OK)",
+        "System issues",
+      ]);
+    });
+
+    it("says so when nothing is open", async () => {
+      vi.mocked(issueQueries.getSystemIssueSummary).mockResolvedValue({
+        open: 0,
+        highOpen: 0,
+        unprioritisedOpen: 0,
+        oldestOpenAt: null,
+      });
+      renderGeneral();
+
+      const c = await card();
+      expect(await within(c).findByText(/^Open:/)).toHaveTextContent("Open: 0");
+      expect(within(c).getByText(/^Oldest open/).textContent).toBe("Oldest open: none");
+    });
+
+    it("says so when the figures cannot be loaded, and the rest of the page still shows", async () => {
+      vi.mocked(issueQueries.getSystemIssueSummary).mockRejectedValue(new Error("boom"));
+      renderGeneral();
+
+      expect(await within(await card()).findByText("Could not load the user reports.")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "All systems working" })).toBeInTheDocument();
+    });
   });
 
   it("keeps Admin's Service impact, last", async () => {

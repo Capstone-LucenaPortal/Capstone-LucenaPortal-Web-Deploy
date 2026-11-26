@@ -14,7 +14,7 @@ export type RequestStatus =
 
 export interface StoredRequest {
   id: string;
-  type: 'Yellow Card Application' | 'Incident Report' | 'Venue Booking';
+  type: 'Yellow Card Application' | 'Incident Report' | 'Venue Booking' | 'System Issue';
   status: string;
   date: string;
   // Yellow Card fields

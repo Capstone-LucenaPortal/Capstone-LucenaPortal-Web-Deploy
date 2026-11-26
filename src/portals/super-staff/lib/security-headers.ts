@@ -17,8 +17,10 @@
 //   announcement and event colour swatches' backgroundColor).
 // - img-src adds the Supabase project because announcement and site-content
 //   images are rendered straight from Storage public URLs, including the
-//   preview right after upload. data: and blob: are kept as harmless
-//   defaults; nothing here uses them today.
+//   preview right after upload. blob: serves a Citizen's System issue
+//   screenshot, which is downloaded with the session and shown from an
+//   object URL (system-issues/components/issue-screenshot.tsx). data: is
+//   kept as a harmless default.
 // - connect-src is the portal's entire egress surface: itself plus the one
 //   Supabase project. Anything else the browser tries to call is blocked,
 //   which is the point.

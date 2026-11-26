@@ -18,6 +18,7 @@ import { ReceiptLink } from '@/portals/citizen/features/receipts/components/rece
 import { LIMITS } from '@/portals/citizen/lib/validation';
 import { Button } from '@/portals/citizen/components/ui/button';
 import { validateUploadFile, MAX_UPLOAD_BYTES } from '@/portals/citizen/lib/storage/file-validation';
+import { WebsiteProblemBanner } from '@/portals/citizen/features/system-issues/components/website-problem-banner';
 
 interface IncidentFormData {
   incidentTypeCode: string;
@@ -581,6 +582,9 @@ function IncidentContent() {
 export default function IncidentPage() {
   return (
     <ProtectedRoute>
+      {/* A problem with the website is a System issue, never an Incident Report
+          (ADR 0013): it goes through its own dialog and leaves the form below as it was. */}
+      <WebsiteProblemBanner />
       <IncidentContent />
     </ProtectedRoute>
   );

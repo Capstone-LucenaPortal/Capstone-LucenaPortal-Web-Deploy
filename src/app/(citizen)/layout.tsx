@@ -6,6 +6,7 @@ import Nav from '@/portals/citizen/components/layout/navbar';
 import AuthModal from '@/portals/citizen/features/auth/components/auth-modal';
 import MockModeBanner from '@/portals/citizen/components/layout/mock-mode-banner';
 import SiteFooter from '@/portals/citizen/components/layout/footer';
+import PageTrail from '@/portals/citizen/features/system-issues/components/page-trail';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -54,6 +55,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             screen-reader user tabs through the whole nav on every route. */}
         <a href="#main" className="skip-link">Skip to main content</a>
         <MockModeBanner />
+        {/* Remembers the previous page, for a website-problem report. Renders nothing. */}
+        <PageTrail />
         <AuthProvider>
           <div className="relative min-h-screen">
             <Nav />

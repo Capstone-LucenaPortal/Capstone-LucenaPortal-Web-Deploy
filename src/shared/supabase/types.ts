@@ -2990,6 +2990,169 @@ export type Database = {
         }
         Relationships: []
       }
+      system_issue_screenshots: {
+        Row: {
+          attempts: number
+          id: string
+          mime_type: string | null
+          reserved_at: string
+          reserved_by: string
+          size_bytes: number | null
+          storage_path: string
+          system_issue_id: string
+          uploaded_at: string | null
+        }
+        Insert: {
+          attempts?: number
+          id?: string
+          mime_type?: string | null
+          reserved_at?: string
+          reserved_by: string
+          size_bytes?: number | null
+          storage_path: string
+          system_issue_id: string
+          uploaded_at?: string | null
+        }
+        Update: {
+          attempts?: number
+          id?: string
+          mime_type?: string | null
+          reserved_at?: string
+          reserved_by?: string
+          size_bytes?: number | null
+          storage_path?: string
+          system_issue_id?: string
+          uploaded_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "system_issue_screenshots_system_issue_id_fkey"
+            columns: ["system_issue_id"]
+            isOneToOne: true
+            referencedRelation: "my_system_issues"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "system_issue_screenshots_system_issue_id_fkey"
+            columns: ["system_issue_id"]
+            isOneToOne: true
+            referencedRelation: "super_system_issues"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "system_issue_screenshots_system_issue_id_fkey"
+            columns: ["system_issue_id"]
+            isOneToOne: true
+            referencedRelation: "system_issues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      system_issues: {
+        Row: {
+          captured_page: string | null
+          category: Database["public"]["Enums"]["system_issue_category"]
+          citizen_id: string | null
+          close_note: string | null
+          close_reason:
+            | Database["public"]["Enums"]["system_issue_close_reason"]
+            | null
+          closed_at: string | null
+          created_at: string
+          description: string
+          id: string
+          logged_by: string | null
+          priority: Database["public"]["Enums"]["system_issue_priority"] | null
+          reference_number: string
+          reporter_email: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          status: Database["public"]["Enums"]["system_issue_status"]
+          updated_at: string
+          user_agent: string | null
+        }
+        Insert: {
+          captured_page?: string | null
+          category: Database["public"]["Enums"]["system_issue_category"]
+          citizen_id?: string | null
+          close_note?: string | null
+          close_reason?:
+            | Database["public"]["Enums"]["system_issue_close_reason"]
+            | null
+          closed_at?: string | null
+          created_at?: string
+          description: string
+          id?: string
+          logged_by?: string | null
+          priority?: Database["public"]["Enums"]["system_issue_priority"] | null
+          reference_number: string
+          reporter_email?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          status?: Database["public"]["Enums"]["system_issue_status"]
+          updated_at?: string
+          user_agent?: string | null
+        }
+        Update: {
+          captured_page?: string | null
+          category?: Database["public"]["Enums"]["system_issue_category"]
+          citizen_id?: string | null
+          close_note?: string | null
+          close_reason?:
+            | Database["public"]["Enums"]["system_issue_close_reason"]
+            | null
+          closed_at?: string | null
+          created_at?: string
+          description?: string
+          id?: string
+          logged_by?: string | null
+          priority?: Database["public"]["Enums"]["system_issue_priority"] | null
+          reference_number?: string
+          reporter_email?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          status?: Database["public"]["Enums"]["system_issue_status"]
+          updated_at?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "system_issues_citizen_id_fkey"
+            columns: ["citizen_id"]
+            isOneToOne: false
+            referencedRelation: "citizens"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "system_issues_citizen_id_fkey"
+            columns: ["citizen_id"]
+            isOneToOne: false
+            referencedRelation: "my_profile"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "system_issues_logged_by_fkey"
+            columns: ["logged_by"]
+            isOneToOne: false
+            referencedRelation: "my_staff_profile"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "system_issues_logged_by_fkey"
+            columns: ["logged_by"]
+            isOneToOne: false
+            referencedRelation: "staff_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "system_issues_logged_by_fkey"
+            columns: ["logged_by"]
+            isOneToOne: false
+            referencedRelation: "super_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       yellow_card_applications: {
         Row: {
           barangay_code: string
@@ -4637,6 +4800,30 @@ export type Database = {
             referencedColumns: ["code"]
           },
         ]
+      }
+      my_system_issues: {
+        Row: {
+          captured_page: string | null
+          category: Database["public"]["Enums"]["system_issue_category"] | null
+          close_note: string | null
+          close_reason:
+            | Database["public"]["Enums"]["system_issue_close_reason"]
+            | null
+          closed_at: string | null
+          closes_at: string | null
+          created_at: string | null
+          description: string | null
+          has_screenshot: boolean | null
+          id: string | null
+          reference_number: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          screenshot_path: string | null
+          status: string | null
+          updated_at: string | null
+          user_agent: string | null
+        }
+        Relationships: []
       }
       my_yellow_card_applications: {
         Row: {
@@ -7847,6 +8034,70 @@ export type Database = {
         }
         Relationships: []
       }
+      super_system_issues: {
+        Row: {
+          captured_page: string | null
+          category: Database["public"]["Enums"]["system_issue_category"] | null
+          close_note: string | null
+          close_reason:
+            | Database["public"]["Enums"]["system_issue_close_reason"]
+            | null
+          closed_at: string | null
+          closes_at: string | null
+          created_at: string | null
+          description: string | null
+          has_screenshot: boolean | null
+          id: string | null
+          is_on_behalf: boolean | null
+          logged_by: string | null
+          logged_by_name: string | null
+          priority: Database["public"]["Enums"]["system_issue_priority"] | null
+          reference_number: string | null
+          reporter_display: string | null
+          reporter_email: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          screenshot_path: string | null
+          status: string | null
+          stored_status:
+            | Database["public"]["Enums"]["system_issue_status"]
+            | null
+          updated_at: string | null
+          user_agent: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "system_issues_logged_by_fkey"
+            columns: ["logged_by"]
+            isOneToOne: false
+            referencedRelation: "my_staff_profile"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "system_issues_logged_by_fkey"
+            columns: ["logged_by"]
+            isOneToOne: false
+            referencedRelation: "staff_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "system_issues_logged_by_fkey"
+            columns: ["logged_by"]
+            isOneToOne: false
+            referencedRelation: "super_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      super_system_issues_summary: {
+        Row: {
+          high_open_count: number | null
+          oldest_open_at: string | null
+          open_count: number | null
+          unprioritised_open_count: number | null
+        }
+        Relationships: []
+      }
       super_venue_states: {
         Row: {
           is_active: boolean | null
@@ -8100,9 +8351,17 @@ export type Database = {
       }
       can_read_booking_document: { Args: { p_path: string }; Returns: boolean }
       can_read_incident_photo: { Args: { p_path: string }; Returns: boolean }
+      can_read_system_issue_screenshot: {
+        Args: { p_path: string }
+        Returns: boolean
+      }
       can_read_yc_document: { Args: { p_path: string }; Returns: boolean }
       can_write_booking_document: { Args: { p_path: string }; Returns: boolean }
       can_write_incident_photo: { Args: { p_path: string }; Returns: boolean }
+      can_write_system_issue_screenshot: {
+        Args: { p_path: string }
+        Returns: boolean
+      }
       can_write_yc_document: { Args: { p_path: string }; Returns: boolean }
       cancel_booking: {
         Args: { p_booking_id: string; p_reason: string }
@@ -8201,6 +8460,14 @@ export type Database = {
           subject: string
           target_id: string
         }[]
+      }
+      close_system_issue: {
+        Args: {
+          p_id: string
+          p_note: string
+          p_reason: Database["public"]["Enums"]["system_issue_close_reason"]
+        }
+        Returns: undefined
       }
       complete_booking: {
         Args: { p_booking_id: string }
@@ -8607,6 +8874,18 @@ export type Database = {
       log_staff_authenticator_reset: {
         Args: { p_id: string }
         Returns: undefined
+      }
+      log_system_issue_on_behalf: {
+        Args: {
+          p_category: Database["public"]["Enums"]["system_issue_category"]
+          p_description: string
+          p_email: string
+        }
+        Returns: {
+          issue_created_at: string
+          issue_id: string
+          issue_reference: string
+        }[]
       }
       maintenance_days_range: {
         Args: { p_first_day: string; p_last_day: string }
@@ -9102,6 +9381,14 @@ export type Database = {
           storage_path: string
         }[]
       }
+      request_system_issue_screenshot_upload: {
+        Args: { p_ext: string; p_system_issue_id: string }
+        Returns: {
+          bucket: string
+          row_id: string
+          storage_path: string
+        }[]
+      }
       request_yellow_card_document_upload: {
         Args: {
           p_application_id: string
@@ -9116,6 +9403,10 @@ export type Database = {
       }
       resolve_incident: {
         Args: { p_incident_id: string; p_note?: string }
+        Returns: undefined
+      }
+      resolve_system_issue: {
+        Args: { p_id: string; p_note: string }
         Returns: undefined
       }
       review_booking: {
@@ -9487,6 +9778,8 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      staff_invite_email_status: { Args: { p_email: string }; Returns: string }
+      start_system_issue: { Args: { p_id: string }; Returns: undefined }
       submit_booking: {
         Args: {
           p_classification_code: string
@@ -9635,6 +9928,19 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      submit_system_issue: {
+        Args: {
+          p_category: Database["public"]["Enums"]["system_issue_category"]
+          p_description: string
+          p_page: string
+          p_user_agent: string
+        }
+        Returns: {
+          issue_created_at: string
+          issue_id: string
+          issue_reference: string
+        }[]
+      }
       submit_yellow_card_application: {
         Args: {
           p_barangay_code: string
@@ -9716,6 +10022,34 @@ export type Database = {
         Returns: Json
       }
       system_health_snapshot: { Args: never; Returns: Json }
+      system_issue_category_label: {
+        Args: {
+          p_category: Database["public"]["Enums"]["system_issue_category"]
+        }
+        Returns: string
+      }
+      system_issue_closes_at: {
+        Args: {
+          p_resolved_at: string
+          p_status: Database["public"]["Enums"]["system_issue_status"]
+        }
+        Returns: string
+      }
+      system_issue_display_status: {
+        Args: {
+          p_resolved_at: string
+          p_status: Database["public"]["Enums"]["system_issue_status"]
+        }
+        Returns: string
+      }
+      triage_system_issue: {
+        Args: {
+          p_category: Database["public"]["Enums"]["system_issue_category"]
+          p_id: string
+          p_priority: Database["public"]["Enums"]["system_issue_priority"]
+        }
+        Returns: undefined
+      }
       update_booking_classification: {
         Args: {
           p_code: string
@@ -10352,6 +10686,7 @@ export type Database = {
         | "auth"
         | "yellow_card"
         | "maintenance"
+        | "system_issues"
       audit_target_kind:
         | "staff_account"
         | "citizen"
@@ -10367,6 +10702,7 @@ export type Database = {
         | "calendar_entry"
         | "yellow_card"
         | "maintenance_period"
+        | "system_issue"
       booking_cancellation_reason:
         | "rejected_by_staff"
         | "cancelled_by_citizen"
@@ -10432,6 +10768,19 @@ export type Database = {
       staff_role: "staff" | "responder" | "admin" | "super_staff"
       staff_verification_decision: "accept" | "reject"
       system_health_status: "ok" | "warning" | "critical"
+      system_issue_category:
+        | "yellow_card"
+        | "incidents"
+        | "lcc"
+        | "accounts"
+        | "website"
+      system_issue_close_reason: "not_a_system_issue" | "duplicate"
+      system_issue_priority: "low" | "medium" | "high"
+      system_issue_status:
+        | "open"
+        | "in_progress"
+        | "resolved"
+        | "closed_with_reason"
       tier_review_decision: "accept" | "revise" | "reject"
       upload_kind:
         | "yellow_card_document"
@@ -10584,6 +10933,7 @@ export const Constants = {
         "auth",
         "yellow_card",
         "maintenance",
+        "system_issues",
       ],
       audit_target_kind: [
         "staff_account",
@@ -10600,6 +10950,7 @@ export const Constants = {
         "calendar_entry",
         "yellow_card",
         "maintenance_period",
+        "system_issue",
       ],
       booking_cancellation_reason: [
         "rejected_by_staff",
@@ -10669,6 +11020,21 @@ export const Constants = {
       staff_role: ["staff", "responder", "admin", "super_staff"],
       staff_verification_decision: ["accept", "reject"],
       system_health_status: ["ok", "warning", "critical"],
+      system_issue_category: [
+        "yellow_card",
+        "incidents",
+        "lcc",
+        "accounts",
+        "website",
+      ],
+      system_issue_close_reason: ["not_a_system_issue", "duplicate"],
+      system_issue_priority: ["low", "medium", "high"],
+      system_issue_status: [
+        "open",
+        "in_progress",
+        "resolved",
+        "closed_with_reason",
+      ],
       tier_review_decision: ["accept", "revise", "reject"],
       upload_kind: [
         "yellow_card_document",

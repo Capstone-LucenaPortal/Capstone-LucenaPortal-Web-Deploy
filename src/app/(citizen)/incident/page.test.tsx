@@ -148,3 +148,16 @@ describe('IncidentPage photo box', () => {
     expect(await screen.findByText('✓ picked.png')).toBeInTheDocument();
   });
 });
+
+// #186: the website-problem side door sits above the form and leaves it alone.
+describe('IncidentPage website-problem banner', () => {
+  it('opens the System issue dialog, not the incident form', async () => {
+    render(<IncidentPage />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Report a website problem' }));
+
+    expect(screen.getByRole('dialog', { name: /report a problem with this website/i })).toBeInTheDocument();
+    expect(submitIncident).not.toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: 'Incident Report' })).toBeInTheDocument();
+  });
+});

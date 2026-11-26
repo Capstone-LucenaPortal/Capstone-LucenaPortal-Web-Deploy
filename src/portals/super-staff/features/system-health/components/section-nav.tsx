@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/portals/super-staff/lib/utils";
 import type { SystemHealthData } from "../hooks/use-system-health";
-import { SYSTEM_HEALTH_HREF, sectionHref } from "../lib/routes";
+import { SYSTEM_HEALTH_HREF, SYSTEM_ISSUES_HREF, sectionHref } from "../lib/routes";
 import { GROUP_HEADING, SECTIONS, sectionStatuses, worstStatus, type SectionGroup } from "../lib/status";
 import type { HealthStatus } from "../types";
 import { STATUS_WORD, TONE_STYLE } from "./panel";
@@ -78,6 +78,11 @@ export function SectionNav({ data }: { data: SystemHealthData | null }) {
           ))}
         </div>
       ))}
+      <p className="mt-4 px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+        User reports
+      </p>
+      {/* No status: System issues are ungraded (ADR 0013), so never a dot. */}
+      <NavLink href={SYSTEM_ISSUES_HREF} label="System issues" status={undefined} />
     </nav>
   );
 }

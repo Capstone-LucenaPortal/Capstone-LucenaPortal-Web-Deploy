@@ -24,6 +24,9 @@ import { ReceiptLink } from '@/portals/citizen/features/receipts/components/rece
 import { formatManilaDate } from '@/shared/dates/manila';
 import { settle, type Loaded } from '@/portals/citizen/lib/loaded';
 import LoadFailure, { TileLoadFailure } from '@/portals/citizen/components/ui/load-failure';
+import type { MySystemIssue } from '@/portals/citizen/features/system-issues/types';
+import { getMySystemIssues } from '@/portals/citizen/features/system-issues/lib/system-issues';
+import WebsiteProblemsCard from '@/portals/citizen/features/system-issues/components/website-problems-card';
 
 const INCIDENTS_LOAD_ERROR = 'Could not load your incident reports right now. Please try again later.';
 const BOOKINGS_LOAD_ERROR = 'Could not load booking information right now. Please try again later.';
@@ -124,6 +127,7 @@ function DashboardContent() {
   // the receipt layer shipped have none (DB ADR 0001), so the link is rendered
   // per row rather than on every row.
   const [receiptRefs, setReceiptRefs] = useState<Set<string>>(new Set());
+  const [systemIssues, setSystemIssues] = useState<MySystemIssue[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Bumped by any self-service action that changes server state, so the cards
@@ -150,7 +154,10 @@ function DashboardContent() {
       // the config view, not from a hardcoded day count that would drift.
       catalogService.getIncidentConfig().catch(() => null),
       receiptService.getMine().catch(() => []),
-    ]).then(([incidentsResult, applicationsResult, cardsResult, bookingsResult, cfg, receipts]) => {
+      // Website problems (SCRUM-264): a card most Citizens never see, so a
+      // failed read hides it rather than adding a failure to every Dashboard.
+      getMySystemIssues().catch(() => []),
+    ]).then(([incidentsResult, applicationsResult, cardsResult, bookingsResult, cfg, receipts, mySystemIssues]) => {
       if (cancelled) return;
       setIncidentsRead(incidentsResult);
       setApplicationsRead(applicationsResult);
@@ -158,6 +165,7 @@ function DashboardContent() {
       setBookingsRead(bookingsResult);
       setIncidentConfig(cfg);
       setReceiptRefs(receiptReferences(receipts));
+      setSystemIssues(mySystemIssues);
       setLoading(false);
       setRetrying(false);
     });
@@ -479,6 +487,8 @@ function DashboardContent() {
           )}
         </div>
       )}
+
+      <WebsiteProblemsCard issues={systemIssues} />
     </section>
   );
 }

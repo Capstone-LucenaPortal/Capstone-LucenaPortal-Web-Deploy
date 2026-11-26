@@ -2,6 +2,9 @@ import { sectionInfo, type SectionKey } from "./status";
 
 export const SYSTEM_HEALTH_HREF = "/super-staff/system-health";
 
+/** System issues: the user-reported side, ungraded (ADR 0013). */
+export const SYSTEM_ISSUES_HREF = `${SYSTEM_HEALTH_HREF}/issues`;
+
 /** A section's page: one route per section, under General, at its slug. */
 export function sectionHref(key: SectionKey): string {
   return `${SYSTEM_HEALTH_HREF}/${sectionInfo(key).slug}`;

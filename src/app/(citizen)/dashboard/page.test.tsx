@@ -9,6 +9,8 @@ import type { MyBooking } from '@/portals/citizen/features/booking/types';
 import { yellowCardService } from '@/portals/citizen/features/yellow-card/lib/yellow-card';
 import type { MyYellowCard, MyYellowCardApplication } from '@/portals/citizen/features/yellow-card/types';
 import { notificationService } from '@/portals/citizen/features/notifications/lib/notifications';
+import { getMySystemIssues } from '@/portals/citizen/features/system-issues/lib/system-issues';
+import type { MySystemIssue } from '@/portals/citizen/features/system-issues/types';
 
 // The provider itself talks to authService and Supabase on mount; the subject
 // under test is what the page renders once a citizen is signed in.
@@ -44,6 +46,10 @@ vi.mock('@/portals/citizen/features/incidents/lib/incidents', async (importOrigi
 vi.mock('@/portals/citizen/features/booking/lib/booking', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/portals/citizen/features/booking/lib/booking')>()),
   getMyBookings: vi.fn(),
+}));
+vi.mock('@/portals/citizen/features/system-issues/lib/system-issues', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/portals/citizen/features/system-issues/lib/system-issues')>()),
+  getMySystemIssues: vi.fn(),
 }));
 
 const YELLOW_CARD_ERROR = 'Could not load your Yellow Card information right now. Please try again later.';
@@ -96,6 +102,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(getMyIncidents).mockResolvedValue([incident]);
   vi.mocked(getMyBookings).mockResolvedValue([booking]);
+  vi.mocked(getMySystemIssues).mockResolvedValue([]);
   vi.spyOn(yellowCardService, 'getMyApplications').mockResolvedValue([application]);
   vi.spyOn(yellowCardService, 'getMyCards').mockResolvedValue([]);
   vi.spyOn(notificationService, 'getMine').mockResolvedValue([]);
@@ -282,6 +289,51 @@ describe('DashboardPage when every read succeeds with no records', () => {
     expect(screen.getByRole('button', { name: 'Report an Incident' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Venue Bookings (0)' }));
     expect(screen.getByRole('button', { name: 'Book a Venue' })).toBeInTheDocument();
+  });
+});
+
+describe('DashboardPage "Website problems you reported"', () => {
+  const systemIssue: MySystemIssue = {
+    id: 'si-1',
+    referenceNumber: 'SI-2026-000110',
+    category: 'website',
+    description: 'The home page shows a blank screen.',
+    status: 'in_progress',
+    createdAt: '2026-11-20T02:00:00+00:00',
+    resolutionNote: null,
+    closesAt: null,
+    closeReason: null,
+    closeNote: null,
+  };
+
+  it('lists the website problems the Citizen reported, beside the other cards', async () => {
+    vi.mocked(getMySystemIssues).mockResolvedValue([systemIssue]);
+
+    await renderDashboard();
+
+    expect(screen.getByRole('heading', { name: 'Website problems you reported' })).toBeInTheDocument();
+    expect(screen.getByText('SI-2026-000110')).toBeInTheDocument();
+    expect(screen.getByText('In progress')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Application #YC-2026-000110' })).toBeInTheDocument();
+    expect(tile('Total Requests')).not.toHaveTextContent("Couldn't load");
+  });
+
+  it('is hidden when the Citizen has reported none', async () => {
+    await renderDashboard();
+
+    expect(screen.queryByRole('heading', { name: 'Website problems you reported' })).not.toBeInTheDocument();
+  });
+
+  // A card most Citizens never see should not add a failure to everyone's
+  // Dashboard; the other reads say for themselves when they fail.
+  it('is hidden, and the rest of the Dashboard unchanged, when the read fails', async () => {
+    vi.mocked(getMySystemIssues).mockRejectedValue(new Error('down'));
+
+    await renderDashboard();
+
+    expect(screen.queryByRole('heading', { name: 'Website problems you reported' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Application #YC-2026-000110' })).toBeInTheDocument();
   });
 });
 
