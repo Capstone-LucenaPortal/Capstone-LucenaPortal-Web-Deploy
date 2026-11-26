@@ -2,11 +2,12 @@ import { PRIORITIES, isLive, type IssuePriority, type SystemIssue } from "../typ
 
 export type QueueTab = "attention" | "resolved" | "closed" | "all";
 
+// All comes first (PO, 2026-11-26); the queue still opens on Needs attention.
 export const TABS: { key: QueueTab; label: string }[] = [
+  { key: "all", label: "All" },
   { key: "attention", label: "Needs attention" },
   { key: "resolved", label: "Resolved" },
   { key: "closed", label: "Closed" },
-  { key: "all", label: "All" },
 ];
 
 /** Needs attention is Open and In progress: the issues Super-staff can still change. */
