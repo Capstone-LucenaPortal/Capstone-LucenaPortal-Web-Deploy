@@ -175,9 +175,84 @@ describe("portal pages", () => {
     expect(screen.getByText("2 waiting in pool")).toBeInTheDocument();
     expect(screen.getByText("Sinkhole")).toBeInTheDocument();
     expect(screen.getByText("Verified · SLA running")).toBeInTheDocument();
-    // The barangay filter is not built yet; an enabled button that does
-    // nothing would be worse than a disabled one.
-    expect(screen.getByRole("button", { name: /barangay/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Barangay" })).toBeEnabled();
+  });
+
+  it("/responder/pool has nothing to filter when the pool is clear", async () => {
+    db.pool = [];
+
+    withProviders(await PoolPage({ searchParams: Promise.resolve({}) }));
+
+    expect(screen.getByText("Pool is clear")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Barangay" })).toBeDisabled();
+  });
+
+  describe("/responder/pool?brgy= (issue #196)", () => {
+    beforeEach(() => {
+      db.pool = [
+        sinkhole({ barangay_name: "Cotta" }),
+        anIncident({ id: "inc-4487", type_label: "Flooding", barangay_name: "Ibabang Iyam" }),
+      ];
+    });
+
+    it("lists only that barangay and says how much of the pool it is", async () => {
+      withProviders(
+        await PoolPage({ searchParams: Promise.resolve({ brgy: "Cotta" }) }),
+      );
+
+      expect(screen.getByText("Sinkhole")).toBeInTheDocument();
+      expect(screen.queryByText("Flooding")).not.toBeInTheDocument();
+      expect(screen.getByText("1 of 2 waiting in pool")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Brgy. Cotta" }),
+      ).toHaveAttribute("aria-pressed", "true");
+      // Opening a report from a card keeps the filter.
+      expect(screen.getByRole("link", { name: /Sinkhole/ })).toHaveAttribute(
+        "href",
+        "/responder/pool?report=inc-4501&brgy=Cotta",
+      );
+    });
+
+    it("survives a repeated ?brgy= by reading the first", async () => {
+      withProviders(
+        await PoolPage({
+          searchParams: Promise.resolve({ brgy: ["Cotta", "Ibabang Iyam"] }),
+        }),
+      );
+
+      expect(screen.getByText("1 of 2 waiting in pool")).toBeInTheDocument();
+    });
+
+    it("keeps the filter on the way back from an open report", async () => {
+      db.incident = sinkhole({ barangay_name: "Cotta" });
+
+      withProviders(
+        await PoolPage({
+          searchParams: Promise.resolve({ report: "inc-4501", brgy: "Cotta" }),
+        }),
+      );
+
+      expect(screen.getByRole("link", { name: "Back to pool" })).toHaveAttribute(
+        "href",
+        "/responder/pool?brgy=Cotta",
+      );
+    });
+
+    it("says so when the barangay has nothing left, rather than dropping the filter", async () => {
+      // A colleague claimed Dalahican's last report before this Refresh.
+      withProviders(
+        await PoolPage({ searchParams: Promise.resolve({ brgy: "Dalahican" }) }),
+      );
+
+      expect(
+        screen.getByText("No reports from Brgy. Dalahican right now"),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("Sinkhole")).not.toBeInTheDocument();
+      expect(screen.getByText("0 of 2 waiting in pool")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Brgy. Dalahican" }),
+      ).toBeEnabled();
+    });
   });
 
   it("/responder/pool offers an explicit refresh instead of polling", async () => {

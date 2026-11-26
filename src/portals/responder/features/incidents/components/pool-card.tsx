@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Camera, Check, ImageOff, MapPin } from "lucide-react";
 import { ClaimButton } from "@/portals/responder/features/incidents/components/claim-button";
+import { poolHref } from "@/portals/responder/features/incidents/lib/barangay-filter";
 import {
   levelLabel,
   levelTone,
@@ -36,15 +37,18 @@ export function PoolCard({
   incident,
   now,
   gated,
+  barangay = null,
 }: {
   incident: Incident;
   now: Date;
   gated: boolean;
+  /** The pool's barangay filter, kept in the card's link (issue #196). */
+  barangay?: string | null;
 }) {
   return incident.is_verified ? (
-    <VerifiedCard incident={incident} now={now} gated={gated} />
+    <VerifiedCard incident={incident} now={now} gated={gated} barangay={barangay} />
   ) : (
-    <UnverifiedCard incident={incident} now={now} gated={gated} />
+    <UnverifiedCard incident={incident} now={now} gated={gated} barangay={barangay} />
   );
 }
 
@@ -55,17 +59,19 @@ function VerifiedCard({
   incident,
   now,
   gated,
+  barangay = null,
 }: {
   incident: Incident;
   now: Date;
   gated: boolean;
+  barangay?: string | null;
 }) {
   const sla = slaProgress(incident, now);
   const photos = incident.before_photo_count ?? 0;
 
   return (
     <article className="mx-3 mb-2.5 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-      <Link href={`/responder/pool?report=${incident.id}`} className="block px-3.5 pt-3.25">
+      <Link href={poolHref({ report: incident.id, brgy: barangay })} className="block px-3.5 pt-3.25">
         <div className="mb-2.25 flex items-center gap-1.5">
           <span className={`${PILL} ${levelTone(incident.incident_level)}`}>
             {levelLabel(incident.incident_level)}
@@ -158,14 +164,16 @@ function UnverifiedCard({
   incident,
   now,
   gated,
+  barangay = null,
 }: {
   incident: Incident;
   now: Date;
   gated: boolean;
+  barangay?: string | null;
 }) {
   return (
     <article className="mx-3 mb-2.5 overflow-hidden rounded-lg border border-dashed border-gray-300 bg-white">
-      <Link href={`/responder/pool?report=${incident.id}`} className="block px-3.5 pt-3.25">
+      <Link href={poolHref({ report: incident.id, brgy: barangay })} className="block px-3.5 pt-3.25">
         <div className="mb-2.25 flex items-center gap-1.5">
           <span className={`${PILL} bg-gray-100 text-gray-800`}>Reported</span>
           <span

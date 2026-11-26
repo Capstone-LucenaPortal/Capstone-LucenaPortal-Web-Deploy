@@ -129,4 +129,45 @@ describe("PoolList", () => {
 
     expect(screen.queryByText(/push/i)).not.toBeInTheDocument();
   });
+
+  describe("filtered to a barangay (issue #196)", () => {
+    it("keeps the barangay in every card's link, so opening a report keeps the filter", () => {
+      render(
+        <PoolList incidents={pool} now={NOW} gated={false} barangay="Ibabang Iyam" />,
+      );
+
+      for (const link of screen.getAllByRole("link")) {
+        expect(link.getAttribute("href")).toMatch(/&brgy=Ibabang\+Iyam$/);
+      }
+    });
+
+    it("names the barangay when nothing is left in it, and offers the whole pool back", () => {
+      // Not "Pool is clear": the pool may be full, just not here.
+      render(<PoolList incidents={[]} now={NOW} gated={false} barangay="Cotta" />);
+
+      expect(
+        screen.getByText("No reports from Brgy. Cotta right now"),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("Pool is clear")).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("link", { name: "Show all barangays" }),
+      ).toHaveAttribute("href", "/responder/pool");
+    });
+
+    it("clears the filter to the link it is given, so a report open beside the list stays open", () => {
+      render(
+        <PoolList
+          incidents={[]}
+          now={NOW}
+          gated={false}
+          barangay="Cotta"
+          showAllHref="/responder/pool?report=inc-1"
+        />,
+      );
+
+      expect(
+        screen.getByRole("link", { name: "Show all barangays" }),
+      ).toHaveAttribute("href", "/responder/pool?report=inc-1");
+    });
+  });
 });

@@ -1,6 +1,8 @@
-import { Check } from "lucide-react";
+import Link from "next/link";
+import { Check, MapPinOff } from "lucide-react";
 import { EmptyState } from "@/portals/responder/components/ui/empty-state";
 import { PoolCard } from "@/portals/responder/features/incidents/components/pool-card";
+import { poolHref } from "@/portals/responder/features/incidents/lib/barangay-filter";
 import type { Incident, IncidentLevel } from "@/portals/responder/features/incidents/types";
 import { cn } from "@/portals/responder/lib/utils";
 
@@ -49,11 +51,42 @@ export function PoolList({
   incidents,
   now,
   gated,
+  barangay = null,
+  showAllHref = poolHref({}),
 }: {
   incidents: Incident[];
   now: Date;
   gated: boolean;
+  /** The barangay the list is filtered to, if any (issue #196). */
+  barangay?: string | null;
+  /**
+   * Where "Show all barangays" goes. The page passes one that keeps an open
+   * report, matching the sheet's "All barangays" row.
+   */
+  showAllHref?: string;
 }) {
+  // Issue #196: a filter that matches nothing is not a clear pool — the pool
+  // may be full, just not here. It also covers a stale or made-up ?brgy=,
+  // which is never silently dropped.
+  if (incidents.length === 0 && barangay) {
+    return (
+      <EmptyState
+        icon={MapPinOff}
+        title={`No reports from Brgy. ${barangay} right now`}
+        description="Pick another barangay, or show the whole pool."
+        className="py-16"
+        action={
+          <Link
+            href={showAllHref}
+            className="inline-flex h-11 items-center rounded-md bg-lucena-blue px-5 text-[14.5px] font-semibold text-white hover:bg-lucena-blue-dark"
+          >
+            Show all barangays
+          </Link>
+        }
+      />
+    );
+  }
+
   if (incidents.length === 0) {
     return (
       <EmptyState
@@ -80,7 +113,13 @@ export function PoolList({
         </SectionHeader>
       )}
       {verified.map((incident) => (
-        <PoolCard key={incident.id} incident={incident} now={now} gated={gated} />
+        <PoolCard
+          key={incident.id}
+          incident={incident}
+          now={now}
+          gated={gated}
+          barangay={barangay}
+        />
       ))}
 
       {unverified.length > 0 && (
@@ -92,7 +131,13 @@ export function PoolList({
         </SectionHeader>
       )}
       {unverified.map((incident) => (
-        <PoolCard key={incident.id} incident={incident} now={now} gated={gated} />
+        <PoolCard
+          key={incident.id}
+          incident={incident}
+          now={now}
+          gated={gated}
+          barangay={barangay}
+        />
       ))}
     </div>
   );

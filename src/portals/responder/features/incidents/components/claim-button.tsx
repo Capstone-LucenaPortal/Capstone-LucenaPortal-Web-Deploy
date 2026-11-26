@@ -13,8 +13,7 @@ import { useSingleFlight } from "@/portals/responder/lib/use-single-flight";
  *
  * Gated, it disables *and* states the reason: a disabled control that still
  * says "Claim" is a mystery, and one that says why answers the question at the
- * point where it is asked. This matches how `pool/page.tsx` already disables
- * the barangay filter.
+ * point where it is asked.
  */
 
 export const GATED_CLAIM_LABEL = "Finish your ticket first";

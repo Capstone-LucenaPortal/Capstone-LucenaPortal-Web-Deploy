@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { ArrowLeft, Filter, Inbox } from "lucide-react";
+import { ArrowLeft, Inbox } from "lucide-react";
 import { EmptyState } from "@/portals/responder/components/ui/empty-state";
 import { PhoneAlertsBanner } from "@/portals/responder/features/alerts/components/phone-alerts";
 import { getCurrentResponder } from "@/portals/responder/features/auth/lib/session";
+import { BarangayFilter } from "@/portals/responder/features/incidents/components/barangay-filter";
 import { ActiveClaimBanner } from "@/portals/responder/features/incidents/components/active-claim-banner";
 import { LostRaceDialog } from "@/portals/responder/features/incidents/components/lost-race-dialog";
 import { MarkArrivalRead } from "@/portals/responder/features/incidents/components/mark-arrival-read";
@@ -23,6 +24,12 @@ import {
   getPool,
 } from "@/portals/responder/features/incidents/lib/data";
 import {
+  barangayCounts,
+  filterByBarangay,
+  poolHref,
+  readBarangay,
+} from "@/portals/responder/features/incidents/lib/barangay-filter";
+import {
   noticeText,
   type NoticeCode,
 } from "@/portals/responder/features/incidents/lib/notice";
@@ -42,6 +49,11 @@ export const metadata = { title: "Pool · LucenaPortal Responder" };
  * ⚠️ NO DEPARTMENT FILTER IS APPLIED HERE. `responder_incidents` self-scopes to
  * the caller's department through `staff_accounts`. Adding `.eq()` on a column
  * whose name has changed would silently return nothing.
+ *
+ * `?brgy=` (issue #196) narrows the LIST only. The header says how much of the
+ * pool it is, the sheet counts the whole pool, and the nav badge — the
+ * layout's own getPool() — never sees it. Card links and "Back to pool" keep
+ * it; server-action redirects land on a bare pool.
  */
 export default async function PoolPage({
   searchParams,
@@ -51,9 +63,12 @@ export default async function PoolPage({
     lost?: string;
     resolved?: string;
     notice?: string;
+    // An array when the key is repeated; readBarangay takes the first.
+    brgy?: string | string[];
   }>;
 }) {
-  const { report, lost, resolved, notice } = await searchParams;
+  const { report, lost, resolved, notice, brgy: brgyParam } = await searchParams;
+  const brgy = readBarangay(brgyParam);
 
   // One clock for the whole page, so every card agrees what time it is.
   const now = new Date();
@@ -65,6 +80,7 @@ export default async function PoolPage({
 
   // C7: presentation, not schema.
   const incidents = sortPool(pool);
+  const shown = filterByBarangay(incidents, brgy);
 
   // ⚠️ getIncident(), not a lookup in `pool`. A responder must be able to open a
   // report they have just LOST, and the incident they HOLD is not in the pool at
@@ -101,18 +117,18 @@ export default async function PoolPage({
       >
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-gray-200 bg-white px-4 py-2.75">
           <h1 className="text-sm font-semibold text-gray-900">
-            {incidents.length} waiting in pool
+            {brgy
+              ? `${shown.length} of ${incidents.length} waiting in pool`
+              : `${incidents.length} waiting in pool`}
           </h1>
           <div className="flex items-center gap-1.5">
             <RefreshButton />
-            <button
-              type="button"
-              disabled /* ← later: barangay filter */
-              className="flex h-7.5 items-center gap-1.5 rounded-full border border-gray-300 bg-white px-2.75 text-xs font-medium text-gray-900 disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-400"
-            >
-              <Filter size={14} aria-hidden />
-              Barangay
-            </button>
+            <BarangayFilter
+              counts={barangayCounts(incidents)}
+              total={incidents.length}
+              selected={brgy}
+              report={report ?? null}
+            />
           </div>
         </div>
 
@@ -128,7 +144,13 @@ export default async function PoolPage({
         <PhoneAlertsBanner />
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <PoolList incidents={incidents} now={now} gated={held !== null} />
+          <PoolList
+            incidents={shown}
+            now={now}
+            gated={held !== null}
+            barangay={brgy}
+            showAllHref={poolHref({ report })}
+          />
         </div>
       </div>
 
@@ -143,7 +165,7 @@ export default async function PoolPage({
             {selected.id && <MarkArrivalRead incidentId={selected.id} />}
             <div className="shrink-0 border-b border-gray-200 bg-white px-2 py-2 md:hidden">
               <Link
-                href="/responder/pool"
+                href={poolHref({ brgy })}
                 className="inline-flex h-9 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-gray-900"
               >
                 <ArrowLeft size={17} aria-hidden />
