@@ -144,6 +144,11 @@ export default function LCCStep6Payment({ bookingId, totalFee, downpaymentAmount
         </div>
         {/* Payment Info */}
         <div>
+          {/* Temporary: stands in for the GCash QR code until one is added. */}
+          <div style={{ background: '#EFF6FF', border: '1px solid #93C5FD', borderRadius: 12, padding: 20, marginBottom: 16 }}>
+            <div style={{ fontSize: 12, color: '#003DA5', marginBottom: 4, fontWeight: 600 }}>GCASH ACCOUNT</div>
+            <div style={{ fontSize: 'clamp(18px, 3vw, 22px)', fontWeight: 800, color: '#003DA5' }}>09XX XXX XXXX</div>
+          </div>
           <div style={{ background: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 12, padding: 20, marginBottom: 24 }}>
             <div style={{ fontSize: 12, color: '#166534', marginBottom: 4, fontWeight: 600 }}>REQUIRED DOWNPAYMENT</div>
             <div style={{ fontSize: 'clamp(20px, 3.5vw, 28px)', fontWeight: 800, color: '#166534' }}>
