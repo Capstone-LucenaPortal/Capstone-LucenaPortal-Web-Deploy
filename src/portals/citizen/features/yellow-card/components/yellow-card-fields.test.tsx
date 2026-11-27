@@ -37,6 +37,15 @@ describe('YellowCardFields', () => {
     expect(screen.getByLabelText(/Contact Number/)).toHaveValue('917 123 4567');
   });
 
+  // #198: Eligibility needs at least 2 years in Lucena.
+  it('asks for at least 2 years of residency', () => {
+    renderFields();
+    const years = screen.getByLabelText(/Years of Residency in Lucena/);
+    expect(years).toHaveAttribute('min', '2');
+    expect(years).toHaveAttribute('max', '120');
+    expect(years).toHaveAccessibleDescription('At least 2 years.');
+  });
+
   it('keeps the ids unique when the fields render twice', () => {
     renderFields();
     renderFields();

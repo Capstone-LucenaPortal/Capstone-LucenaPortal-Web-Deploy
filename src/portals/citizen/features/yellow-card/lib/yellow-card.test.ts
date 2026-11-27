@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import type { MyYellowCardApplication, YellowCardApplicationFields } from '@/portals/citizen/features/yellow-card/types';
-import { yellowCardService, YellowCardSubmitError, mapApplicationToFormValues, mapResubmitToParams, computeAgeError, liveApplicationNotice, liveNoticeCopy, LIVE_APPLICATION_STATUSES, type LiveApplicationStatus, type LiveApplicationNotice, translateResubmitError, translateUploadError, translateSubmitError, verifyCard, translateWithdrawError, correctionStart, correctionStatusCopy } from '@/portals/citizen/features/yellow-card/lib/yellow-card';
+import { yellowCardService, YellowCardSubmitError, mapApplicationToFormValues, mapResubmitToParams, computeAgeError, residencyError, MIN_YEARS_OF_RESIDENCY, liveApplicationNotice, liveNoticeCopy, LIVE_APPLICATION_STATUSES, type LiveApplicationStatus, type LiveApplicationNotice, translateResubmitError, translateUploadError, translateSubmitError, verifyCard, translateWithdrawError, correctionStart, correctionStatusCopy } from '@/portals/citizen/features/yellow-card/lib/yellow-card';
 import * as supabaseClientModule from '@/portals/citizen/lib/supabase/client';
 import { requestService } from '@/portals/citizen/lib/mock/request-store';
 
@@ -575,6 +575,13 @@ describe('mapResubmitToParams', () => {
     );
   });
 
+  it('refuses a Resubmission from a Citizen who has lived in Lucena under 2 years', () => {
+    expect(() => mapResubmitToParams('app-1', { ...VALUES, yearsOfResidency: '1' })).toThrow(
+      'You must have lived in Lucena for at least 2 years to apply for a Yellow Card.',
+    );
+    expect(mapResubmitToParams('app-1', { ...VALUES, yearsOfResidency: '2' }).p_years_of_residency).toBe(2);
+  });
+
   it('throws YellowCardSubmitError when yearsOfResidency is not a valid bounded integer', () => {
     expect(() => mapResubmitToParams('app-1', { ...VALUES, yearsOfResidency: 'abc' })).toThrow(
       YellowCardSubmitError,
@@ -585,6 +592,30 @@ describe('mapResubmitToParams', () => {
     expect(() => mapResubmitToParams('app-1', { ...VALUES, yearsOfResidency: '121' })).toThrow(
       YellowCardSubmitError,
     );
+  });
+});
+
+describe('residencyError', () => {
+  const TOO_SHORT = 'You must have lived in Lucena for at least 2 years to apply for a Yellow Card.';
+  const NOT_A_YEAR_COUNT = 'Years of residency must be a whole number between 2 and 120.';
+
+  it('requires at least 2 years', () => {
+    expect(MIN_YEARS_OF_RESIDENCY).toBe(2);
+    expect(residencyError('0')).toBe(TOO_SHORT);
+    expect(residencyError('1')).toBe(TOO_SHORT);
+    expect(residencyError(1)).toBe(TOO_SHORT);
+  });
+
+  it('accepts 2 through 120 years', () => {
+    expect(residencyError('2')).toBeNull();
+    expect(residencyError(2)).toBeNull();
+    expect(residencyError('120')).toBeNull();
+  });
+
+  it('refuses anything that is not a whole number of years up to 120', () => {
+    for (const bad of ['', 'abc', '2.5', '-1', '121']) {
+      expect(residencyError(bad)).toBe(NOT_A_YEAR_COUNT);
+    }
   });
 });
 
@@ -905,6 +936,18 @@ describe('yellowCardService.submitApplication field validation (live path)', () 
       await expect(
         yellowCardService.submitApplication({ ...VALID_SUBMIT_FIELDS, yearsOfResidency: 121 }),
       ).rejects.toThrow(YellowCardSubmitError);
+      expect(rpc).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('refuses an application from a Citizen who has lived in Lucena under 2 years, without calling the RPC', async () => {
+    const { rpc, spy } = withFakeClient();
+    try {
+      await expect(
+        yellowCardService.submitApplication({ ...VALID_SUBMIT_FIELDS, yearsOfResidency: 1 }),
+      ).rejects.toThrow('You must have lived in Lucena for at least 2 years to apply for a Yellow Card.');
       expect(rpc).not.toHaveBeenCalled();
     } finally {
       spy.mockRestore();

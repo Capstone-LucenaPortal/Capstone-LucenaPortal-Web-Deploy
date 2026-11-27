@@ -89,6 +89,12 @@ from the **Yellow Card** itself — an Application may never become one, and a C
 several Applications over time but at most one active Card.
 _Avoid_: Yellow Card request, Form, Submission
 
+**Eligibility**:
+Who may apply for a Yellow Card: a Citizen aged 18 or older who has lived in Lucena City for at
+least 2 years. A Citizen who doesn't meet both can't submit an **Application**, a **Correction** or
+a **Resubmission**.
+_Avoid_: Qualification, Requirements
+
 **Revision Request**:
 A reviewer's decision that an Application — or a Booking's Tier Claim — cannot be judged as
 submitted and needs the Citizen to correct something. It is not a refusal — the Application or

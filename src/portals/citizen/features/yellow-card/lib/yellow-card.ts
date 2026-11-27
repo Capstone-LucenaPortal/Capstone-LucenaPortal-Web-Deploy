@@ -81,7 +81,6 @@ export function mapResubmitToParams(applicationId: string, values: YellowCardFie
   const contactNumber = values.contactNumber.trim();
   const emailAddress = values.emailAddress.trim();
   const voterIdNumber = values.voterIdNumber.trim();
-  const yearsOfResidency = boundedInt(values.yearsOfResidency, 0, 120);
 
   const problem =
     (!firstName ? 'Please enter a first name.' : null) ??
@@ -98,7 +97,7 @@ export function mapResubmitToParams(applicationId: string, values: YellowCardFie
     fieldTooLong("Voter's ID number", voterIdNumber, LIMITS.shortText) ??
     emailError(emailAddress) ??
     phMobileError(contactNumber) ??
-    (yearsOfResidency === null ? 'Years of residency must be a whole number between 0 and 120.' : null);
+    residencyError(values.yearsOfResidency);
   if (problem) throw new YellowCardSubmitError(problem);
 
   return {
@@ -112,7 +111,7 @@ export function mapResubmitToParams(applicationId: string, values: YellowCardFie
     p_complete_address: completeAddress,
     p_contact_number: contactNumber,
     p_email_address: emailAddress,
-    p_years_of_residency: yearsOfResidency,
+    p_years_of_residency: Number(values.yearsOfResidency),
     p_voter_id_number: voterIdNumber,
     p_middle_name: values.middleName.trim() || null,
     p_suffix: values.suffix.trim() || null,
@@ -150,6 +149,31 @@ export function computeAgeError(dateOfBirth: string): string | null {
     age--;
   }
   return age < 18 ? '❌ You must be 18 years or older to apply.' : null;
+}
+
+/**
+ * The residency half of Eligibility: a Citizen must have lived in Lucena City
+ * for at least this many years to apply (#198).
+ *
+ * TODO(backend): enforced in the front end only, for now. The database still
+ * accepts any `years_of_residency >= 0`, so this is the one place the rule lives.
+ */
+export const MIN_YEARS_OF_RESIDENCY = 2;
+export const MAX_YEARS_OF_RESIDENCY = 120;
+
+/**
+ * Pure: the residency rule, shared by the apply form (and so a Correction) and
+ * the Resubmission form. Takes the raw form string or a number.
+ */
+export function residencyError(value: string | number): string | null {
+  const years = boundedInt(value, 0, MAX_YEARS_OF_RESIDENCY);
+  if (years === null) {
+    return `Years of residency must be a whole number between ${MIN_YEARS_OF_RESIDENCY} and ${MAX_YEARS_OF_RESIDENCY}.`;
+  }
+  if (years < MIN_YEARS_OF_RESIDENCY) {
+    return `You must have lived in Lucena for at least ${MIN_YEARS_OF_RESIDENCY} years to apply for a Yellow Card.`;
+  }
+  return null;
 }
 
 /**
@@ -656,7 +680,6 @@ export const yellowCardService = {
     const contactNumber = fields.contactNumber.trim();
     const emailAddress = fields.emailAddress.trim();
     const voterIdNumber = fields.voterIdNumber.trim();
-    const yearsOfResidency = boundedInt(fields.yearsOfResidency, 0, 120);
 
     const problem =
       (!firstName ? 'Please enter a first name.' : null) ??
@@ -669,7 +692,7 @@ export const yellowCardService = {
       fieldTooLong("Voter's ID number", voterIdNumber, LIMITS.shortText) ??
       emailError(emailAddress) ??
       phMobileError(contactNumber) ??
-      (yearsOfResidency === null ? 'Years of residency must be a whole number between 0 and 120.' : null) ??
+      residencyError(fields.yearsOfResidency) ??
       (fields.isCorrection && !fields.correctionNote?.trim()
         ? 'A Correction must say what needs correcting.'
         : null);
@@ -685,7 +708,7 @@ export const yellowCardService = {
       p_complete_address: completeAddress,
       p_contact_number: contactNumber,
       p_email_address: emailAddress,
-      p_years_of_residency: yearsOfResidency,
+      p_years_of_residency: fields.yearsOfResidency,
       p_voter_id_number: voterIdNumber,
       p_privacy_consent: fields.privacyConsent,
       p_middle_name: fields.middleName?.trim() || null,

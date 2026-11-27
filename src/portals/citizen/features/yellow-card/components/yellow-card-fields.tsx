@@ -5,6 +5,7 @@ import { PhoneInput } from '@/portals/citizen/components/ui/phone-input';
 import type { CatalogOption } from '@/portals/citizen/lib/supabase/catalogs';
 import type { PrintedCardValues, YellowCardFieldValues } from '@/portals/citizen/features/yellow-card/types';
 import { LIMITS } from '@/portals/citizen/lib/validation';
+import { MIN_YEARS_OF_RESIDENCY, MAX_YEARS_OF_RESIDENCY } from '@/portals/citizen/features/yellow-card/lib/yellow-card';
 
 const INPUT_CLASS =
   'w-full bg-white border border-[#CCCCCC] rounded text-[15px] text-text-dark font-sans transition-all focus:outline-none focus:border-lucena-blue focus:shadow-[0_0_0_3px_rgba(0,61,165,0.1)]';
@@ -143,7 +144,8 @@ export function YellowCardFields({ values, onChange, genders, civilStatuses, bar
 
         <div className="mb-5">
           <label htmlFor={`${id}-years-of-residency`} className="block text-sm font-semibold text-text-dark mb-2"><Required /> Years of Residency in Lucena</label>
-          <input id={`${id}-years-of-residency`} className={INPUT_CLASS} style={INPUT_STYLE} type="number" min={0} max={120} placeholder="Number of years" value={values.yearsOfResidency} onChange={(e) => onChange('yearsOfResidency', e.target.value)} />
+          <input id={`${id}-years-of-residency`} className={INPUT_CLASS} style={INPUT_STYLE} type="number" min={MIN_YEARS_OF_RESIDENCY} max={MAX_YEARS_OF_RESIDENCY} placeholder="Number of years" aria-describedby={`${id}-years-of-residency-hint`} value={values.yearsOfResidency} onChange={(e) => onChange('yearsOfResidency', e.target.value)} />
+          <p id={`${id}-years-of-residency-hint`} className="mt-1.5 text-[13px] text-gray-600">At least {MIN_YEARS_OF_RESIDENCY} years.</p>
         </div>
       </div>
     </>

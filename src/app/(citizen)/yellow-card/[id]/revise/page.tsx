@@ -8,7 +8,7 @@ import { YellowCardFields } from '@/portals/citizen/features/yellow-card/compone
 import { VoterIdUpload } from '@/portals/citizen/features/yellow-card/components/voter-id-upload';
 import { catalogService, type CatalogOption } from '@/portals/citizen/lib/supabase/catalogs';
 import type { MyYellowCardApplication, YellowCardFieldValues } from '@/portals/citizen/features/yellow-card/types';
-import { yellowCardService, YellowCardSubmitError, mapApplicationToFormValues, computeAgeError } from '@/portals/citizen/features/yellow-card/lib/yellow-card';
+import { yellowCardService, YellowCardSubmitError, mapApplicationToFormValues, computeAgeError, residencyError } from '@/portals/citizen/features/yellow-card/lib/yellow-card';
 import { formatManilaDate } from '@/shared/dates/manila';
 
 type PageState = 'loading' | 'ineligible' | 'form' | 'success';
@@ -87,6 +87,14 @@ function ReviseContent() {
     }
     if (application.document_count === 0 && !replacementFile) {
       setSubmitError("Please upload your Voter's ID before resubmitting.");
+      return;
+    }
+
+    // Checked before the upload below, so an ineligible Resubmission never sends
+    // a replacement Voter's ID only to be refused by `mapResubmitToParams` (#198).
+    const ineligible = residencyError(values.yearsOfResidency);
+    if (ineligible) {
+      setSubmitError(ineligible);
       return;
     }
 
